@@ -1,0 +1,29 @@
+
+# envs
+.venv
+
+# IDE
+.vscode
+
+# caches
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# I don't wants
+scratch_dbg/
+th07/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# 运行时产物(游戏生成, 不入库)
+touhou.log*
+score.json
+config.json
+replays/

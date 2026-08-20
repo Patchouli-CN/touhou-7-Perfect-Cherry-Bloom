@@ -1,0 +1,163 @@
+"""Touhou: 全局状态(ZunGlobals)与 rng 测试。"""
+from __future__ import annotations
+
+import sys
+
+sys.path.insert(0, r"D:\python_play\Touhou08")
+
+from touhou.engine.globals import (  # noqa: E402
+    CHERRY_MAX_RANGE,
+    CHERRY_PLUS_RANGE,
+    GUI_SCORE_INCREMENT_MAX,
+    SCORE_MAX,
+    ZunGlobals,
+)
+from touhou.engine.rng import Rng  # noqa: E402
+
+
+# ---- rng: 与 Rng::GetRandomU16 (TH07 0x00431870) 递推一致 ----
+def test_rng_u16_matches_cpp_recurrence() -> None:
+    # 手算(seed=0x5EED):
+    #  u1=(0x5EED^0x9630)-0x6553=0xC8DD-0x6553=0x638A → (0x638A&0xC000)>>14=1
+    #    seed=(1+0x638A*4)&0xFFFF=0x8E29
+    #  u2=(0x8E29^0x9630)-0x6553=0x1819-0x6553=-19770→&0xFFFF=0xB2C6 → >>14位=2
+    #    seed=(2+0xB2C6*4)&0xFFFF=0xCB1A
+    #  u3=(0xCB1A^0x9630)-0x6553=0x5D2A-0x6553=-2089→&0xFFFF=0xF7D7 → >>14位=3
+    #    seed=(3+0xF7D7*4)&0xFFFF=0xDF5F
+    r = Rng(0x5EED)
+    assert [r.u16(), r.u16(), r.u16()] == [0x8E29, 0xCB1A, 0xDF5F]
+    assert r.gen == 3
+
+
+def test_rng_seed_zero() -> None:
+    # u=(0^0x9630)-0x6553=0x30DD, 高两位=0 → seed=0x30DD*4=0xC374
+    assert Rng(0).u16() == 0xC374
+
+
+def test_rng_u32_is_two_u16() -> None:
+    assert Rng(0x5EED).u32() == (0x8E29 << 16) | 0xCB1A
+    assert Rng(0x5EED).unit() == ((0x8E29 << 16) | 0xCB1A) / 4294967296.0
+
+
+def test_rng_stays_16bit() -> None:
+    r = Rng(0xFFFF)
+    for _ in range(1000):
+        assert 0 <= r.u16() <= 0xFFFF
+
+
+# ---- 分数 (§0.2) ----
+def test_add_score_divides_by_10() -> None:
+    g = ZunGlobals()
+    g.add_score(2000)  # 代码值 2000 → 入账 200
+    assert g.score == 200
+    g.add_score(15)  # 整数除法
+    assert g.score == 201
+
+
+def test_score_capped_at_max() -> None:
+    g = ZunGlobals(score=SCORE_MAX)
+    g.add_score(5000)
+    g.tick_gui_score()
+    assert g.score == SCORE_MAX
+
+
+def test_gui_score_chases_and_converges() -> None:
+    g = ZunGlobals()
+    g.add_score(32000)  # score = 3200
+    g.tick_gui_score()
+    # 第一帧 inc = 3200>>5 = 100
+    assert g.gui_score == 100
+    assert g.gui_score_difference == 100
+    for _ in range(60):
+        g.tick_gui_score()
+    assert g.gui_score == g.score == 3200
+    assert g.gui_score_difference == 0  # 追上归零
+
+
+def test_gui_score_increment_min_one() -> None:
+    g = ZunGlobals(score=1)
+    g.tick_gui_score()
+    assert g.gui_score == 1  # 差值>>5==0 时最小步进 1
+
+
+def test_gui_score_increment_capped() -> None:
+    g = ZunGlobals(score=100_000_000)
+    g.tick_gui_score()
+    assert g.gui_score == GUI_SCORE_INCREMENT_MAX
+    assert g.gui_score_difference == GUI_SCORE_INCREMENT_MAX
+
+
+def test_snap_gui_score() -> None:
+    g = ZunGlobals(score=12345)
+    g.snap_gui_score()
+    assert g.gui_score == 12345 and g.gui_score_difference == 0
+
+
+# ---- 樱点 (§0.3) ----
+def test_add_cherry_caps_at_max() -> None:
+    g = ZunGlobals(cherry=100, cherry_max=150, cherry_start=0)
+    g.add_cherry(80)
+    assert g.cherry == 150
+
+
+def test_add_cherry_plus_caps_and_signals_border() -> None:
+    # C++ 开局 cherryPlus = cherryStart
+    g = ZunGlobals(cherry=0, cherry_max=999999, cherry_plus=1000, cherry_start=1000)
+    assert g.add_cherry_plus(30000) is False
+    assert g.cherry == 30000 and g.cherry_plus == 31000
+    # 触达 cherryStart+50000 → 返回 True(应开结界), cherryPlus 封顶
+    assert g.add_cherry_plus(30000) is True
+    assert g.cherry_plus == 1000 + CHERRY_PLUS_RANGE
+    # 负数不加 cherryPlus
+    assert g.add_cherry_plus(-5000) is True  # 仍在上限
+    assert g.cherry == 55000 and g.cherry_plus == 51000
+
+
+def test_increase_cherry_max_caps() -> None:
+    g = ZunGlobals(cherry_max=100, cherry_start=0)
+    g.increase_cherry_max(500)
+    assert g.cherry_max == 600
+    g.increase_cherry_max(CHERRY_MAX_RANGE * 2)
+    assert g.cherry_max == CHERRY_MAX_RANGE
+
+
+def test_subtract_cherry_drain_floors_at_start() -> None:
+    g = ZunGlobals(cherry=8000, cherry_start=1000)
+    g.subtract_cherry_drain(4000)
+    assert g.cherry == 4000
+    g.subtract_cherry_drain(9999)  # 不足 → 封底 cherryStart
+    assert g.cherry == 1000
+
+
+# ---- 动态难度 ----
+def test_initialize_rank_per_difficulty() -> None:
+    g = ZunGlobals()
+    g.initialize_rank(1)  # Normal
+    assert (g.rank, g.min_rank, g.max_rank) == (16, 10, 32)
+    g.initialize_rank(4)  # Extra
+    assert (g.rank, g.min_rank, g.max_rank) == (16, 15, 16)
+
+
+def test_increase_subrank_rolls_into_rank() -> None:
+    g = ZunGlobals()
+    g.initialize_rank(1)
+    g.increase_subrank(250)  # 2*100 + 50
+    assert g.rank == 18 and g.subrank == 50
+
+
+def test_increase_subrank_caps_at_max_rank() -> None:
+    g = ZunGlobals()
+    g.initialize_rank(0)  # Easy: max 20
+    g.increase_subrank(10000)
+    assert g.rank == 20
+
+
+def test_decrease_subrank_floors_at_min_rank() -> None:
+    g = ZunGlobals()
+    g.initialize_rank(1)  # Normal: min 10
+    g.decrease_subrank(10000)
+    assert g.rank == 10
+    g2 = ZunGlobals()
+    g2.initialize_rank(1)
+    g2.decrease_subrank(150)  # subrank=-150 → rank 16→14, subrank=50
+    assert g2.rank == 14 and g2.subrank == 50
