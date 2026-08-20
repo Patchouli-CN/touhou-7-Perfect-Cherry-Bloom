@@ -336,3 +336,18 @@ def test_touhou_world_run_typing_narrows_on_headless(tmp_path) -> None:
         capture_output=True, text=True, timeout=300, cwd=root)
     assert "not iterable" in r_err.stdout or "has no attribute" in r_err.stdout, \
         r_err.stdout + r_err.stderr
+
+
+def test_environment_detection() -> None:
+    """启动环境探测: 返回字段齐全, 探测失败不炸。"""
+    from touhou.env import detect_environment
+
+    info = detect_environment()
+    for key in ("python", "platform", "pygame", "res_dat", "res_entries",
+                "bgm_dat", "games", "renderers", "title"):
+        assert key in info and isinstance(info[key], str)
+    assert info["title"] == "東方妖々夢 〜 Perfect Cherry Blossom"
+    assert "th07" in info["games"]
+    # 坏路径不炸
+    bad = detect_environment(data_path="/nonexistent/th07.dat")
+    assert bad["res_entries"] == "未找到"

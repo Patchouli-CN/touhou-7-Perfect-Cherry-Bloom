@@ -1,0 +1,66 @@
+"""启动环境探测 —— 收集当前作品环境, 供启动日志(INFO 级)打印。
+
+叶子模块: 只依赖标准库 + paths/registry(均为叶子)。
+"""
+from __future__ import annotations
+
+import platform
+import sys
+from pathlib import Path
+
+from .paths import resolve_data_path
+from .registry import registered_games, registered_renderers
+from .schema.archive import GameArchive
+
+#: 已注册作品号 → 作品名(检测到对应资源时打印; 新作品注册时在此补名字)
+GAME_TITLES = {
+    "th07": "東方妖々夢 〜 Perfect Cherry Blossom",
+}
+
+
+def detect_environment(data_path: str | Path | None = None) -> dict[str, str]:
+    """探测运行环境。失败项记"未找到/未知", 不抛异常。"""
+    info: dict[str, str] = {
+        "python": sys.version.split()[0],
+        "platform": f"{platform.system()} {platform.release()}",
+        "pygame": "未知",
+    }
+    # pygame 版本从已加载的模块里取(env.py 保持逻辑层纯净, 不直接 import pygame;
+    # __main__ 启动链已加载过它, 探测不到就记"未加载")
+    try:
+        pg = sys.modules.get("pygame")
+        info["pygame"] = pg.version.ver if pg is not None else "未加载"
+    except Exception:  # noqa: BLE001 - 探测不炸是硬性要求
+        pass
+
+    res = resolve_data_path(data_path)
+    info["res_dat"] = str(res)
+    if res.exists():
+        info["res_entries"] = "?"
+        try:
+            # 只读目录头不解压: GameArchive.open 只解析文件表, 开销小
+            info["res_entries"] = str(len(GameArchive.open(res)))
+        except Exception:  # noqa: BLE001
+            info["res_entries"] = "无法读取"
+    else:
+        info["res_entries"] = "未找到"
+
+    bgm = res.with_name("thbgm.dat")
+    info["bgm_dat"] = str(bgm) if bgm.exists() else "未找到(回退 MIDI)"
+
+    games = registered_games()
+    info["games"] = ", ".join(games) or "无"
+    info["renderers"] = ", ".join(registered_renderers()) or "无"
+    info["title"] = GAME_TITLES.get(games[0], games[0]) if games else "未知"
+    return info
+
+
+def log_environment(log, data_path: str | Path | None = None) -> None:
+    """把环境探测结果写进 INFO 日志。"""
+    info = detect_environment(data_path)
+    log.info("作品: {}", info["title"])
+    log.info("环境: Python {} | pygame {} | {}",
+             info["python"], info["pygame"], info["platform"])
+    log.info("资源包: {} ({} 个条目)", info["res_dat"], info["res_entries"])
+    log.info("BGM 包: {}", info["bgm_dat"])
+    log.info("注册作品: {} | 渲染后端: {}", info["games"], info["renderers"])

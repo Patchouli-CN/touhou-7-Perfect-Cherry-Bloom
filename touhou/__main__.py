@@ -6,10 +6,40 @@
 from __future__ import annotations
 
 import os
+import sys
+import time
 from pathlib import Path
 
 from .api import TouhouWorld
+from .env import log_environment
 from .logger import logger, setup_logging
+
+try:
+    import pyfiglet
+except ImportError:  # 没装也能跑, 跳过横幅
+    pyfiglet = None
+
+# ANSI 红白(终端真彩)
+_RED = "\033[38;2;255;60;60m"
+_WHITE = "\033[38;2;255;255;255m"
+_DIM = "\033[38;2;120;120;130m"
+_RESET = "\033[0m"
+
+
+def _print_banner() -> None:
+    """pyfiglet 红白 ASCII 横幅, 逐行淡入动画; 非 TTY/缺 pyfiglet 时跳过。"""
+    if not sys.stderr.isatty() or pyfiglet is None:
+        return
+    art = pyfiglet.figlet_format("Touhou World", font="slant").rstrip("\n")
+    lines = art.splitlines()
+    for i, line in enumerate(lines):
+        # 红白交替(中间一行红字白边的错觉靠交替行实现)
+        color = _RED if i % 3 == 1 else _WHITE
+        print(f"{color}{line}{_RESET}", file=sys.stderr)
+        time.sleep(0.035)
+    print(f"{_DIM}{'─' * max(len(l) for l in lines)}{_RESET}",
+          file=sys.stderr)
+    time.sleep(0.05)
 
 
 def main() -> None:
@@ -18,7 +48,9 @@ def main() -> None:
         log_console=True,
         log_file=Path(__file__).resolve().parent.parent / "touhou.log",
     )
+    _print_banner()
     logger.info("=== 游戏启动 ===")
+    log_environment(logger)
     try:
         # 窗口版: 弹出游戏界面, 阻塞至关窗
         TouhouWorld(headless=False).run()
