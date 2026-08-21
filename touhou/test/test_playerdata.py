@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.engine import playerdata  # noqa: E402
+from touhou.games.th07 import playerdata  # noqa: E402
 from touhou.engine.score_store import ScoreStore, make_highscore_record  # noqa: E402
 from touhou.engine.view.screens import (  # noqa: E402
     PLAYERDATA_SECTIONS,
@@ -91,7 +91,7 @@ def test_practice_max_stage_bad_input() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 数据装配(engine/playerdata.py, 空记录不炸)
+# 数据装配(games/th07/playerdata.py, 空记录不炸)
 # ---------------------------------------------------------------------------
 
 def test_highscore_rows_defaults_when_empty() -> None:

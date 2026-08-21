@@ -36,7 +36,7 @@ NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
 def _mk_game_and_view():
     import pygame
 
-    from touhou.core.impl import PerfectCherryBloom
+    from touhou.games.th07.world import PerfectCherryBloom
     from touhou.engine.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
                                                 GameView)
 

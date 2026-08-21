@@ -48,7 +48,7 @@ from pathlib import Path
 
 import pygame
 
-from ..bomb import BorderState
+from ...games.th07.bomb import BorderState
 from .sprite_view import WIN_H, WIN_W, SpriteBank
 
 _FRONT = "front.anm"

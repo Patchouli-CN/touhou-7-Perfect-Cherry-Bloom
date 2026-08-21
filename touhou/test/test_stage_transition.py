@@ -13,9 +13,9 @@ import pytest
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.core.impl import PerfectCherryBloom  # noqa: E402
+from touhou.games.th07.world import PerfectCherryBloom  # noqa: E402
 from touhou.engine.ending import EndingData, ending_path, parse_end  # noqa: E402
-from touhou.engine.player import PlayerState  # noqa: E402
+from touhou.games.th07.player import PlayerState  # noqa: E402
 from touhou.engine.score_store import ScoreStore  # noqa: E402
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")

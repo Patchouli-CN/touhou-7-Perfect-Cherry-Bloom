@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.engine.results import (  # noqa: E402
+from touhou.games.th07.results import (  # noqa: E402
     DIFFICULTY_WEIGHTS,
     RunStats,
     ScoreRecord,

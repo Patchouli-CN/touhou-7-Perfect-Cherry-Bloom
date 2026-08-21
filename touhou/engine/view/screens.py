@@ -3,7 +3,7 @@
 用带键盘选择的场景状态机组织:
   Title(原版 8 项主菜单) → (Difficulty → Character → 开始游戏 | 退出)
 
-名单/面数的单一来源是 th07 数值表(touhou/games_th07.py); 本模块的
+名单/面数的单一来源是 th07 数值表(touhou/games/th07/data.py); 本模块的
 CHARACTERS/DIFFICULTIES 等常量是"默认 = th07 表"的引用(保持 list 形态供
 MenuCursor/下标运算), GameApp 实例级名单另经 GameSpec.data 参数化
 (见 view/impl.py 的 game_data 参数)。
@@ -15,7 +15,7 @@ import msgspec
 from enum import IntEnum
 from pathlib import Path
 
-from ...games_th07 import (
+from ...games.th07.data import (
     CHARACTERS as _TH07_CHARACTERS,
     DIFFICULTIES as _TH07_DIFFICULTIES,
     EXTRA_STAGES as _TH07_EXTRA_STAGES,
@@ -28,7 +28,7 @@ from ...schema.musiccmt import parse_musiccmt
 from ..config import (LIVES_MAX, LIVES_MIN, SCALE_MAX, SCALE_MIN, VOLUME_MAX,
                       VOLUME_MIN, GameConfig)
 
-# 默认名单 = th07 表(games_th07); 作品级覆盖走 GameApp(game_data=...)
+# 默认名单 = th07 表(games/th07/data.py); 作品级覆盖走 GameApp(game_data=...)
 DIFFICULTIES = list(_TH07_DIFFICULTIES)
 CHARACTERS = list(_TH07_CHARACTERS)
 # Extra Start 后的关卡选择(简化: 原版 Phantasm 需 Extra 通关后才会出现)

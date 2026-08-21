@@ -49,9 +49,9 @@ if TYPE_CHECKING:
     )
     # 引擎侧公共结构(仅类型检查期): ECL 宿主接口/敌人状态/道具收集上下文
     from .engine.ecl import EclEnemyState, EclHost
-    from .engine.items import GameContext
+    from .games.th07.items import GameContext
     # 协议符合性静态断言用(见文件末尾; 运行时不 import, 无循环)
-    from .core.impl import PerfectCherryBloom
+    from .games.th07.world import PerfectCherryBloom
 
 __all__ = [
     "BeginSpellcardHook",
@@ -112,7 +112,7 @@ class Positioned(Protocol):
     def pos(self) -> PosLike: ...
 
 
-# ---- ECL 宿主事件钩子(engine/ecl_host.py 的 GameEclHost.on_* 回调签名) ----
+# ---- ECL 宿主事件钩子(games/th07/ecl_host.py 的 GameEclHost.on_* 回调签名) ----
 
 #: SET_BOSS: (boss 槽位 idx, 敌人状态; None = 清除该槽)。
 SetBossHook: TypeAlias = Callable[[int, "EclEnemyState | None"], None]
@@ -130,7 +130,7 @@ IntHook: TypeAlias = Callable[[int], None]
 # ---- GameEngine 协议(api.Game 门面只面向它编程, 不认具体作品) ----
 # 全成员声明为只读 property: 协变判定让 int 字段可满足 float 声明
 # (如 EclEnemy.life), msgspec.Struct/普通类的同名属性天然满足。
-# th07 的 core.impl.PerfectCherryBloom 鸭子满足本协议(无 adapter),
+# th07 的 games.th07.world.PerfectCherryBloom 鸭子满足本协议(无 adapter),
 # 静态符合性由文件末尾的 _perfect_cherry_bloom_satisfies_game_engine 钉住。
 
 

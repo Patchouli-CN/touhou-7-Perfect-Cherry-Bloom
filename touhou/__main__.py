@@ -9,11 +9,13 @@ import os
 import sys
 import time
 from pathlib import Path
+from types import ModuleType
 
 from .api import TouhouWorld
 from .env import log_environment
 from .logger import logger, setup_logging
 
+pyfiglet: ModuleType | None  # 缺依赖时回落 None(跳过横幅)
 try:
     import pyfiglet
 except ImportError:  # 没装也能跑, 跳过横幅

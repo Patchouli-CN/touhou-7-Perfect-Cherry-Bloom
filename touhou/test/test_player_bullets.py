@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.schema.archive import GameArchive  # noqa: E402
-from touhou.engine.player import (  # noqa: E402
+from touhou.games.th07.player import (  # noqa: E402
     BULLET_POOL_SIZE, OptionState, Player, PlayerState,
     FIRE_DEFAULT, FIRE_HOMING, FIRE_ORB_FOCUSED, FIRE_ORB_UNFOCUSED,
     FIRE_ROTATING_ORB, HIT_MISSILE, UPDATE_HOMING, UPDATE_HOMING_FOCUSED,

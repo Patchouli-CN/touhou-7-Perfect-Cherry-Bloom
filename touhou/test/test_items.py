@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.engine.items import (  # noqa: E402
+from touhou.games.th07.items import (  # noqa: E402
     DROP_TABLE,
     FULL_POWER,
     FULL_POWER_SCORE_BONUS,

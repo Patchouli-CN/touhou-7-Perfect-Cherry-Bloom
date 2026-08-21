@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.engine.bomb import (  # noqa: E402
+from touhou.games.th07.bomb import (  # noqa: E402
     CHAR_MARISA_A,
     CHAR_MARISA_B,
     CHAR_REIMU_A,
@@ -176,7 +176,7 @@ def test_impl_frame_shakes_snapshot() -> None:
     from touhou.paths import DEFAULT_DATA
     if not DEFAULT_DATA.exists():
         pytest.skip("th07.dat 不在默认路径")
-    from touhou.core.impl import PerfectCherryBloom
+    from touhou.games.th07.world import PerfectCherryBloom
     g = PerfectCherryBloom(data_path=DEFAULT_DATA, character=1)  # 灵梦B
     g.tick(keys=(False,) * 6, bomb=True)
     assert (60, 2, 6) in g.frame_shakes

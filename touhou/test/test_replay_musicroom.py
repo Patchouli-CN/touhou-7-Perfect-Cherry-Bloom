@@ -176,7 +176,7 @@ def _scripted_inputs(frames: int) -> list:
 
 def _play_meta_and_inputs(meta: dict, inputs: list) -> tuple:
     """按录像 meta 重建 game 并喂输入, 返回逐帧状态签名。"""
-    from touhou.core.impl import PerfectCherryBloom
+    from touhou.games.th07.world import PerfectCherryBloom
 
     g = PerfectCherryBloom(data_path=DAT,
                            character=meta["character"],
@@ -194,7 +194,7 @@ def _play_meta_and_inputs(meta: dict, inputs: list) -> tuple:
 
 def test_replay_record_playback_identical(tmp_path) -> None:
     """录制一局 800 帧 → 存档读回 → 重放两遍, 逐帧状态必须与录制局一致。"""
-    from touhou.core.impl import PerfectCherryBloom
+    from touhou.games.th07.world import PerfectCherryBloom
 
     meta = replay_mod.make_meta(difficulty=1, character=0, stage=1,
                                 seed=12345, initial_lives=3)

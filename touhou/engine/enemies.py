@@ -12,7 +12,7 @@ from typing import Callable, Sequence
 
 from .bullets import BulletWorld
 from .ecl import EclMachine, EnemyBulletShooter, Vec3
-from .player import PlayerState
+from ..games.th07.player import PlayerState
 from ..utils import Vec2, angle_to
 
 

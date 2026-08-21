@@ -24,7 +24,7 @@ from ...schema.sound import SE
 from .. import replay as replay_mod
 from ..render import FrameInput, Renderer
 from ..score_store import ScoreStore
-from ...core.impl import DEFAULT_SCORE_PATH
+from ...games.th07.world import DEFAULT_SCORE_PATH
 from .screens import (
     CHARACTERS,
     DIFFICULTIES,
@@ -128,7 +128,7 @@ class GameApp:
         # config.keymap(键名) → 后端输入映射(改键后 _rebuild_keymap 重建)
         self._rebuild_keymap()
         # score.json 落盘位置: exe 同目录语义 → 仓库根(score_path 可覆盖, 测试用)
-        # 与 core/impl.py 的 DEFAULT_SCORE_PATH 同一位置, 别各算各的
+        # 与 games/th07/world.py 的 DEFAULT_SCORE_PATH 同一位置, 别各算各的
         if score_path is None:
             score_path = DEFAULT_SCORE_PATH
         self._score_path = score_path

@@ -90,17 +90,31 @@ print(game.score, game.lives, game.result)  # 结算后 result 非 None
 
 同一维度同名重复注册报 `ValueError`(防静默覆盖); 查找未注册名报带已注册
 列表的 `KeyError`。th07 的注册点: `engine/ecl.py:EclMachine`、
-`schema/anm.py:AnmFile`、`engine/ecl_host.py:GameEclHost`、
-`core/impl.py:PerfectCherryBloom`、`games_th07.py:TH07_DATA`。
+`schema/anm.py:AnmFile`、`games/th07/ecl_host.py:GameEclHost`、
+`games/th07/world.py:PerfectCherryBloom`、`games/th07/data.py:TH07_DATA`。
 
 门面(`touhou.api.Game`)只面向 `touhou.types.GameEngine` 协议编程
 (tick/frame/stage_no/globals/boss/border/player + bullets/host/items/lasers
 容器), 对局实现鸭子满足该协议即可, 无需 adapter; 符卡/对话等作品专属探测
 走可选方法 `spellcard_active()`/`msg_active()`(不实现则门面按 False 回落)。
-th07 的数值表集中在 `touhou/games_th07.py`(单一来源), 引擎模块
-(boss/bomb/items)的模块级同名常量即该表 —— 不经注册表单独用引擎也是
+th07 的数值表集中在 `touhou/games/th07/data.py`(单一来源), 作品包模块
+(boss/bomb/items)的模块级同名常量即该表 —— 不经注册表单独用这些模块也是
 th07 默认行为。窗口版 GameApp 的名单/难度/面数经 `game_data` 参数化
 (HUD/选人贴图布局为 th07 专属, 见各 view 模块 docstring)。
+
+## 包结构
+
+- `touhou/api.py` / `types.py` / `registry.py` — 对外门面、类型门面、作品注册表
+- `touhou/games/th07/` — th07 的游戏逻辑包: `world.py`(对局主逻辑
+  PerfectCherryBloom)、`player.py`(自机)、`boss.py`(符卡)、`bomb.py`
+  (炸弹+结界)、`items.py`(道具经济)、`globals.py`(樱点/计数)、
+  `results.py`(评级)、`ecl_host.py`(ECL 宿主钩子)、`playerdata.py`
+  (Player Data 装配)、`data.py`(数值表, 单一来源)
+- `touhou/engine/` — 跨作品可复用机制: `ecl.py`(ECL VM)、`bullets.py` /
+  `bullet_commands.py` / `lasers.py`(弹幕/激光原语)、`enemies.py`
+  (EclEnemy 宿主+伤害管线)、`replay.py` / `config.py` / `score_store.py`
+  (机制类)、`view/` / `render/`(渲染层)
+- `touhou/schema/` — 资源格式解析(dat/anm/std/ecl/sht/msg/thbgm 等)
 
 新作品(以假想的 th99 为例)的骨架:
 

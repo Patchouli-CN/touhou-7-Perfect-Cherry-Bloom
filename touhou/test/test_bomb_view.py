@@ -36,7 +36,7 @@ def _run_bomb(character: int, focus: bool):
     """放一发 bomb 并跑完后段, 返回 (game, view, t0, t_end, 记录)。"""
     import pygame
 
-    from touhou.core.impl import PerfectCherryBloom
+    from touhou.games.th07.world import PerfectCherryBloom
     from touhou.engine.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
                                                 GameView)
 
@@ -110,7 +110,7 @@ def test_bomb_banner_window_layer() -> None:
     越过游戏区左缘 (窗口 x<32), 不被游戏画布裁切。"""
     import pygame
 
-    from touhou.core.impl import PerfectCherryBloom
+    from touhou.games.th07.world import PerfectCherryBloom
     from touhou.engine.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
                                                 GameView)
 

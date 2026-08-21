@@ -16,10 +16,10 @@ from pathlib import Path
 # 让 `pytest` 从项目根 import 到 Touhou
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.core.impl import PerfectCherryBloom  # noqa: E402
+from touhou.games.th07.world import PerfectCherryBloom  # noqa: E402
 from touhou.engine.bullets import Aim, Burst  # noqa: E402
-from touhou.engine.items import ItemType  # noqa: E402
-from touhou.engine.player import PlayerState  # noqa: E402
+from touhou.games.th07.items import ItemType  # noqa: E402
+from touhou.games.th07.player import PlayerState  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")

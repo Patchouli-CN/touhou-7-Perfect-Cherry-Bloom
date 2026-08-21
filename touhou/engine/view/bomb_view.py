@@ -1,6 +1,6 @@
 """bomb 视觉还原 —— 对照 th07 BombData.cpp 的 12 个 *Draw + Gui cutin/横幅。
 
-逻辑层 (engine/bomb.py) 只移植 *Calc 的伤害/清弹盒与 sub_info 运动状态,
+逻辑层 (games/th07/bomb.py) 只移植 *Calc 的伤害/清弹盒与 sub_info 运动状态,
 anm VM 全部留在本模块 (C++ 里 subInfo->vms 由 *Calc 里 ExecuteAnmIdx 启动、
 *Draw 里按公式摆位绘制; 这里由渲染层按相同条件自行持有 Vm2d):
 
@@ -34,8 +34,8 @@ import math
 import pygame
 
 from ...schema.anm import parse_scripts
-from ..bomb import (CHAR_MARISA_A, CHAR_MARISA_B, CHAR_REIMU_A, CHAR_REIMU_B,
-                    CHAR_SAKUYA_A, CHAR_SAKUYA_B)
+from ...games.th07.bomb import (CHAR_MARISA_A, CHAR_MARISA_B, CHAR_REIMU_A,
+                                CHAR_REIMU_B, CHAR_SAKUYA_A, CHAR_SAKUYA_B)
 from .anm_fx import AnmScriptBank, TransformCache, Vm2d
 from .anm_vm import AnmVm, ScriptRef, reset_and_run
 

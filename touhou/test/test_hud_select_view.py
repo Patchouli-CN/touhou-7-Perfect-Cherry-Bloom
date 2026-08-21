@@ -21,7 +21,7 @@ NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
 
 
 class _StubGlobals:
-    """hud_view 读取的 globals 字段(engine/globals.py ZunGlobals 同名)。"""
+    """hud_view 读取的 globals 字段(games/th07/globals.py ZunGlobals 同名)。"""
     gui_score = 151180
     num_retries = 0
     lives_remaining = 2.0
@@ -69,7 +69,7 @@ class TestHudView:
 
 
 class _StubBorder:
-    """engine/bomb.py Border 的 has_border 透出桩。"""
+    """games/th07/bomb.py Border 的 has_border 透出桩。"""
 
     def __init__(self, state):
         self.has_border = state
@@ -82,7 +82,7 @@ class TestHudBorder:
     def test_ready_active_no_raise_and_mark(self) -> None:
         import pygame
         pygame.init()
-        from touhou.engine.bomb import BorderState
+        from touhou.games.th07.bomb import BorderState
         from touhou.engine.view.hud_view import HudView
         hud = HudView(DAT)
         frames = {}

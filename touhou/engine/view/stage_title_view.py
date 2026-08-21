@@ -14,7 +14,7 @@
   重跑 script 2052 (currentStage==6 即 EX 面用 2053) 并换 sprite
   2051+musicIdx (曲名图)。C++ 直接复用 vms1[0] 槽位 (此时标题早已退场),
   这里用独立 _music_vm 槽位等效; 事件源是 impl 帧末收口的 frame_bgm
-  (core/impl.py 的 msg "music:" 事件 → ("music", musicIdx))。
+  (games/th07/world.py 的 msg "music:" 事件 → ("music", musicIdx))。
 - 绘制层: 画在 640x480 窗口层 (Gui::OnDraw 画全窗口 framebuffer),
   脚本窗口坐标直接绘制, 不换算进游戏区。
 """

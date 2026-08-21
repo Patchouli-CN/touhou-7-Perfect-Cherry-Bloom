@@ -267,7 +267,7 @@ def test_additive_vm_color_modulates() -> None:
 
 @pytest.fixture(scope="module")
 def bank():
-    from touhou.core.impl import DEFAULT_DATA
+    from touhou.games.th07.world import DEFAULT_DATA
     from touhou.engine.view.sprite_view import SpriteBank
     return SpriteBank(DEFAULT_DATA)
 

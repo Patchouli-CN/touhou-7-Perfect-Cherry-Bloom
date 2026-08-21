@@ -17,7 +17,7 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 from touhou.engine.ecl import EclMachine, Vec3  # noqa: E402
 from touhou.engine.enemies import (  # noqa: E402
     EnemyHost, EclEnemy, Targeting, settle_damage)
-from touhou.engine.player import PlayerEventKind, PlayerState  # noqa: E402
+from touhou.games.th07.player import PlayerEventKind, PlayerState  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
 from touhou.test.test_ecl import _instr, build_ecl  # noqa: E402
 from touhou.test.test_ecl import EclOpcode as OP  # noqa: E402

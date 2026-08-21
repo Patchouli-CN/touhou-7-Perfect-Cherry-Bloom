@@ -38,7 +38,7 @@ FAN_BOX = (int(BOSS_X) - 110, int(BOSS_Y) - 40, 50, 80)
 def _mk_game_view():
     import pygame
 
-    from touhou.core.impl import PerfectCherryBloom
+    from touhou.games.th07.world import PerfectCherryBloom
     from touhou.engine.view.sprite_view import GAME_H, GAME_W, GameView
 
     pygame.init()

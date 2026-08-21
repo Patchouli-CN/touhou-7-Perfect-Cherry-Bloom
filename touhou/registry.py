@@ -5,17 +5,17 @@
 - ANM 格式变体: ``@register_anm(name, version=...)``    装饰 AnmFile 解析类
 - 游戏回调包:   ``@register_game_hooks(name, ...)``     装饰 EclHost 宿主实现类
 - 对局实现:     ``@register_world_impl(name)``          装饰主逻辑类(th07 =
-  core.impl.PerfectCherryBloom), TouhouWorld(game=...) 经此构造对局
+  games.th07.world.PerfectCherryBloom), TouhouWorld(game=...) 经此构造对局
 - 数值表:       ``register_game_data(name, GameData)``  登记作品的数值表/名单
   (符卡分值/炸弹参数/掉落表/火力档/机体 sht 映射/角色与难度名单), th07 的
-  实例集中在 touhou/games_th07.py(TH07_DATA)
+  实例集中在 touhou/games/th07/data.py(TH07_DATA)
 
 另有与作品名无关的正交维度:
 - 渲染后端:     ``@register_renderer(name)``            装饰 Renderer 实现类
   (协议见 engine/render/__init__.py), ``GameApp(renderer=...)`` 按名解析;
   "pygame" 为默认后端(engine/view/pygame_backend.py, import touhou 即登记)
 
-本模块是叶子模块: 不 import engine/schema/core, 不产生循环 import;
+本模块是叶子模块: 不 import engine/schema/games, 不产生循环 import;
 注册由各组件定义处的 decorator 在 import 链上触发(``import touhou`` 即完成
 th07 的全部注册)。重复注册同一名(同一维度)报 DuplicateRegistrationError
 (ValueError 子类), 防静默覆盖; 查找未注册名报带已注册列表的
@@ -24,7 +24,7 @@ NotRegisteredError(KeyError 子类)。
 world impl 的构造契约(现阶段): 接受 th07 风格关键字参数
 (data_path/character/difficulty/seed/score_path/initial_lives/hooks/data);
 data 为 GameData(缺省 None = 实现对局用自己的内置默认表, th07 即
-games_th07.TH07_DATA)。指令集拆分为独立子包是未来作品(th08)落地时的工作,
+games.th07.data.TH07_DATA)。指令集拆分为独立子包是未来作品(th08)落地时的工作,
 这里只做接缝。
 """
 from __future__ import annotations
@@ -69,10 +69,10 @@ class AnmSpec:
 
 
 class GameData(msgspec.Struct, frozen=True):
-    """一部作品的数值表/名单(registry 只搬运; th07 实例见 games_th07.py)。
+    """一部作品的数值表/名单(registry 只搬运; th07 实例见 games/th07/data.py)。
 
     全字段带默认值: 空 GameData() = "未提供", 对局实现回落到自己的内置
-    默认表(th07 = games_th07 的同名常量)。引擎模块(boss/bomb/items)的
+    默认表(th07 = games/th07/data.py 的同名常量)。作品包模块(boss/bomb/items)的
     模块级表即 th07 默认值, 独立使用(不经注册表)时行为不变。
     (项目约定: 数据结构用 msgspec.Struct, 见用户规约 —— 不改 dataclass。)
     """
@@ -157,7 +157,7 @@ def register_game_hooks(name: str, *, stage_file: str = "stage{n}.std",
     """注册游戏回调包(装饰 EclHost 宿主实现类, 原样返回)。
 
     关卡文件命名规则随包登记, 由对局实现在装载关卡资源时消费
-    (core/impl 的 hooks 接缝)。
+    (games/th07/world.py 的 hooks 接缝)。
     """
     def deco(cls: type) -> type:
         _put(_HOOKS, "游戏回调包", name,

@@ -3,7 +3,7 @@
 本模块只面向 GameEngine 协议(touhou/types.py)编程: ``Game._impl`` 锚定为
 协议类型, 对局实现经 registry 按作品名解析(默认 th07); 作品的专属探测
 (符卡/对话进行中)走协议的可选能力位(getattr 回落 False), 不认具体类。
-内部引擎(core/impl.py 的 PerfectCherryBloom 及各 engine 模块)保持
+内部引擎(games/th07/world.py 的 PerfectCherryBloom 及各 engine 模块)保持
 C 移植风格并经全量测试验证, 本模块只做封装, 不改引擎行为:
 
 - 枚举: ShotType / Difficulty / GamePhase —— 替代内部 shotType/difficulty 整数
@@ -350,7 +350,7 @@ class Game:
 
     @property
     def result(self) -> dict | None:
-        """总结算数据(结算后非 None; 字段见 core/impl.final_result)。"""
+        """总结算数据(结算后非 None; 字段见 games.th07.world.final_result)。"""
         return self._impl.result
 
     def finalize_game_over(self) -> None:

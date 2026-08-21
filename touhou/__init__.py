@@ -6,9 +6,10 @@
 """
 from __future__ import annotations
 
-from . import games_th07 as _games_th07  # noqa: F401  (登记 th07 数值表)
-from .core import impl as _core_impl     # noqa: F401  (触发 th07 全维度注册:
-                                         #  world/ecl/ecl_host; anm 经 api→view 链)
+from .games.th07 import data as _th07_data    # noqa: F401  (登记 th07 数值表)
+from .games.th07 import world as _th07_world  # noqa: F401  (触发 th07 全维度注册:
+                                              #  world/ecl_host; ecl 经 world→engine.ecl,
+                                              #  anm 经 api→view 链)
 from .api import (
     BossSnapshot,
     BulletSnapshot,

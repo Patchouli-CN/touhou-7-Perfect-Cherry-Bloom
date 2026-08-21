@@ -11,7 +11,7 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.utils import Vec2, angle_to  # noqa: E402
 from touhou.engine.bullets import BulletWorld, SCREEN  # noqa: E402
-from touhou.engine.player import Player  # noqa: E402
+from touhou.games.th07.player import Player  # noqa: E402
 from touhou.schema.stage import Stage  # noqa: E402
 from touhou.schema.archive import GameArchive  # noqa: E402
 

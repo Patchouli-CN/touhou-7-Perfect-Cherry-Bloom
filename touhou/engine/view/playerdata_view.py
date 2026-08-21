@@ -3,7 +3,7 @@
 布局(640x480, 简化版 ResultScreen):
 - 背景 result.jpg(缺失回退 title00.jpg, 再退纯色), 上盖半透明面板;
 - 页头 "Player Data" + 板块名(分数榜/符卡/统计) + 当前难度/机体页;
-- 三板块数据由 engine/playerdata.py 装配(纯逻辑), 本层只画:
+- 三板块数据由 games/th07/playerdata.py 装配(纯逻辑), 本层只画:
   分数榜 = 难度×机体 Top10(名次/名字/分数/到达面);
   符卡   = 某机体捕获汇总 + 遇过的符卡捕获数/挑战数(超出首屏截断);
   统计   = 总游玩次数/时间/通关/续关 + clrd 每机体各难度到达面数表;
@@ -20,7 +20,7 @@ from pathlib import Path
 import pygame
 
 from ...schema.archive import GameArchive
-from .. import playerdata
+from ...games.th07 import playerdata
 from ..score_store import ScoreStore
 from .result_view import _load_font
 from .screens import (CHARACTERS, DIFFICULTIES, PLAYERDATA_SECTIONS,

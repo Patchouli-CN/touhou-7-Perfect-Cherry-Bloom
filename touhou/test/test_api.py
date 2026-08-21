@@ -205,13 +205,13 @@ def test_no_function_level_imports_in_package() -> None:
 
 
 def test_logic_layer_has_no_pygame_dependency() -> None:
-    # engine(非 view)/schema/core/logger 不得 import pygame(AST 级检查;
+    # engine(非 view)/schema/games/logger 不得 import pygame(AST 级检查;
     # 注释/docstring 提及不算)
     import ast
 
     pkg = Path(__file__).resolve().parent.parent
     files = [*pkg.glob("*.py")]
-    for sub in (pkg / "engine", pkg / "schema", pkg / "core"):
+    for sub in (pkg / "engine", pkg / "schema", pkg / "games"):
         files += [f for f in sub.rglob("*.py")
                   if "view" not in f.parts and "__pycache__" not in f.parts]
     for f in files:

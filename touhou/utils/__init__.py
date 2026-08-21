@@ -1,4 +1,4 @@
-"""游戏无关的纯工具 —— 叶子包(不 import engine/schema/core/view)。
+"""游戏无关的纯工具 —— 叶子包(不 import engine/schema/games/view)。
 
 - math:        Vec2 / 角度规范化 / ZUN 版 AddNormalizeAngle
 - csemantics:  C 数值语义(cdiv/cmod/i32/i16/f32)

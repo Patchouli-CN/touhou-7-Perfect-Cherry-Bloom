@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.engine.boss import SPELLCARD_SCORE, Boss  # noqa: E402
+from touhou.games.th07.boss import SPELLCARD_SCORE, Boss  # noqa: E402
 from touhou.engine.enemies import settle_damage, stage_factor  # noqa: E402
 
 

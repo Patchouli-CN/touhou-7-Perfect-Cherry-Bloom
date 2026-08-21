@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.engine.globals import (  # noqa: E402
+from touhou.games.th07.globals import (  # noqa: E402
     CHERRY_MAX_RANGE,
     CHERRY_PLUS_RANGE,
     GUI_SCORE_INCREMENT_MAX,

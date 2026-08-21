@@ -1,7 +1,7 @@
 """ 回放(replay)录制/播放 —— 自定义 JSON 格式, 不兼容原版 .rpy。
 
 原理: 游戏逻辑是逐帧确定的(impl.tick 只依赖输入帧与初始种子,
-engine/rng.py 确定性 LCG, seed 注入见 core/impl.py), 所以回放只需记录
+engine/rng.py 确定性 LCG, seed 注入见 games/th07/world.py), 所以回放只需记录
 每帧输入 + 开局参数, 播放时重建 game 逐帧喂回输入即可复现整局。
 
 文件格式 (单个 JSON):

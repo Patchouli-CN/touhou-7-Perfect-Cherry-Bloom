@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.core.impl import PerfectCherryBloom  # noqa: E402
+from touhou.games.th07.world import PerfectCherryBloom  # noqa: E402
 from touhou.schema.msg import (  # noqa: E402
     MsgFile,
     MsgOpcode,

@@ -15,9 +15,9 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 from touhou.engine.bullet_commands import CmdFlag  # noqa: E402
 from touhou.engine.bullets import Aim, BulletWorld, Burst  # noqa: E402
 from touhou.engine.ecl import EclMachine, EclOpcode, EclWorld, Vec3  # noqa: E402
-from touhou.engine.ecl_host import GameEclHost  # noqa: E402
+from touhou.games.th07.ecl_host import GameEclHost  # noqa: E402
 from touhou.engine.enemies import EnemyHost  # noqa: E402
-from touhou.engine.items import ItemWorld  # noqa: E402
+from touhou.games.th07.items import ItemWorld  # noqa: E402
 from touhou.engine.lasers import Laser, LaserState, LaserWorld  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
 from touhou.test.test_ecl import _f, _instr, build_ecl  # noqa: E402

@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.engine.bomb import (  # noqa: E402
+from touhou.games.th07.bomb import (  # noqa: E402
     BOMB_PARAMS,
     CHAR_MARISA_A,
     CHAR_MARISA_B,
@@ -38,7 +38,7 @@ from touhou.engine.bomb import (  # noqa: E402
     compute_bomb_cherry_drain,
     try_start_bomb,
 )
-from touhou.engine.globals import ZunGlobals  # noqa: E402
+from touhou.games.th07.globals import ZunGlobals  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
 
 CTX = BombContext(player_pos=Vec2(100.0, 300.0), cherry=101000.0,

@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.core.impl import PerfectCherryBloom  # noqa: E402
+from touhou.games.th07.world import PerfectCherryBloom  # noqa: E402
 import touhou.engine.enemies as en_mod  # noqa: E402
 from touhou.engine.ecl import EclMachine, EclOpcode  # noqa: E402
 from touhou.engine.enemies import EclEnemy  # noqa: E402

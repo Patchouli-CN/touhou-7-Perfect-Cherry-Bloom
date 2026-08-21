@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.engine.bullets import Bullet  # noqa: E402
-from touhou.engine.player import (  # noqa: E402
+from touhou.games.th07.player import (  # noqa: E402
     DeathContext, KillResult, OptionState, Player,
     PlayerEvent, PlayerEventKind, PlayerState,
     OPTION_ANGLE_CENTER, OPTION_ANGLE_MAX, OPTION_ANGLE_MIN,

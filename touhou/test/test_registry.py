@@ -5,9 +5,9 @@ import pytest
 
 import touhou
 from touhou import TouhouWorld
-from touhou.core.impl import PerfectCherryBloom
+from touhou.games.th07.world import PerfectCherryBloom
 from touhou.engine.ecl import EclFile, EclMachine
-from touhou.engine.ecl_host import GameEclHost
+from touhou.games.th07.ecl_host import GameEclHost
 from touhou.paths import DEFAULT_DATA
 from touhou.registry import (
     GameData,
@@ -138,10 +138,10 @@ def test_registry_exported_at_top_level() -> None:
 
 # ---- GameData 数值表维度 ----
 def test_th07_data_registered() -> None:
-    """import touhou 即登记 th07 数值表(games_th07.TH07_DATA), 与引擎默认表同值。"""
-    from touhou.engine.boss import SPELLCARD_SCORE
-    from touhou.engine.items import DROP_TABLE, POWER_LEVELS
-    from touhou.games_th07 import TH07_DATA
+    """import touhou 即登记 th07 数值表(games.th07.data.TH07_DATA), 与作品包默认表同值。"""
+    from touhou.games.th07.boss import SPELLCARD_SCORE
+    from touhou.games.th07.items import DROP_TABLE, POWER_LEVELS
+    from touhou.games.th07.data import TH07_DATA
 
     spec = get_game("th07")
     assert spec.data is TH07_DATA
@@ -199,10 +199,10 @@ def test_stub_game_with_custom_data_reuses_th07_engine() -> None:
 
 
 def test_engine_modules_default_to_th07_tables() -> None:
-    """引擎模块的模块级表 = games_th07 的 th07 表(单一来源, 不经注册表也能跑)。"""
-    from touhou import games_th07
-    from touhou.engine import bomb, boss, items
-    from touhou.games_th07 import CHARACTER_SHT
+    """作品包模块的模块级表 = data.py 的 th07 表(单一来源, 不经注册表也能跑)。"""
+    from touhou.games.th07 import bomb, boss, items
+    from touhou.games.th07 import data as games_th07
+    from touhou.games.th07.data import CHARACTER_SHT
 
     assert boss.SPELLCARD_SCORE is games_th07.SPELLCARD_SCORE
     assert items.DROP_TABLE is games_th07.DROP_TABLE
@@ -218,7 +218,7 @@ def test_engine_modules_default_to_th07_tables() -> None:
 
 def test_boss_spellcard_scores_override() -> None:
     """Boss 的 spellcard_scores 注入: 空 = th07 默认表, 非空 = 作品表。"""
-    from touhou.engine.boss import SPELLCARD_SCORE, Boss
+    from touhou.games.th07.boss import SPELLCARD_SCORE, Boss
 
     b = Boss()
     b.begin_spellcard(0, 600)

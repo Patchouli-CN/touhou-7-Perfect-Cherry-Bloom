@@ -195,7 +195,7 @@ def test_face_book_chain_keys() -> None:
 def test_stage1_render_vis_matches_alive() -> None:
     """渲染 stage 1 前 1500 帧: 每帧 render 后 _enemy_vis 键集 ==
     存活且 anm_idx>=0 的敌人 id 集(旧 bug: 条目永不回收, 228 次 id 复用命中)。"""
-    from touhou.core.impl import PerfectCherryBloom
+    from touhou.games.th07.world import PerfectCherryBloom
     from touhou.utils import Vec2
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1)
     g.stage_no = 1
