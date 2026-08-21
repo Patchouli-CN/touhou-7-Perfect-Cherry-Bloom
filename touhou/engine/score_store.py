@@ -23,7 +23,7 @@
 from __future__ import annotations
 
 import msgspec
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 SCORE_JSON_VERSION = 1
@@ -44,9 +44,9 @@ def make_highscore_record(score: int, character: int, difficulty: int,
                           stage: int, *, name: str = DEFAULT_NAME,
                           num_retries: int = 0,
                           date: str | None = None) -> dict:
-    """一条 Hscr 子集记录; date 缺省取当前 UTC ISO 字符串。"""
+    """一条 Hscr 子集记录; date 缺省取当前本地时间 ISO 字符串(带时区偏移)。"""
     if date is None:
-        date = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        date = datetime.now().astimezone().isoformat(timespec="seconds")
     return {
         "score": int(score),
         "character": int(character),

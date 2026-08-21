@@ -38,7 +38,7 @@ replayEventFlags (ReplayManager.cpp:63 写入 inputKey 字段; 置位点:
 from __future__ import annotations
 
 import msgspec
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 FORMAT_VERSION = 1
@@ -95,7 +95,7 @@ def make_meta(*, difficulty: int, character: int, stage: int, seed: int,
         "seed": int(seed),
         "initial_lives": int(initial_lives),
         "frames": 0,
-        "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "created": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
 
 
