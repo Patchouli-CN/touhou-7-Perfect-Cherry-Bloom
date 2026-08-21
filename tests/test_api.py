@@ -167,7 +167,7 @@ def _run_blocking_imports(code: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True, text=True, timeout=120,
-        cwd=Path(__file__).resolve().parent.parent.parent)
+        cwd=Path(__file__).resolve().parent.parent)
 
 
 def test_top_level_exports_complete() -> None:
@@ -190,7 +190,7 @@ def test_no_function_level_imports_in_package() -> None:
     # 包代码禁止函数内 import(用户规约; 测试目录豁免)
     import ast
 
-    pkg = Path(__file__).resolve().parent.parent
+    pkg = Path(__file__).resolve().parent.parent / "touhou"
     offenders = []
     for f in pkg.rglob("*.py"):
         if "test" in f.parts:
@@ -209,7 +209,7 @@ def test_logic_layer_has_no_pygame_dependency() -> None:
     # 注释/docstring 提及不算)
     import ast
 
-    pkg = Path(__file__).resolve().parent.parent
+    pkg = Path(__file__).resolve().parent.parent / "touhou"
     files = [*pkg.glob("*.py")]
     for sub in (pkg / "engine", pkg / "schema", pkg / "games"):
         files += [f for f in sub.rglob("*.py")
@@ -326,7 +326,7 @@ def test_touhou_world_run_typing_narrows_on_headless(tmp_path) -> None:
         "tw = TouhouWorld(headless=False)\n"
         "for ev in tw.run():\n"
         "    print(ev.kind)\n", encoding="utf-8")
-    root = Path(__file__).resolve().parent.parent.parent
+    root = Path(__file__).resolve().parent.parent
     r_ok = subprocess.run(
         [sys.executable, "-m", "mypy", str(ok_src)],
         capture_output=True, text=True, timeout=300, cwd=root)

@@ -25,7 +25,7 @@ import touhou.engine.enemies as en_mod  # noqa: E402
 from touhou.engine.ecl import EclMachine, EclOpcode  # noqa: E402
 from touhou.engine.enemies import EclEnemy  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
-from touhou.test.test_ecl import _instr, build_ecl  # noqa: E402
+from tests.test_ecl import _instr, build_ecl  # noqa: E402
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")

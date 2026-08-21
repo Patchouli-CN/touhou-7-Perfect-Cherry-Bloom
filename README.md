@@ -145,14 +145,14 @@ tw = TouhouWorld(game="th99", headless=True)   # 从注册表解析
 ```
 
 最小路径(只换数据/资源, 不改引擎): 复用 `PerfectCherryBloom` 作对局实现,
-只注册自己的 `GameData` —— 示例见 `touhou/test/test_registry.py` 的
+只注册自己的 `GameData` —— 示例见 `tests/test_registry.py` 的
 `test_stub_game_with_custom_data_reuses_th07_engine`。ECL 指令集拆分为独立
 子包仍是新作品落地时的工作。
 
 ## 测试
 
 ```bash
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy uv run python -m pytest touhou/test -q
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy uv run python -m pytest -q
 ```
 
 测试用真实 th07.dat 数据(默认路径或 `TOUHOU_DAT` 指向)。

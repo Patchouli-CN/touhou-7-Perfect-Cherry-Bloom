@@ -23,7 +23,7 @@ from touhou.schema.shot_data import ShotData, ShotEntry, ShotLevel  # noqa: E402
 from touhou.schema.sound import SE, SE_FILES, SE_VOLUMES, SoundQueue  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
 from touhou.engine.view.sound_player import SoundPlayer, _db_to_gain  # noqa: E402
-from touhou.test.test_ecl import _f, _instr, build_ecl  # noqa: E402
+from tests.test_ecl import _f, _instr, build_ecl  # noqa: E402
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")

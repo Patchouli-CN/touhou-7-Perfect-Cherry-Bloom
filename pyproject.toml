@@ -30,7 +30,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["touhou/test"]
+testpaths = ["tests"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -51,5 +51,5 @@ ignore_errors = true
 
 # 测试目录豁免: pytest 驱动, 构造夹具时有意打破类型(鸭子类型替身等)。
 [[tool.mypy.overrides]]
-module = "touhou.test.*"
+module = "tests.*"
 ignore_errors = true
