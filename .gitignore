@@ -12,7 +12,7 @@
 
 # I don't wants
 scratch_dbg/
-th07/
+/th07/
 
 # Python
 __pycache__/
