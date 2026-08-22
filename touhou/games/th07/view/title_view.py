@@ -26,11 +26,11 @@ from pathlib import Path
 
 import pygame
 
-from ...schema.anm import AnmFile
-from ...schema.archive import GameArchive
+from ....schema.anm import AnmFile
+from ....schema.archive import GameArchive
 from .screens import MAIN_MENU_ITEMS
 
-from ...paths import DEFAULT_DATA, resolve_data_path  # noqa: F401 (DEFAULT_DATA 再导出)
+from ....paths import DEFAULT_DATA, resolve_data_path  # noqa: F401 (DEFAULT_DATA 再导出)
 
 TITLE_W, TITLE_H = 640, 480
 

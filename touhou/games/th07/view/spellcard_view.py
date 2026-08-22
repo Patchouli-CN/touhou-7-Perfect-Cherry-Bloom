@@ -36,10 +36,10 @@ from __future__ import annotations
 
 import pygame
 
-from ...logger import logger as log
-from ...schema.anm import parse_scripts
-from .anm_fx import AnmScriptBank, TransformCache, Vm2d
-from .anm_vm import AnmVm, ScriptRef, reset_and_run
+from ....logger import logger as log
+from ....schema.anm import parse_scripts
+from ....engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d
+from ....engine.view.anm_vm import AnmVm, ScriptRef, reset_and_run
 
 _ANM_OFFSET_FACE = 0x4A0
 _ANM_OFFSET_FACE_STAGE = 0x4AD

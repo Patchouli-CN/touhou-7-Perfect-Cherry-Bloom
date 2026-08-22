@@ -600,7 +600,7 @@ class EclEnemyState(msgspec.Struct):
     bullet_rank_amount1_high: int = 0
     bullet_rank_amount2_low: int = 0
     bullet_rank_amount2_high: int = 0
-    # anm 只存 id(渲染侧经 id 起 anm 脚本 VM, 见 view/sprite_view.py)
+    # anm 只存 id(渲染侧经 id 起 anm 脚本 VM, 见 games/th07/view/sprite_view.py)
     anm_idx: int = -1
     sub_anm_idx: list[int] = msgspec.field(default_factory=lambda: [-1, -1])
     move_anm: tuple[int, ...] = ()

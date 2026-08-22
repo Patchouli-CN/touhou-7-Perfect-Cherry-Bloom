@@ -205,7 +205,7 @@ def test_app_render_game_consumes_shakes_once() -> None:
     import os
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     pygame.init()
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
     app = GameApp(lambda **kw: _ShakeStubGame())
     game = _ShakeStubGame()
     app._renderer.render_game(game)

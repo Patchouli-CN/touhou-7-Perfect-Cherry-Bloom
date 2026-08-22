@@ -23,8 +23,8 @@ from pathlib import Path
 
 import pygame
 
-from ...schema.archive import GameArchive
-from ..ending import (
+from ....schema.archive import GameArchive
+from ....engine.ending import (
     TEXT_LINE_H,
     TEXT_MAX_SLOTS,
     TEXT_X,
@@ -32,8 +32,8 @@ from ..ending import (
     EndingData,
     EndingPlayer,
 )
-from .anm_fx import AnmScriptBank, TransformCache, Vm2d
-from .sprite_view import SpriteBank
+from ....engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d
+from ....engine.view.sprite_bank import SpriteBank
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
 
 ANM_OFFSET_STAFF = 0x600  # AnmIdx.hpp:48 (staff01.anm 载入偏移)

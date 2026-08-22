@@ -23,10 +23,10 @@ from pathlib import Path
 
 import pygame
 
-from ...logger import logger as log
-from ...schema.anm import AnmFile
-from ...schema.archive import GameArchive
-from ...schema.msg import MsgOpcode, MsgVm, TEXT_COLORS_A
+from ....logger import logger as log
+from ....schema.anm import AnmFile
+from ....schema.archive import GameArchive
+from ....schema.msg import MsgOpcode, MsgVm, TEXT_COLORS_A
 
 # 角色 → 自机立绘 anm(C: character 0..2 → face_rm/mr/sk00.anm, Gui.cpp:421-456)
 CHARACTER_FACE = ("face_rm00.anm", "face_mr00.anm", "face_sk00.anm")

@@ -16,14 +16,14 @@ from __future__ import annotations
 
 import time
 
-from ...logger import logger as log
+from ....logger import logger as log
 
-from ...registry import GameData, get_game, get_renderer
-from ..config import DEFAULT_CONFIG_PATH, GameConfig
-from ...schema.sound import SE
-from .. import replay as replay_mod
-from ..render import FrameInput, Renderer
-from ..score_store import ScoreStore
+from ....registry import GameData, get_game, get_renderer
+from ....engine.config import DEFAULT_CONFIG_PATH, GameConfig
+from ....schema.sound import SE
+from ....engine import replay as replay_mod
+from ....engine.render import FrameInput, Renderer
+from ....engine.score_store import ScoreStore
 from .screens import (
     CHARACTERS,
     DIFFICULTIES,
@@ -44,8 +44,8 @@ from .screens import (
     load_tracks,
     practice_max_stage,
 )
-from .sound_player import SoundPlayer
-from ...paths import DEFAULT_SCORE_PATH, resolve_data_path
+from ....engine.view.sound_player import SoundPlayer
+from ....paths import DEFAULT_SCORE_PATH, resolve_data_path
 
 # 标题画面 BGM (MainMenu.cpp:230/2685: LoadAudio(8,"bgm/th07_01.mid"))
 _TITLE_BGM = "th07_01.mid"

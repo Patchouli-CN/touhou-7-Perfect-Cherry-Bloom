@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from types import ModuleType
 
-from .api import TouhouWorld
+from .apis.basic import TouhouWorld
 from .env import log_environment
 from .logger import logger, setup_logging
 

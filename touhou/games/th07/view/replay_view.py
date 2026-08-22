@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pygame
 
-from ...schema.archive import GameArchive
+from ....schema.archive import GameArchive
 from .result_view import _load_font
 from .screens import CHARACTERS, DIFFICULTIES, ReplayFlow
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W

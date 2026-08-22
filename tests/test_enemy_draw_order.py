@@ -39,7 +39,7 @@ def _mk_game_view():
     import pygame
 
     from touhou.games.th07.world import PerfectCherryBloom
-    from touhou.engine.view.sprite_view import GAME_H, GAME_W, GameView
+    from touhou.games.th07.view.sprite_view import GAME_H, GAME_W, GameView
 
     pygame.init()
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1)

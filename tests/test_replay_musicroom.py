@@ -15,7 +15,7 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.engine import replay as replay_mod  # noqa: E402
 from touhou.engine.render import FrameInput  # noqa: E402
-from touhou.engine.view.screens import (  # noqa: E402
+from touhou.games.th07.view.screens import (  # noqa: E402
     MenuAction, MusicRoomFlow, ReplayFlow, Screen)
 from touhou.schema.musiccmt import parse_musiccmt  # noqa: E402
 
@@ -241,7 +241,7 @@ def _app(tmp_path, monkeypatch, make=StubGame):
     pygame.init()
     if pygame.display.get_surface() is None:
         pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     return GameApp(make, config_path=tmp_path / "config.json",
                    score_path=tmp_path / "score.json",

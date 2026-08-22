@@ -158,7 +158,7 @@ def test_bg3d_perf(arc: GameArchive) -> None:
 def test_gameview_bg_fallback() -> None:
     """GameView: 3D 背景加载失败/渲染异常时退回 2D 平铺, 不中断渲染。"""
     pygame.init()
-    from touhou.engine.view.sprite_view import GameView
+    from touhou.games.th07.view.sprite_view import GameView
     view = GameView(DAT, character=0, stage=1)
     view._ensure_stage(1)
     assert view._bg3d is not None          # 正常加载

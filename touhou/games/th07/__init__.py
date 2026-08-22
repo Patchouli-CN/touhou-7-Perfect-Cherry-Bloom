@@ -13,11 +13,15 @@
   handler, register_ecl("th07") 登记; VM 框架在 engine/ecl_base.py)
 - playerdata.py Player Data 画面装配
 - world.py      对局主逻辑 PerfectCherryBloom(register_world_impl("th07") 登记)
+- view/         表现层(GameApp 应用壳/菜单场景/贴图渲染/PygameRenderer 后端;
+  通用渲染机制留在 engine/view/, 协议在 engine/render/)
 
 engine/ 只留可复用机制(bullets/lasers/enemies/ecl/replay/config/score_store/
-player_base 玩家状态基座)。PlayerState 定义在 engine/player_base.py, 本包
-player.py 再导出以保持 ``games.th07.player.PlayerState`` 引用兼容; engine 层
-不再 import games.*(单向依赖: 引擎 ←—— 作品)。
+player_base 玩家状态基座, 及 view/ 的作品无关渲染基建)。PlayerState 定义在
+engine/player_base.py, 本包 player.py 再导出以保持
+``games.th07.player.PlayerState`` 引用兼容; engine 层运行时不 import
+games.*(单向依赖: 引擎 ←—— 作品; 唯一例外是 engine/render 协议在
+TYPE_CHECKING 下引用本包 screens.py 的菜单流类型, 仅 mypy 可见)。
 导入本包即完成 th07 在 registry 的 world/hooks/data 维度注册
 (ECL/ANM 经 engine.ecl/schema.anm 链; ``import touhou`` 保证全链触发)。
 """

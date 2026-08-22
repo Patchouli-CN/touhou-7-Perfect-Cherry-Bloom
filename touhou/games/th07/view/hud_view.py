@@ -50,8 +50,9 @@ import pygame
 
 # BorderState(NONE/READY/ACTIVE)绑死 th07 的樱之结界行为, 属后端内聚的有意
 # 耦合(见模块 docstring 的【th07 专属】标注; 注入参数化成本大于收益)。
-from ...games.th07.bomb import BorderState
-from .sprite_view import WIN_H, WIN_W, SpriteBank
+from ..bomb import BorderState
+from ....engine.view.sprite_bank import SpriteBank
+from .sprite_view import WIN_H, WIN_W
 
 _FRONT = "front.anm"
 _ASCII = "ascii.anm"

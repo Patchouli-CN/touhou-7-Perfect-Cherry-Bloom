@@ -23,9 +23,9 @@ from pathlib import Path
 
 import pygame
 
-from ...schema.archive import GameArchive
-from ...games.th07 import playerdata
-from ..score_store import ScoreStore
+from ....schema.archive import GameArchive
+from .. import playerdata
+from ....engine.score_store import ScoreStore
 from .result_view import _load_font
 from .screens import (CHARACTERS, DIFFICULTIES, PLAYERDATA_SECTIONS,
                       PlayerDataFlow)

@@ -9,8 +9,8 @@ from __future__ import annotations
 from .games.th07 import data as _th07_data    # noqa: F401  (登记 th07 数值表)
 from .games.th07 import world as _th07_world  # noqa: F401  (触发 th07 全维度注册:
                                               #  world/ecl_host; ecl 经 world→ecl_vm,
-                                              #  anm 经 api→view 链)
-from .api import (
+                                              #  anm/renderer 经 apis.basic→games.th07.view 链)
+from .apis.basic import (
     BossSnapshot,
     BulletSnapshot,
     Character,

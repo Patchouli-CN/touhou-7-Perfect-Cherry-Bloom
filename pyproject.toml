@@ -45,8 +45,9 @@ strict_equality = true
 
 # pygame 渲染层豁免: 大量 `self.x = None` 延迟初始化 + 界面流程状态机 union
 # 是刻意写法, mypy 对 pygame stub 也常有噪音; 该层由全量测试(SDL dummy)兜底。
+# engine.view.* = 通用渲染基建; games.th07.view.* = th07 表现层(同一豁免档)。
 [[tool.mypy.overrides]]
-module = "touhou.engine.view.*"
+module = ["touhou.engine.view.*", "touhou.games.th07.view.*"]
 ignore_errors = true
 
 # 测试目录豁免: pytest 驱动, 构造夹具时有意打破类型(鸭子类型替身等)。

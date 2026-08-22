@@ -12,7 +12,7 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 from touhou.engine.config import (DEFAULT_KEYMAP, KEYMAP_ACTIONS,  # noqa: E402
                                   GameConfig)
 from touhou.engine.render import FrameInput  # noqa: E402
-from touhou.engine.view.screens import (KEYCONFIG_ITEMS, KeyConfigFlow,  # noqa: E402
+from touhou.games.th07.view.screens import (KEYCONFIG_ITEMS, KeyConfigFlow,  # noqa: E402
                                         MenuAction, Screen)
 
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ def test_keyconfig_items_layout() -> None:
 
 
 def _app(tmp_path):
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     return GameApp(lambda **kw: None, config_path=tmp_path / "config.json")
 
@@ -292,7 +292,7 @@ def _game_app(tmp_path, monkeypatch):
 
     pygame.init()
     pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(_TickGame, config_path=tmp_path / "config.json")
     app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度

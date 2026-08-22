@@ -28,7 +28,7 @@ from typing import (
 
 if TYPE_CHECKING:
     # 公共数据类型再导出(仅类型检查期可见; 运行时请 from touhou.api import …)
-    from .api import (
+    from .apis.basic import (
         BossSnapshot,
         BulletSnapshot,
         Character,

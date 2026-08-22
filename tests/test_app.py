@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.engine.render import FrameInput  # noqa: E402
-from touhou.engine.view.screens import MenuAction, Screen  # noqa: E402
+from touhou.games.th07.view.screens import MenuAction, Screen  # noqa: E402
 
 
 class StubGame:
@@ -22,7 +22,7 @@ class _App:
     """与 GameApp 同构的菜单状态机(避开 pygame.display 依赖)。"""
 
     def __init__(self, make_game):
-        from touhou.engine.view import GameApp
+        from touhou.games.th07.view import GameApp
 
         self._impl = GameApp(make_game)
         self._impl._screen = Screen.MAIN_MENU
@@ -54,7 +54,7 @@ def test_app_reaches_playing_and_constructs_game() -> None:
 
 
 def test_app_menu_navigation() -> None:
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(lambda **kw: None)
     app._screen = Screen.DIFFICULTY
@@ -80,7 +80,7 @@ class StubExtraGame(StubGame):
 
 def test_extra_start_flow() -> None:
     """Extra Start → 选机体 → Extra → 以难度 4 进 stage 7。"""
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(StubExtraGame)
     app._on_menu(MenuAction.DOWN)      # 主菜单: 开始游戏 → Extra Start
@@ -98,7 +98,7 @@ def test_extra_start_flow() -> None:
 
 def test_phantasm_entry_flow() -> None:
     """Extra Start → 选机体 → Phantasm → 以难度 5 进 stage 8; BACK 可回退。"""
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(StubExtraGame)
     app._on_menu(MenuAction.DOWN)
@@ -150,7 +150,7 @@ def test_result_screen_flow(tmp_path, monkeypatch) -> None:
 
     pygame.init()
     pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(StubResultGame, score_path=tmp_path / "score.json")
     app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
@@ -214,7 +214,7 @@ def test_ending_screen_flow(tmp_path, monkeypatch) -> None:
 
     pygame.init()
     pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(StubEndingGame, score_path=tmp_path / "score.json")
     app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
@@ -244,7 +244,7 @@ class _FakeSound:
 
 
 def _goto_option(app):
-    from touhou.engine.view.screens import MAIN_MENU_ITEMS
+    from touhou.games.th07.view.screens import MAIN_MENU_ITEMS
 
     while app._flow.cursor.current != "Option":
         app._on_menu(MenuAction.DOWN)
@@ -254,7 +254,7 @@ def _goto_option(app):
 
 
 def test_option_enter_and_leave(tmp_path) -> None:
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(lambda **kw: None, config_path=tmp_path / "config.json")
     _goto_option(app)
@@ -267,7 +267,7 @@ def test_option_enter_and_leave(tmp_path) -> None:
 def test_option_adjust_applies_and_saves(tmp_path) -> None:
     """BGM/SE 音量调值实时作用于 SoundPlayer 并即时写 config.json。"""
     from touhou.engine.config import GameConfig
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
     from touhou.engine.view.sound_player import _db_to_gain
     from touhou.schema.sound import SE_VOLUMES
 
@@ -292,7 +292,7 @@ def test_option_source_switch_and_scale(tmp_path, monkeypatch) -> None:
     pygame.init()
     pygame.display.set_mode((640, 480))
     from touhou.engine.config import GameConfig
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(lambda **kw: None, config_path=tmp_path / "config.json")
     _goto_option(app)
@@ -311,7 +311,7 @@ def test_option_initial_lives_applied_at_game_start(tmp_path) -> None:
     """config.initial_lives 开局覆写 impl 初始残(difficulty<4)。"""
     from types import SimpleNamespace
 
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     class StubLivesGame(StubGame):
         def __init__(self, **kw):
@@ -336,7 +336,7 @@ def _pause_app(tmp_path, monkeypatch):
 
     pygame.init()
     pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(StubGame, config_path=tmp_path / "config.json")
     app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
@@ -448,7 +448,7 @@ def _continue_app(tmp_path, monkeypatch):
 
     pygame.init()
     pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(StubContinueGame, config_path=tmp_path / "config.json")
     app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
@@ -496,7 +496,7 @@ def test_continue_menu_absent_on_extra(tmp_path, monkeypatch) -> None:
 
     pygame.init()
     pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     app = GameApp(StubContinueGame, config_path=tmp_path / "config.json")
     app._on_menu(MenuAction.DOWN)      # 主菜单: 开始游戏 → Extra Start
@@ -574,7 +574,7 @@ def test_result_name_entry_flow(tmp_path, monkeypatch) -> None:
 
     pygame.init()
     pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     StubRankedGame.store = None
     app = GameApp(StubRankedGame, score_path=tmp_path / "score.json")
@@ -622,7 +622,7 @@ def test_result_unranked_skips_name_entry(tmp_path, monkeypatch) -> None:
 
     pygame.init()
     pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     StubRankedGame.store = None
     app = GameApp(StubUnrankedGame, score_path=tmp_path / "score.json")

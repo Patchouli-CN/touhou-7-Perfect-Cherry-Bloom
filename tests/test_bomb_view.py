@@ -1,4 +1,4 @@
-"""bomb 视觉层 (engine/view/bomb_view.py) smoke + 残留回归测试。
+"""bomb 视觉层 (games/th07/view/bomb_view.py) smoke + 残留回归测试。
 
 12 套 (6 机体 × focus/unfocus) 实跑逻辑 + GameView.render:
 - 全程渲染不抛异常, bomb 进行中确有特效绘制 (effect_draws > 0);
@@ -37,7 +37,7 @@ def _run_bomb(character: int, focus: bool):
     import pygame
 
     from touhou.games.th07.world import PerfectCherryBloom
-    from touhou.engine.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
+    from touhou.games.th07.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
                                                 GameView)
 
     pygame.init()
@@ -111,7 +111,7 @@ def test_bomb_banner_window_layer() -> None:
     import pygame
 
     from touhou.games.th07.world import PerfectCherryBloom
-    from touhou.engine.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
+    from touhou.games.th07.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
                                                 GameView)
 
     pygame.init()

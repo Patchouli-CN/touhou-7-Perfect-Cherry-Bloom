@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pygame
 
-from ...schema.archive import GameArchive
+from ....schema.archive import GameArchive
 from .result_view import _load_font
 from .screens import MUSIC_ROOM_VISIBLE, MusicRoomFlow, load_tracks  # noqa: F401 (load_tracks 再导出, 单一来源在 screens)
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W

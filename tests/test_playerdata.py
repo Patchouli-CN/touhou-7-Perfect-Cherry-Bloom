@@ -7,7 +7,7 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.games.th07 import playerdata  # noqa: E402
 from touhou.engine.score_store import ScoreStore, make_highscore_record  # noqa: E402
-from touhou.engine.view.screens import (  # noqa: E402
+from touhou.games.th07.view.screens import (  # noqa: E402
     PLAYERDATA_SECTIONS,
     MenuAction,
     PlayerDataFlow,

@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.engine.view.screens import (  # noqa: E402
+from touhou.games.th07.view.screens import (  # noqa: E402
     CHARACTERS,
     DIFFICULTIES,
     MenuAction,
@@ -65,7 +65,7 @@ def test_build_cursors() -> None:
 # ---------------------------------------------------------------------------
 
 def test_flow_option_emits_option_action() -> None:
-    from touhou.engine.view.screens import MAIN_MENU_ITEMS
+    from touhou.games.th07.view.screens import MAIN_MENU_ITEMS
 
     f = TitleFlow()
     while f.cursor.current != "Option":
@@ -76,7 +76,7 @@ def test_flow_option_emits_option_action() -> None:
 
 
 def _option_flow():
-    from touhou.engine.view.screens import OptionFlow
+    from touhou.games.th07.view.screens import OptionFlow
 
     return OptionFlow()
 
@@ -154,7 +154,7 @@ def test_option_adjust_on_quit_item_does_nothing() -> None:
 
 def test_name_alphabet_matches_g_AlphabetList() -> None:
     """字表照抄 g_AlphabetList (:24): 96 字 = 6 行 x 16 列。"""
-    from touhou.engine.view.screens import NAME_ALPHABET
+    from touhou.games.th07.view.screens import NAME_ALPHABET
 
     assert len(NAME_ALPHABET) == 96
     assert NAME_ALPHABET[:32] == "ABCDEFGHIJKLMNOPQRSTUVWXYZ.,:;_@"
@@ -165,7 +165,7 @@ def test_name_alphabet_matches_g_AlphabetList() -> None:
 
 
 def _entry(**kw):
-    from touhou.engine.view.screens import NameEntryFlow
+    from touhou.games.th07.view.screens import NameEntryFlow
 
     return NameEntryFlow(**kw)
 

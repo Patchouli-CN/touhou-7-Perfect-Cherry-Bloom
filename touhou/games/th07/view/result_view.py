@@ -18,11 +18,11 @@ from pathlib import Path
 
 import pygame
 
-from ...schema.archive import GameArchive
-from ..score_store import ScoreStore
+from ....schema.archive import GameArchive
+from ....engine.score_store import ScoreStore
 from .screens import (CHARACTERS, DIFFICULTIES, NAME_ALPHABET,
                       NAME_ALPHABET_COLS, NAME_LEN)
-from .sprite_view import SpriteBank
+from ....engine.view.sprite_bank import SpriteBank
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
 
 _RATING_COLORS = [

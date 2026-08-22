@@ -42,8 +42,8 @@ from pathlib import Path
 
 import pygame
 
-from ...schema.anm import AnmFile
-from ...schema.archive import GameArchive
+from ....schema.anm import AnmFile
+from ....schema.archive import GameArchive
 from .screens import PRACTICE_STAGE_ITEMS
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
 

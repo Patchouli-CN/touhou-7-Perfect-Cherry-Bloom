@@ -14,7 +14,7 @@ DEFAULT_DATA = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat
 ENV_DATA = "TOUHOU_DAT"
 
 # score.json 默认位置: exe 同目录语义 → 仓库根(原版 score.dat 在 exe 旁)。
-# 路径默认值(非游戏逻辑), 集中在本模块; world.py 与 view/impl.py 都从这里取。
+# 路径默认值(非游戏逻辑), 集中在本模块; world.py 与 games/th07/view/impl.py 都从这里取。
 DEFAULT_SCORE_PATH = Path(__file__).resolve().parent.parent / "score.json"
 
 

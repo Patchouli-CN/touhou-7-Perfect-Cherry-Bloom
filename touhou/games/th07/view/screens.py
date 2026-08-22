@@ -16,11 +16,11 @@ import msgspec
 from enum import IntEnum
 from pathlib import Path
 
-from ...paths import DEFAULT_DATA
-from ...registry import get_game
-from ...schema.archive import GameArchive
-from ...schema.musiccmt import parse_musiccmt
-from ..config import (LIVES_MAX, LIVES_MIN, SCALE_MAX, SCALE_MIN, VOLUME_MAX,
+from ....paths import DEFAULT_DATA
+from ....registry import get_game
+from ....schema.archive import GameArchive
+from ....schema.musiccmt import parse_musiccmt
+from ....engine.config import (LIVES_MAX, LIVES_MIN, SCALE_MAX, SCALE_MIN, VOLUME_MAX,
                       VOLUME_MIN, GameConfig)
 
 # 内置兜底名单(与 games/th07/data.py 同值; 仅在注册表未登记 th07 时使用,

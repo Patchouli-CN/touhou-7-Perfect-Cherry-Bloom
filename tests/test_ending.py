@@ -235,8 +235,8 @@ def test_app_ending_autofinish_to_result() -> None:
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
-    from touhou.engine.view import GameApp
-    from touhou.engine.view.screens import Screen
+    from touhou.games.th07.view import GameApp
+    from touhou.games.th07.view.screens import Screen
 
     class _Stub:
         def __init__(self) -> None:
@@ -318,7 +318,7 @@ def test_ending_view_render_smoke() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     from touhou.paths import DEFAULT_DATA
-    from touhou.engine.view.ending_view import EndingView
+    from touhou.games.th07.view.ending_view import EndingView
     view = EndingView(DEFAULT_DATA)
     surf = pygame.Surface((640, 480))
     # 结局前段: 文本行 + 白幕淡出 (@230000/@2180)

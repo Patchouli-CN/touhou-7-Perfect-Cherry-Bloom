@@ -13,7 +13,7 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 import pytest  # noqa: E402
 
 from touhou.engine.render import EndingFrame, FrameInput  # noqa: E402
-from touhou.engine.view.screens import MenuAction, Screen  # noqa: E402
+from touhou.games.th07.view.screens import MenuAction, Screen  # noqa: E402
 from touhou.registry import (  # noqa: E402
     get_renderer, register_renderer, registered_renderers)
 
@@ -27,7 +27,7 @@ def test_pygame_renderer_registered_by_default() -> None:
     import touhou  # noqa: F401
 
     assert "pygame" in registered_renderers()
-    from touhou.engine.view.pygame_backend import PygameRenderer
+    from touhou.games.th07.view.pygame_backend import PygameRenderer
 
     assert get_renderer("pygame") is PygameRenderer
 
@@ -168,7 +168,7 @@ class StubGame:
 
 
 def _stub_app(tmp_path):
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     stub = StubRenderer()
     app = GameApp(StubGame, config_path=tmp_path / "config.json",
@@ -187,8 +187,8 @@ def test_app_accepts_renderer_instance_and_rebuilds_keymap(tmp_path) -> None:
 
 def test_app_renderer_by_name_via_registry(tmp_path) -> None:
     """renderer="pygame"(默认) 经 registry 解析为 PygameRenderer 实例。"""
-    from touhou.engine.view import GameApp
-    from touhou.engine.view.pygame_backend import PygameRenderer
+    from touhou.games.th07.view import GameApp
+    from touhou.games.th07.view.pygame_backend import PygameRenderer
 
     app = GameApp(lambda **kw: None, config_path=tmp_path / "config.json")
     assert isinstance(app._renderer, PygameRenderer)

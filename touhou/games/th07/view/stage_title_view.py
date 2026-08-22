@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import pygame
 
-from .anm_fx import AnmScriptBank, TransformCache, Vm2d
+from ....engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d
 
 _ANM_OFFSET_STAGE_TEXT = 0x800   # AnmIdx.hpp:53
 _TITLE_SCRIPTS = 5               # ExecuteVmsAnms(vms1, 2048, 5) (Gui.cpp:655)

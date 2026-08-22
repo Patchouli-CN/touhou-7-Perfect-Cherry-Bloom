@@ -27,8 +27,8 @@ import pygame  # noqa: E402
 import pytest  # noqa: E402
 
 from touhou.engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d  # noqa: E402
-from touhou.engine.view.dialog_view import _FaceBook  # noqa: E402
-from touhou.engine.view.sprite_view import (  # noqa: E402
+from touhou.games.th07.view.dialog_view import _FaceBook  # noqa: E402
+from touhou.games.th07.view.sprite_view import (  # noqa: E402
     GameView, GAME_H, GAME_W, SpriteBank, _ANM_OFFSET_ENEMY)
 from touhou.schema.anm import AnmFile  # noqa: E402
 from touhou.schema.archive import GameArchive  # noqa: E402

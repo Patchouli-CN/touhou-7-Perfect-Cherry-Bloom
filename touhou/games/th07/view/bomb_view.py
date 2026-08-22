@@ -38,11 +38,11 @@ import math
 
 import pygame
 
-from ...schema.anm import parse_scripts
-from ...games.th07.bomb import (CHAR_MARISA_A, CHAR_MARISA_B, CHAR_REIMU_A,
+from ....schema.anm import parse_scripts
+from ..bomb import (CHAR_MARISA_A, CHAR_MARISA_B, CHAR_REIMU_A,
                                 CHAR_REIMU_B, CHAR_SAKUYA_A, CHAR_SAKUYA_B)
-from .anm_fx import AnmScriptBank, TransformCache, Vm2d
-from .anm_vm import AnmVm, ScriptRef, reset_and_run
+from ....engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d
+from ....engine.view.anm_vm import AnmVm, ScriptRef, reset_and_run
 
 _ANM_OFFSET_PLAYER = 0x400
 _ANM_OFFSET_BULLETS = 0x200

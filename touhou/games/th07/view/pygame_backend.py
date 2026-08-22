@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import pygame
 
-from ...logger import logger as log
-from ...paths import resolve_data_path
-from ...registry import register_renderer
-from ..render import ACTION_NAMES, EndingFrame, FrameInput, Renderer
+from ....logger import logger as log
+from ....paths import resolve_data_path
+from ....registry import register_renderer
+from ....engine.render import ACTION_NAMES, EndingFrame, FrameInput, Renderer
 from .continue_view import ContinueView
 from .dialog_view import DialogueView
 from .ending_view import EndingView
@@ -26,7 +26,7 @@ from .replay_view import ReplayView
 from .result_view import ResultScreen
 from .screens import MenuAction, Screen
 from .select_view import SelectView
-from .shake_view import ScreenShake
+from ....engine.view.shake_view import ScreenShake
 from .sprite_view import GAME_H, GAME_W, GAME_X, GAME_Y, WIN_H, WIN_W, GameView
 from .stage_results_view import StageResultsView
 from .title_view import TITLE_H, TITLE_W, TitleScreen

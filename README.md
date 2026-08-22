@@ -1,7 +1,7 @@
 # touhou07
 
 《东方妖妖梦》(TH07 / Perfect Cherry Blossom) 的 Python 重实现。
-引擎逻辑对照原版反编译逐帧移植, 对外提供干净的 Pythonic API(`touhou.api`),
+引擎逻辑对照原版反编译逐帧移植, 对外提供干净的 Pythonic API(`touhou.apis.basic`),
 窗口版游戏用 pygame 渲染。
 
 ## 安装
@@ -73,7 +73,7 @@ print(game.score, game.lives, game.result)  # 结算后 result 非 None
 - `touhou.types` 是类型门面: 集中公共类型别名(`PathLike`/`KeysTuple`/事件钩子
   签名)与结构式 Protocol(`PosLike`/`Positioned`), 供 IDE 类型提示; 公共数据类型
   在类型检查期也可 `from touhou.types import Input, GameEvent, ...` 解析
-  (运行时请从 `touhou`/`touhou.api` 导入)。
+  (运行时请从 `touhou`/`touhou.apis.basic` 导入)。
 
 ## 扩展新作品
 
@@ -93,7 +93,7 @@ print(game.score, game.lives, game.result)  # 结算后 result 非 None
 `schema/anm.py:AnmFile`、`games/th07/ecl_host.py:GameEclHost`、
 `games/th07/world.py:PerfectCherryBloom`、`games/th07/data.py:TH07_DATA`。
 
-门面(`touhou.api.Game`)只面向 `touhou.types.GameEngine` 协议编程
+门面(`touhou.apis.basic.Game`)只面向 `touhou.types.GameEngine` 协议编程
 (tick/frame/stage_no/globals/boss/border/player + bullets/host/items/lasers
 容器), 对局实现鸭子满足该协议即可, 无需 adapter; 符卡/对话等作品专属探测
 走可选方法 `spellcard_active()`/`msg_active()`(不实现则门面按 False 回落)。
@@ -104,21 +104,25 @@ th07 默认行为。窗口版 GameApp 的名单/难度/面数经 `game_data` 参
 
 ## 包结构
 
-- `touhou/api.py` / `types.py` / `registry.py` — 对外门面、类型门面、作品注册表
+- `touhou/apis/basic.py` / `types.py` / `registry.py` — 对外门面、类型门面、
+  作品注册表(渲染后端维度: `register_renderer`, 默认 "pygame")
 - `touhou/games/th07/` — th07 的游戏逻辑包: `world.py`(对局主逻辑
   PerfectCherryBloom)、`player.py`(自机)、`boss.py`(符卡)、`bomb.py`
   (炸弹+结界)、`items.py`(道具经济)、`globals.py`(樱点/计数)、
   `results.py`(评级)、`ecl_host.py`(ECL 宿主钩子)、`ecl_vm.py`
   (TH07 ECL 虚拟机: EclMachineTh07 + EclVarId + opcode handler)、
-  `playerdata.py`(Player Data 装配)、`data.py`(数值表, 单一来源)
+  `playerdata.py`(Player Data 装配)、`data.py`(数值表, 单一来源)、
+  `view/`(th07 表现层: GameApp 应用壳、菜单场景、HUD/战斗画面、
+  PygameRenderer 后端)
 - `touhou/engine/` — 跨作品可复用机制: `ecl.py`(ECL 文件解析+状态结构)、
   `ecl_base.py`(ECL VM 框架基类 EclMachineBase)、`bullets.py` /
   `bullet_commands.py` / `lasers.py`(弹幕/激光原语)、`enemies.py`
   (EclEnemy 宿主+伤害管线)、`player_base.py` / `bomb_base.py` /
   `boss_base.py` / `globals_base.py` / `item_base.py`(各系统的作品无关
   基座)、`ending.py`(结局脚本)、`rng.py`(确定性随机)、
-  `replay.py` / `config.py` / `score_store.py`(机制类)、`view/` / `render/`
-  (渲染层)
+  `replay.py` / `config.py` / `score_store.py`(机制类)、
+  `render/`(渲染后端协议 Renderer + FrameInput)、`view/`(作品无关渲染
+  基建: anm 脚本 VM/特效层/.std 3D 背景/SpriteBank/SoundPlayer/震屏)
 - `touhou/schema/` — 资源格式解析(dat/anm/std/ecl/sht/msg/thbgm 等)
 
 新作品(以假想的 th99 为例)的骨架:

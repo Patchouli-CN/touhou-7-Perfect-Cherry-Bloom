@@ -6,7 +6,7 @@
   SlowMode / Reset / KeyConfig / Quit。
 本期接其中 5 项: BGM 音量(0-100) / SE 音量(0-100) / 音源(WAV/MIDI) /
 窗口缩放(1-3) / 初始残机数(2-5); KeyConfig 以 keymap 段落地(编辑界面在
-engine/view, 对照 MainMenu.cpp OnUpdateKeyConfig)。
+games/th07/view, 对照 MainMenu.cpp OnUpdateKeyConfig)。
 
 读写容错同 score_store: 文件缺失/损坏/字段非法一律回退默认值, 不抛异常
 (对照 OpenScore 的 RECREATE_SCORE 分支)。落盘原子写(tmp + replace)。
@@ -27,7 +27,7 @@ LIVES_MIN, LIVES_MAX = 2, 5
 # ---- 键位映射(KeyConfig) ----
 # 每个动作一组 pygame 键名(pygame.key.name 的格式), 多键 = 任一生效。
 # 小键盘键("[0]"/"[1]")是中文 IME 吞字母键时的备用(实锤过), 默认保留。
-# 默认值 = 改造前的硬编码键位(原 engine/view/view.py, 现 engine/view/impl.py)。
+# 默认值 = 改造前的硬编码键位(原 engine/view/view.py, 现 games/th07/view/impl.py)。
 KEYMAP_ACTIONS = ("shoot", "bomb", "focus", "skip",
                   "up", "down", "left", "right")
 DEFAULT_KEYMAP: dict[str, list[str]] = {

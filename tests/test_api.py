@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from touhou.api import (
+from touhou.apis.basic import (
     Difficulty,
     Game,
     GameEvent,
@@ -226,7 +226,7 @@ def test_logic_layer_has_no_pygame_dependency() -> None:
 
 # ---- TouhouWorld / WorldData 入口 ----
 def test_world_data_resolution(tmp_path) -> None:
-    from touhou.api import WorldData
+    from touhou.apis.basic import WorldData
 
     wd = WorldData()
     assert wd.resolve_res() is None and wd.resolve_bgm() is None
@@ -237,13 +237,13 @@ def test_world_data_resolution(tmp_path) -> None:
 
 
 def test_character_is_shottype_alias() -> None:
-    from touhou.api import Character
+    from touhou.apis.basic import Character
     assert Character is ShotType
     assert Character.REIMU_A.value == 0
 
 
 def test_touhou_world_headless_stream() -> None:
-    from touhou.api import TouhouWorld, WorldData
+    from touhou.apis.basic import TouhouWorld, WorldData
 
     tw = TouhouWorld(wd=WorldData(res_dat=DEFAULT_DATA),
                      character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL,
@@ -261,7 +261,7 @@ def test_touhou_world_headless_stream() -> None:
 
 
 def test_touhou_world_custom_policy() -> None:
-    from touhou.api import TouhouWorld
+    from touhou.apis.basic import TouhouWorld
 
     tw = TouhouWorld(headless=True, difficulty=Difficulty.NORMAL, seed=1)
     seen = []
@@ -273,7 +273,7 @@ def test_touhou_world_custom_policy() -> None:
 
 
 def test_touhou_world_lazy_game() -> None:
-    from touhou.api import TouhouWorld
+    from touhou.apis.basic import TouhouWorld
 
     tw = TouhouWorld(headless=False)   # 非 headless 不预建对局
     assert tw._game is None
@@ -282,7 +282,7 @@ def test_touhou_world_lazy_game() -> None:
 
 
 def test_touhou_world_run_returns_event_stream() -> None:
-    from touhou.api import TouhouWorld, TouhouWorldEventStream
+    from touhou.apis.basic import TouhouWorld, TouhouWorldEventStream
 
     tw = TouhouWorld(headless=True, difficulty=Difficulty.NORMAL, seed=3)
     stream = tw.run()
@@ -298,7 +298,7 @@ def test_touhou_world_run_returns_event_stream() -> None:
 
 
 def test_event_stream_policy_takeover() -> None:
-    from touhou.api import TouhouWorld
+    from touhou.apis.basic import TouhouWorld
 
     tw = TouhouWorld(headless=True, difficulty=Difficulty.NORMAL, seed=5)
     stream = tw.run()

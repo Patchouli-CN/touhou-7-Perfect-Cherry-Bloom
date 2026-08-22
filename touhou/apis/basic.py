@@ -18,10 +18,22 @@ from enum import Enum, IntEnum
 from pathlib import Path
 from typing import Callable, Generic, Iterator, Literal, TypeVar, overload
 
-from .engine.lasers import LaserState
-from .engine.view import GameApp
-from .registry import GameSpec, get_game
-from .types import GameEngine, KeysTuple, PathLike
+from ..engine.lasers import LaserState
+from ..engine.render import Renderer
+from ..games.th07.view import GameApp
+from ..games.th07.view.pygame_backend import PygameRenderer
+from ..registry import GameSpec, get_game
+from ..types import GameEngine, KeysTuple, PathLike
+
+
+def _pygame_backend_satisfies_renderer(r: PygameRenderer) -> Renderer:
+    """静态断言: 默认后端满足 Renderer 协议(仅供 mypy 检查, 运行时不调用)。
+
+    协议在 engine/render, 实现在 games/th07/view(mypy 豁免区) —— engine 不
+    反向 import games, 断言落在本门面(被 mypy 检查, 且双向依赖都合法)。
+    """
+    return r
+
 
 
 # ---- 枚举 ----

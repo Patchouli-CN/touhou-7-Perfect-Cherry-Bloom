@@ -6,7 +6,7 @@
   (``FrameInput``/``EndingFrame``), **不 import pygame**, 不 import 任何后端
   实现; 后端类经 ``touhou.registry`` 的 ``@register_renderer(name)`` 登记,
   ``GameApp(..., renderer="pygame")`` 按名解析(默认 "pygame", 实现见
-  ``engine/view/pygame_backend.py``)。
+  ``games/th07/view/pygame_backend.py``)。
 - ``Renderer`` 覆盖窗口版应用(GameApp)的全部渲染职责: 窗口生命周期
   (open/resize/present/close)、帧输入采集(poll_input)、各场景渲染
   (标题/选人/设置/游戏帧/暂停与续关覆盖层/结算/结局)、菜单 SE。
@@ -21,7 +21,7 @@
   getattr 可选位读取, 与 api.Game 门面同一套约定。
 - **输入采集随渲染后端走**(pygame 事件/键码本是后端细节): poll_input 返回
   后端无关的 ``FrameInput`` —— 菜单动作序列(MenuAction, 来自
-  view/screens.py 纯逻辑)、对话推进/Esc 沿、按住的动作名集合
+  games/th07/view/screens.py 纯逻辑)、对话推进/Esc 沿、按住的动作名集合
   (left/right/up/down/focus/shoot/bomb/skip)、KeyConfig 捕获的键名。
   键名 → 键码 → 动作的映射(set_keymap)是后端内部实现细节。
 - 菜单 flow/cursor 等状态对象(OptionFlow/MusicRoomFlow…, 均 pygame-free)
@@ -34,11 +34,10 @@ from typing import TYPE_CHECKING, Mapping, Protocol, Sequence
 import msgspec
 
 if TYPE_CHECKING:
-    from ...types import GameEngine
-    from ..ending import EndingData
-    from ..score_store import ScoreStore
-    from ..view.pygame_backend import PygameRenderer
-    from ..view.screens import (
+    # 菜单流类型(OptionFlow 等)定义在 games/th07/view/screens.py —— 纯逻辑
+    # (pygame-free), 此处仅为类型注解引用: TYPE_CHECKING 下 mypy 可见,
+    # 运行时不产生 engine → games 依赖(单向依赖: 引擎 ←—— 作品 保持不破)。
+    from ...games.th07.view.screens import (
         KeyConfigFlow,
         MenuAction,
         MusicRoomFlow,
@@ -48,6 +47,9 @@ if TYPE_CHECKING:
         ReplayFlow,
         Screen,
     )
+    from ...types import GameEngine
+    from ..ending import EndingData
+    from ..score_store import ScoreStore
 
 __all__ = ["EndingFrame", "FrameInput", "Renderer"]
 
@@ -178,8 +180,7 @@ class Renderer(Protocol):
         """菜单音效("select"/"ok"/"cancel"); 未加载/无声卡静音跳过。"""
         ...
 
+# 默认后端 PygameRenderer 满足本协议的静态断言在 touhou/api.py
+# (协议在 engine, 实现在 games/th07/view —— engine 不反向 import games,
+# 而 games.th07.view.* 整体在 mypy 豁免区, 断言须落在被检查的门面模块)。
 
-def _pygame_backend_satisfies_renderer(r: "PygameRenderer") -> Renderer:
-    """静态断言: pygame 后端满足 Renderer 协议(仅供 mypy 检查, 运行时不调用;
-    放在本模块是因为 view.* 在 mypy 配置里豁免, 断言须落在被检查的模块)。"""
-    return r

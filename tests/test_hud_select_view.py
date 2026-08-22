@@ -47,7 +47,7 @@ class TestHudView:
     def test_render_no_raise(self) -> None:
         import pygame
         pygame.init()
-        from touhou.engine.view.hud_view import HudView
+        from touhou.games.th07.view.hud_view import HudView
         hud = HudView(DAT)
         frame = pygame.Surface((640, 480))
         hud.render(frame, _StubGame())
@@ -56,7 +56,7 @@ class TestHudView:
     def test_key_sprites_loaded(self) -> None:
         import pygame  # noqa: F401
         pygame.init()
-        from touhou.engine.view.hud_view import HudView
+        from touhou.games.th07.view.hud_view import HudView
         hud = HudView(DAT)
         # front.anm: logo/标签/星/窗框; ascii.anm: 字形/樱点槽/樱点数字
         assert hud.bank.sprite("front.anm", 0) is not None
@@ -83,7 +83,7 @@ class TestHudBorder:
         import pygame
         pygame.init()
         from touhou.games.th07.bomb import BorderState
-        from touhou.engine.view.hud_view import HudView
+        from touhou.games.th07.view.hud_view import HudView
         hud = HudView(DAT)
         frames = {}
         for state in (BorderState.NONE, BorderState.READY, BorderState.ACTIVE):
@@ -104,7 +104,7 @@ class TestSelectView:
     def test_render_no_raise(self) -> None:
         import pygame
         pygame.init()
-        from touhou.engine.view.select_view import SelectView
+        from touhou.games.th07.view.select_view import SelectView
         view = SelectView(DAT)
         surf = pygame.Surface((640, 480))
         view.render_difficulty(surf, 1)
@@ -115,7 +115,7 @@ class TestSelectView:
     def test_key_sprites_loaded(self) -> None:
         import pygame  # noqa: F401
         pygame.init()
-        from touhou.engine.view.select_view import SelectView
+        from touhou.games.th07.view.select_view import SelectView
         view = SelectView(DAT)
         view.ensure_loaded()
         assert view.background is not None            # select00.jpg
@@ -154,8 +154,8 @@ class TestRunMenuSmoke:
     def test_run_menu_all_pages(self) -> None:
         import pygame
         pygame.init()
-        from touhou.engine.view.screens import Screen
-        from touhou.engine.view import GameApp
+        from touhou.games.th07.view.screens import Screen
+        from touhou.games.th07.view import GameApp
         app = GameApp(lambda **kw: None)
         for screen in (Screen.DIFFICULTY, Screen.CHARACTER, Screen.EXTRA_LEVEL):
             app._screen = screen

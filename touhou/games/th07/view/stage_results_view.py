@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pygame
 
-from ..bullets import SCREEN
+from ....engine.bullets import SCREEN
 
 
 def _load_font(size: int):

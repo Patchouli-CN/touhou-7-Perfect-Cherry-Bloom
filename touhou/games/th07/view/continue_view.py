@@ -19,7 +19,8 @@ from pathlib import Path
 
 import pygame
 
-from .sprite_view import GAME_X, GAME_Y, WIN_H, WIN_W, SpriteBank
+from ....engine.view.sprite_bank import SpriteBank
+from .sprite_view import GAME_X, GAME_Y, WIN_H, WIN_W
 from .title_view import DEFAULT_DATA
 
 _ASCII = "ascii.anm"

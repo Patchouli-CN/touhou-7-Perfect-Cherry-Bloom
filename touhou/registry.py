@@ -13,7 +13,7 @@
 另有与作品名无关的正交维度:
 - 渲染后端:     ``@register_renderer(name)``            装饰 Renderer 实现类
   (协议见 engine/render/__init__.py), ``GameApp(renderer=...)`` 按名解析;
-  "pygame" 为默认后端(engine/view/pygame_backend.py, import touhou 即登记)
+  "pygame" 为默认后端(games/th07/view/pygame_backend.py, import touhou 即登记)
 
 本模块是叶子模块: 不 import engine/schema/games, 不产生循环 import;
 注册由各组件定义处的 decorator 在 import 链上触发(``import touhou`` 即完成

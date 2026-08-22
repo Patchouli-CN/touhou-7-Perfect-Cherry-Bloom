@@ -27,8 +27,8 @@ from pathlib import Path
 
 import pygame
 
-from ...schema.anm import AnmFile
-from ...schema.archive import GameArchive
+from ....schema.anm import AnmFile
+from ....schema.archive import GameArchive
 from .screens import (KEYCONFIG_ITEMS, KEYCONFIG_LABELS, OPTION_ITEMS,
                       PAUSE_ITEMS, OptionFlow)  # PAUSE_ITEMS 再导出(单一来源 screens)
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W

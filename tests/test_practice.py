@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.engine.render import FrameInput  # noqa: E402
-from touhou.engine.view.screens import MenuAction, Screen  # noqa: E402
+from touhou.games.th07.view.screens import MenuAction, Screen  # noqa: E402
 
 
 class StubPracticeGame:
@@ -46,7 +46,7 @@ def _make_app(tmp_path, monkeypatch, game_cls=StubPracticeGame):
     if not pygame.display.get_init():
         pygame.init()
         pygame.display.set_mode((640, 480))
-    from touhou.engine.view import GameApp
+    from touhou.games.th07.view import GameApp
 
     return GameApp(game_cls, score_path=tmp_path / "score.json",
                    config_path=tmp_path / "config.json")
