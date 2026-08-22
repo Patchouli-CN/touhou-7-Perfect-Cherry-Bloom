@@ -11,7 +11,7 @@ EffectLayer(EffectManager.cpp g_EffectMapping 子集): 击坠爆炸 deathAnm1、
 (Player.cpp:1438)。背景为 .std 驱动的 3D 场景, 由 bg3d_view.py 软件渲染;
 加载或渲染失败时退回 stgNbg.anm 主纹理平铺竖滚近似。
 
-sprite id 映射结论(开发期 dump th07.dat + 目检, 工具 tmp_title/anm_dump.py):
+sprite id 映射结论(开发期 dump th07.dat + 目检, 工具 scratch_dbg/anm_dump.py):
 
 - 全局编号 = ANM_OFFSET + entry 链式偏移 + 文件内局部 id
   (AnmManager::LoadAnms: 链式 entry 的 spriteIdxOffset 按

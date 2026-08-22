@@ -4,7 +4,7 @@
 新作品复用窗口版需自带 HUD view(名单/面数参数化见 view/impl.py 的
 game_data 参数)。
 
-布局数值全部来自反编译源码与 anm 脚本静态求值(工具 tmp_title/anm_layout.py);
+布局数值全部来自反编译源码与 anm 脚本静态求值(工具 scratch_dbg/anm_layout.py);
 坐标为 640x480 窗口坐标。锚点: front.anm/樱点槽脚本含 ANM_22 指令
 (ExecuteScript: vm->anchor=3, AnmManager.cpp) → 左上锚, pos 即左上角;
 ascii.anm 樱点数字(script 3 无 ANM_22)与标题系立绘/名字为默认中心锚

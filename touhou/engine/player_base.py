@@ -184,7 +184,7 @@ class PlayerBase(Generic[DeathCtxT]):
         # 发声队列(schema.sound.SoundQueue, 上层注入; None = 静音)
         self.sound: SoundQueue | None = None
 
-    # ---- 向后兼容派生字段(impl.py 在用) ----
+    # ---- 向后兼容派生字段(games/th07/world.py 在用) ----
     @property
     def alive(self) -> bool:
         return self.state != PlayerState.DEAD
@@ -349,7 +349,7 @@ class PlayerBase(Generic[DeathCtxT]):
             self.die()
         return True
 
-    # ---- 旧接口(impl.py 在用, 圆形近似; 整合任务将替换为上面的 AABB) ----
+    # ---- 旧接口(圆形近似, 现无调用方; 判定走上面的 AABB check_contact) ----
     def is_hit(self, pos: Vec2) -> bool:
         return self.pos.distance(pos) <= self.hitbox_radius
 

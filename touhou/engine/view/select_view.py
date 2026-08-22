@@ -1,7 +1,7 @@
 """ 选人/选难度/Extra 选关界面 —— 对照 MainMenu.cpp + title01.anm 脚本稳态布局。
 
 布局数值(640x480)来自 title01.anm 脚本静态求值
-(工具 tmp_title/anm_layout.py; interrupt 7/9/10/22 = 滑入段终值,
+(工具 scratch_dbg/anm_layout.py; interrupt 7/9/10/22 = 滑入段终值,
 对照 MainMenu.cpp 的 SetInterruptActiveVms 调用点)。
 锚点: 难度项/机型块/select02 的脚本含 ANM_22 → 左上锚;
 立绘/名字/说明/页头无 ANM_22 → 默认中心锚(AnmVmBase.Initialize)。

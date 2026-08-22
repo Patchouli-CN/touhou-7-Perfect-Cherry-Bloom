@@ -1,7 +1,14 @@
-""" 敌人与波次 —— Pythonic。
+""" 敌人与伤害管线 —— Pythonic。
 
-Enemy 用"脚本动作列表"(移动到某个点 / 停一下 / 放一发弹)驱动,
-以可读的 Python 数据表达, 取代 ECL 字节码的 C 味直译。
+收录敌人侧的通用机制(对照 EnemyManager.cpp):
+- 伤害结算(settle_damage/DamageResult, §A.6 下半: 樱点/封顶/符卡缩放)
+  与索敌(Targeting, EnemyManager.cpp:894-938);
+- EnemyHost: 敌人容器 + 体术/自机弹命中判定管线(contact_hits/shoot_hits);
+- EclEnemy: 携带 ECL 虚拟机的敌人(游戏本体所用, 鸭子适配 ScriptedEnemy
+  接口), 生命/超时回调在 step() 里触发;
+- ScriptedEnemy + aimed_ring_fire/aimed_spread_fire: 动作列表(途经点 +
+  定时放弹)驱动的简化敌人, 供合成波次(见 games/th07/world.py 波次放出)
+  与测试用。
 """
 
 from __future__ import annotations

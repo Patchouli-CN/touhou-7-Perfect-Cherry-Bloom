@@ -208,7 +208,7 @@ class TitleScreen:
             surf.blit(ver, (TITLE_W - ver.get_width() - 6, TITLE_H - 18))
 
         if show_unimplemented and self._font is not None:
-            # TODO: Practice/Replay/Player Data/Music Room 接功能
+            # 未知菜单项的兜底提示(现菜单项均已接线, 正常不会触发)
             hint = self._font.render("Not implemented yet", True, (255, 120, 120))
             surf.blit(hint, hint.get_rect(center=(MENU_X_REST + 60,
                                                   MENU_Y0 + 8 * MENU_DY + 20)))

@@ -114,8 +114,11 @@ th07 默认行为。窗口版 GameApp 的名单/难度/面数经 `game_data` 参
 - `touhou/engine/` — 跨作品可复用机制: `ecl.py`(ECL 文件解析+状态结构)、
   `ecl_base.py`(ECL VM 框架基类 EclMachineBase)、`bullets.py` /
   `bullet_commands.py` / `lasers.py`(弹幕/激光原语)、`enemies.py`
-  (EclEnemy 宿主+伤害管线)、`replay.py` / `config.py` / `score_store.py`
-  (机制类)、`view/` / `render/`(渲染层)
+  (EclEnemy 宿主+伤害管线)、`player_base.py` / `bomb_base.py` /
+  `boss_base.py` / `globals_base.py` / `item_base.py`(各系统的作品无关
+  基座)、`ending.py`(结局脚本)、`rng.py`(确定性随机)、
+  `replay.py` / `config.py` / `score_store.py`(机制类)、`view/` / `render/`
+  (渲染层)
 - `touhou/schema/` — 资源格式解析(dat/anm/std/ecl/sht/msg/thbgm 等)
 
 新作品(以假想的 th99 为例)的骨架:

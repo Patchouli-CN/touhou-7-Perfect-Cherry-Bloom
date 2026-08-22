@@ -21,7 +21,7 @@ CalcDamageToEnemy(iter_hits)。
 (sakuya_target_position / position_of_last_enemy_hit / bomb_active /
 dialog_active / is_marisa_b / rand_float),
 副作用(掉 P、樱点惩罚、清弹、擦弹得分等)以 self.events 事件透出;
-发弹/死亡/擦弹音效写入上层注入的 self.sound 队列(engine/sound.SoundQueue)。
+发弹/死亡/擦弹音效写入上层注入的 self.sound 队列(schema/sound.SoundQueue)。
 """
 
 from __future__ import annotations
@@ -165,7 +165,7 @@ class PlayerBullet(msgspec.Struct):
 
     @property
     def dead(self) -> bool:
-        """旧接口兼容(enemies/impl 用): dead=True 等价于放回弹池。"""
+        """兼容接口: dead=True 等价于放回弹池(bullet_state=0)。"""
         return self.bullet_state == 0
 
     @dead.setter
@@ -239,7 +239,7 @@ class Player(PlayerBase[DeathContext]):
 
     @property
     def shots(self) -> list[PlayerBullet]:
-        """存活自机弹视图(旧接口: impl/view/enemies 迭代; 写 dead=True 消弹)。"""
+        """存活自机弹视图(world 离屏渲染与 view 渲染迭代; 写 dead=True 消弹)。"""
         return [b for b in self.bullet_pool if b.bullet_state != 0]
 
     # ---- 基类 hook 实现 ----

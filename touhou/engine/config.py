@@ -27,7 +27,7 @@ LIVES_MIN, LIVES_MAX = 2, 5
 # ---- 键位映射(KeyConfig) ----
 # 每个动作一组 pygame 键名(pygame.key.name 的格式), 多键 = 任一生效。
 # 小键盘键("[0]"/"[1]")是中文 IME 吞字母键时的备用(实锤过), 默认保留。
-# 默认值 = 改造前的硬编码键位(engine/view/view.py)。
+# 默认值 = 改造前的硬编码键位(原 engine/view/view.py, 现 engine/view/impl.py)。
 KEYMAP_ACTIONS = ("shoot", "bomb", "focus", "skip",
                   "up", "down", "left", "right")
 DEFAULT_KEYMAP: dict[str, list[str]] = {
@@ -47,7 +47,7 @@ _FORBIDDEN_KEYS = ("escape",)
 def _default_keymap() -> dict[str, list[str]]:
     return {a: list(keys) for a, keys in DEFAULT_KEYMAP.items()}
 
-# exe 同目录语义 → 仓库根(config.py 在 Touhou/engine/ 下, 上两级 = 仓库根)
+# exe 同目录语义 → 仓库根(config.py 在 touhou/engine/ 下, 上两级 = 仓库根)
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config.json"
 
 

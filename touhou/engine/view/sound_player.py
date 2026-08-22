@@ -3,7 +3,7 @@
 - 无声卡/headless 容错: mixer 未初始化则整体静音(ensure_loaded 不炸);
 - wav 运行时从 th07.dat 解到内存(io.BytesIO + pygame.mixer.Sound),
   仓库不留二进制资源;
-- 引擎侧已完成同帧同音去重/5 槽上限(engine/sound.SoundQueue,
+- 引擎侧已完成同帧同音去重/5 槽上限(schema/sound.SoundQueue,
   SoundPlayer.cpp PlaySoundByIdx), 这里只按帧播放 frame_sounds;
 - 每个 SE 索引有独立音量(SOUND_BUFFER_IDX_VOL 的百分之一分贝 → 线性增益);
 - BGM 双音源(Supervisor.cpp PlayAudio / cfg.musicMode):

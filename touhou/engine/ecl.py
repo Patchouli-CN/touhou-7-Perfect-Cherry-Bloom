@@ -18,9 +18,10 @@ opcode 实现在 games/th07/ecl_vm.py(EclMachineTh07 + EclVarId)。
 
 ExIns (RUN_EX_INS/SET_EX_INS, 24 条 boss 特技) 覆盖状态:
 - idx 0..23 全部在 ecl_host.GameEclHost 实现 (EnemyEclInstr.cpp 逐条对照);
-  8 个真实 ecldata 中 0..23 均有出现 (统计见 tmp_title/exins_stats.py)。
-- 表现侧不接: 9 (Effect1e 加速)、15 (闪屏)、19 (音乐淡出)、20 (复活蝶 BGM)
-  以及各条里的 BombEffects/音效/换皮 —— 均为注释说明的无逻辑效果。
+  8 个真实 ecldata 中 0..23 均有出现 (统计见 scratch_dbg/exins_stats.py)。
+- 表现侧: 震屏(BombEffects type=1)经 host.shake_events、音乐(19 淡出/
+  20 复活蝶 BGM)经 host.bgm_events 透出给播放层; 仍不接的只有纯视觉
+  (15 闪屏 pulse、各条里的特效/换皮) —— 均为注释说明的无逻辑效果。
 """
 
 from __future__ import annotations
@@ -599,7 +600,7 @@ class EclEnemyState(msgspec.Struct):
     bullet_rank_amount1_high: int = 0
     bullet_rank_amount2_low: int = 0
     bullet_rank_amount2_high: int = 0
-    # anm 只存 id(渲染侧不接)
+    # anm 只存 id(渲染侧经 id 起 anm 脚本 VM, 见 view/sprite_view.py)
     anm_idx: int = -1
     sub_anm_idx: list[int] = msgspec.field(default_factory=lambda: [-1, -1])
     move_anm: tuple[int, ...] = ()

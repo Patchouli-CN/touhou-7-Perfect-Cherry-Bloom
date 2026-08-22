@@ -15,8 +15,9 @@ GameEclHost 持有 BulletWorld/LaserWorld/ItemWorld/EnemyHost 的引用:
 
 24 条 ExIns boss 特技 (EnemyEclInstr.cpp g_EclExInstr) 全部实现, 见
 run_ex_instr 的 _EX_DISPATCH —— 8 个 ecldata 里 0..23 全部有真实使用。
-BombEffects/闪屏等视觉表现不接(各方法注释注明); 音效经 self.sound 队列、
-BGM 经 self.bgm_events 透出(PLAY_SOUND / ex19 / ex20), 由 impl 帧末收口。
+闪屏/特效/换皮等纯视觉不接(各方法注释注明); 震屏(BombEffects type=1)
+经 self.shake_events、音效经 self.sound 队列、BGM 经 self.bgm_events 透出
+(PLAY_SOUND / ex19 / ex20), 由 impl 帧末收口。
 """
 
 from __future__ import annotations
@@ -391,8 +392,9 @@ class GameEclHost(EclHost):
                      ctx=None) -> bool:
         """24 条 boss 特技 (EnemyEclInstr.cpp g_EclExInstr) 的分派。
 
-        语义逐条照抄 C++(各方法注释标行号); BombEffects/音效/音乐等视觉部分
-        留注释不接。全部 24 条在 8 个 ecldata 中均有真实使用(见文件头注释)。
+        语义逐条照抄 C++(各方法注释标行号); 闪屏/特效等纯视觉部分留注释不接
+        (震屏/音乐事件经 shake_events/bgm_events 透出)。全部 24 条在 8 个
+        ecldata 中均有真实使用(见文件头注释)。
         """
         fn = self._EX_DISPATCH.get(idx)
         if fn is None:

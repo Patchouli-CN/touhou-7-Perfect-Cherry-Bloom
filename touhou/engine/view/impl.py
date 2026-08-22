@@ -546,7 +546,7 @@ class GameApp:
             self._practice_mode = True
             self._screen = Screen.DIFFICULTY
         elif act == "unimplemented":
-            # TODO: Replay/Music Room 接功能
+            # 兜底: 未知菜单项(现菜单项均已接线, 正常不会走到)
             self._renderer.play_menu_se("cancel")
             self._unimplemented_timer = _UNIMPLEMENTED_HINT_FRAMES
 

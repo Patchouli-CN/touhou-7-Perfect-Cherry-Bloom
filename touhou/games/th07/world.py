@@ -1620,7 +1620,7 @@ class PerfectCherryBloom:
 
     # ---- 批量跑(无窗口) ----
     def run(self, *, frames: int = 120) -> np.ndarray | None:
-        """离屏跑 N 帧并渲染, 返回末帧 RGB 数组。窗口玩法请用 touhou.engine.view.GameView。"""
+        """离屏跑 N 帧并渲染, 返回末帧 RGB 数组。窗口玩法请用 engine/view/sprite_view.py 的 GameView。"""
         print(f"《第{self.stage_no}面 {self.stage.title}》 BGM: {self.stage.bgm_names[0]}")
         last: np.ndarray | None = None
         for i in range(frames):

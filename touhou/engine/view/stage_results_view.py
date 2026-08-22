@@ -2,7 +2,7 @@
 
 原版: stageClearBg 贴图 + 转场截图 + AsciiManager 逐行文字;
 本期简化: 半透明面板 + 逐项数字(显示值, 同 Gui::OnDraw finishedStage 段)
-+ 按键继续(对话 PAUSE 门控, Z 提前结束, 见 engine/msg.py)。
++ 按键继续(对话 PAUSE 门控, Z 提前结束, 见 schema/msg.py)。
 数据由 games.th07.world._on_stage_results 生成(game.stage_results)。
 """
 
