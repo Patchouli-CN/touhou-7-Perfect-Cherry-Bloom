@@ -11,7 +11,8 @@ import msgspec
 from typing import Callable, Sequence
 
 from .bullets import BulletWorld
-from .ecl import EclMachine, EnemyBulletShooter, Vec3
+from .ecl import EnemyBulletShooter, Vec3
+from .ecl_base import EclMachineBase
 from ..games.th07.player import PlayerState
 from ..utils import Vec2, angle_to
 
@@ -379,7 +380,7 @@ def aimed_spread_fire(arms: int = 5, spread_angle: float = 0.2, speed: float = 2
 # ---- ECL 驱动的敌人 (EnemyManager::OnUpdate 的 RunEcl/回调段) ----
 
 class EclEnemy:
-    """携带 EclMachine 的敌人, 鸭子类型适配 ScriptedEnemy 接口。
+    """携带 ECL 虚拟机(EclMachineBase 子类)的敌人, 鸭子类型适配 ScriptedEnemy 接口。
 
     权威状态在 EclEnemyState (machine.enemy), 字段映射:
       pos         ← state.pos (Vec3 的 x/y, 返回拷贝)
@@ -396,7 +397,7 @@ class EclEnemy:
     记账经 host (GameEclHost) 透出。
     """
 
-    def __init__(self, machine: EclMachine, host=None) -> None:
+    def __init__(self, machine: EclMachineBase, host=None) -> None:
         self.machine = machine
         self.state = machine.enemy
         self._host = host          # GameEclHost (清场/超时事件), None=裸跑

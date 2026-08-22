@@ -13,7 +13,8 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.games.th07.world import PerfectCherryBloom  # noqa: E402
 from touhou.engine.bullets import BulletWorld  # noqa: E402
-from touhou.engine.ecl import EclMachine, EclOpcode, EclWorld  # noqa: E402
+from touhou.engine.ecl import EclOpcode, EclWorld  # noqa: E402
+from touhou.games.th07.ecl_vm import EclMachineTh07 as EclMachine  # noqa: E402
 from touhou.games.th07.ecl_host import GameEclHost  # noqa: E402
 from touhou.engine.enemies import EnemyHost  # noqa: E402
 from touhou.games.th07.items import ItemType, ItemWorld  # noqa: E402
@@ -156,7 +157,8 @@ def _host_with_sound(*subs: list[bytes]) -> tuple[EclMachine, GameEclHost]:
     f = build_ecl(*subs)
     world = EclWorld(difficulty=1)
     host = GameEclHost(f, world, enemies=EnemyHost(), bullets=BulletWorld(),
-                       lasers=LaserWorld(), items=ItemWorld())
+                       lasers=LaserWorld(), items=ItemWorld(),
+                       ecl_machine_cls=EclMachine)
     host.sound = SoundQueue()
     m = EclMachine(f, world=world, host=host)
     m.enemy.life = 10

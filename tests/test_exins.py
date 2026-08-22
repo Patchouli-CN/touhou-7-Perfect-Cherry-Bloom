@@ -14,7 +14,8 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.engine.bullet_commands import CmdFlag  # noqa: E402
 from touhou.engine.bullets import Aim, BulletWorld, Burst  # noqa: E402
-from touhou.engine.ecl import EclMachine, EclOpcode, EclWorld, Vec3  # noqa: E402
+from touhou.engine.ecl import EclOpcode, EclWorld, Vec3  # noqa: E402
+from touhou.games.th07.ecl_vm import EclMachineTh07 as EclMachine  # noqa: E402
 from touhou.games.th07.ecl_host import GameEclHost  # noqa: E402
 from touhou.engine.enemies import EnemyHost  # noqa: E402
 from touhou.games.th07.items import ItemWorld  # noqa: E402
@@ -30,7 +31,8 @@ def _setup(*subs: list[bytes], difficulty: int = 1):
     f = build_ecl(*subs)
     world = EclWorld(difficulty=difficulty)
     host = GameEclHost(f, world, enemies=EnemyHost(), bullets=BulletWorld(),
-                       lasers=LaserWorld(), items=ItemWorld())
+                       lasers=LaserWorld(), items=ItemWorld(),
+                       ecl_machine_cls=EclMachine)
     m = EclMachine(f, world=world, host=host)
     m.enemy.life = 10
     m.start(0)

@@ -6,7 +6,8 @@ import pytest
 import touhou
 from touhou import TouhouWorld
 from touhou.games.th07.world import PerfectCherryBloom
-from touhou.engine.ecl import EclFile, EclMachine
+from touhou.engine.ecl import EclFile
+from touhou.games.th07.ecl_vm import EclMachineTh07 as EclMachine
 from touhou.games.th07.ecl_host import GameEclHost
 from touhou.paths import DEFAULT_DATA
 from touhou.registry import (

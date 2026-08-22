@@ -9,6 +9,8 @@
 - globals.py    ZunGlobals 计数(分数/樱点/动态难度)
 - results.py    结算与评级
 - ecl_host.py   ECL 宿主钩子(register_game_hooks("th07") 登记)
+- ecl_vm.py     TH07 ECL 虚拟机(EclMachineTh07 + EclVarId + 161 条 opcode
+  handler, register_ecl("th07") 登记; VM 框架在 engine/ecl_base.py)
 - playerdata.py Player Data 画面装配
 - world.py      对局主逻辑 PerfectCherryBloom(register_world_impl("th07") 登记)
 

@@ -57,7 +57,7 @@ def _render_with_sub_anm(sub_anm: int, frames: int = 90):
     sub_anm(-1=无), 渲染 frames 帧(让 anm 脚本时序走完: 扇子 scale 0→1
     需 ~60 帧), 返回末帧像素拷贝。
     每次全新 game/view: 复用会让 _enemy_vis 撞上 id 复用而继承旧 VM 相位。"""
-    from touhou.engine.ecl import EclMachine
+    from touhou.games.th07.ecl_vm import EclMachineTh07 as EclMachine
     from touhou.engine.enemies import EclEnemy
 
     g, view, surf = _mk_game_view()

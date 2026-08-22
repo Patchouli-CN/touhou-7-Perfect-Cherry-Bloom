@@ -21,6 +21,7 @@ from .data import CHARACTER_SHT, TH07_DATA
 from ...engine.bullets import BulletWorld, SCREEN
 from ...engine.ecl import EclFile, EclTimelineRunner, EclWorld
 from .ecl_host import GameEclHost
+from .ecl_vm import EclMachineTh07
 from ...engine.ending import EndingData
 from ...engine.enemies import (
     EclEnemy,
@@ -283,7 +284,8 @@ class PerfectCherryBloom:
                                   player_shottype=self.character)
         self.ecl_host = GameEclHost(
             self.ecl_file, self.ecl_world, enemies=self.host,
-            bullets=self.bullets, lasers=self.lasers, items=self.items)
+            bullets=self.bullets, lasers=self.lasers, items=self.items,
+            ecl_machine_cls=EclMachineTh07)
         self.ecl_host.sound = self.sounds
         self.ecl_host.on_set_boss = self._ecl_on_set_boss
         self.ecl_host.on_begin_spellcard = self._ecl_on_begin_spellcard

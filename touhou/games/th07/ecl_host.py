@@ -49,11 +49,11 @@ from ...engine.ecl import (
     EclEnemyState,
     EclFile,
     EclHost,
-    EclMachine,
     EnemyBulletShooter,
     EnemyLaserShooter,
     Vec3,
 )
+from ...engine.ecl_base import EclMachineBase
 from ...engine.enemies import EclEnemy, EnemyHost
 from .items import ItemType, ItemWorld
 from ...engine.lasers import Laser, LaserState, LaserWorld
@@ -77,13 +77,16 @@ class GameEclHost(EclHost):
     """
 
     def __init__(self, ecl_file: EclFile, world, *, enemies: EnemyHost,
-                 bullets: BulletWorld, lasers: LaserWorld, items: ItemWorld) -> None:
+                 bullets: BulletWorld, lasers: LaserWorld, items: ItemWorld,
+                 ecl_machine_cls: type[EclMachineBase]) -> None:
         self.file = ecl_file
         self.world = world
         self.enemies = enemies
         self.bullets = bullets
         self.lasers = lasers
         self.items = items
+        # VM 类构造注入(解耦硬编码实例化; PerfectCherryBloom 注入 EclMachineTh07)
+        self.ecl_machine_cls = ecl_machine_cls
         self.frozen = False       # 炸弹中/玩家非 ALIVE (freeze_ecl_during_bombs 用)
         self.bomb_in_use = False  # 炸弹中 (invisible_on_bomb 规则用, EclManager.cpp:2261)
         self.spellcard_idx = -1   # 当前符卡全局 idx (g_EnemyManager.spellcardInfo.spellcardIdx)
@@ -221,7 +224,7 @@ class GameEclHost(EclHost):
                     score: int, mirror: int, context_args: EclContextArgs
                     ) -> EclEnemy | None:
         """EnemyManager::SpawnEnemy(Ex): 立即跑一帧 RunEcl, 失败则不登记。"""
-        machine = EclMachine(self.file, world=self.world, host=self)
+        machine = self.ecl_machine_cls(self.file, world=self.world, host=self)
         e = EclEnemy(machine, host=self)
         st = machine.enemy
         st.mirror = mirror
@@ -835,7 +838,7 @@ class GameEclHost(EclHost):
                     speed=0.0, angle=2.9)
             self.spawn_bullet_pattern(props)
 
-    # idx → 实现 (g_EclExInstr 下标; idx 3 NoOp 在 EclMachine._run_ex 已短路)
+    # idx → 实现 (g_EclExInstr 下标; idx 3 NoOp 在 EclMachineBase._run_ex 已短路)
     _EX_DISPATCH = {
         0: _ex0_set_pos_to_boss,
         1: _ex1_alice_curve_bullets,

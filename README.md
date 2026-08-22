@@ -89,7 +89,7 @@ print(game.score, game.lives, game.result)  # 结算后 result 非 None
   掉落表/火力档/机体 sht 映射/角色与难度名单), 构造对局时经 `data=` 注入
 
 同一维度同名重复注册报 `ValueError`(防静默覆盖); 查找未注册名报带已注册
-列表的 `KeyError`。th07 的注册点: `engine/ecl.py:EclMachine`、
+列表的 `KeyError`。th07 的注册点: `games/th07/ecl_vm.py:EclMachineTh07`、
 `schema/anm.py:AnmFile`、`games/th07/ecl_host.py:GameEclHost`、
 `games/th07/world.py:PerfectCherryBloom`、`games/th07/data.py:TH07_DATA`。
 
@@ -108,9 +108,11 @@ th07 默认行为。窗口版 GameApp 的名单/难度/面数经 `game_data` 参
 - `touhou/games/th07/` — th07 的游戏逻辑包: `world.py`(对局主逻辑
   PerfectCherryBloom)、`player.py`(自机)、`boss.py`(符卡)、`bomb.py`
   (炸弹+结界)、`items.py`(道具经济)、`globals.py`(樱点/计数)、
-  `results.py`(评级)、`ecl_host.py`(ECL 宿主钩子)、`playerdata.py`
-  (Player Data 装配)、`data.py`(数值表, 单一来源)
-- `touhou/engine/` — 跨作品可复用机制: `ecl.py`(ECL VM)、`bullets.py` /
+  `results.py`(评级)、`ecl_host.py`(ECL 宿主钩子)、`ecl_vm.py`
+  (TH07 ECL 虚拟机: EclMachineTh07 + EclVarId + opcode handler)、
+  `playerdata.py`(Player Data 装配)、`data.py`(数值表, 单一来源)
+- `touhou/engine/` — 跨作品可复用机制: `ecl.py`(ECL 文件解析+状态结构)、
+  `ecl_base.py`(ECL VM 框架基类 EclMachineBase)、`bullets.py` /
   `bullet_commands.py` / `lasers.py`(弹幕/激光原语)、`enemies.py`
   (EclEnemy 宿主+伤害管线)、`replay.py` / `config.py` / `score_store.py`
   (机制类)、`view/` / `render/`(渲染层)
@@ -123,10 +125,11 @@ from touhou.registry import (
     GameData, register_anm, register_ecl, register_game_data,
     register_game_hooks, register_world_impl,
 )
-from touhou.engine.ecl import EclFile, EclHost, EclMachine
+from touhou.engine.ecl import EclFile, EclHost
+from touhou.engine.ecl_base import EclMachineBase
 
 @register_ecl("th99", file_format=EclFile)     # 指令集不同就换自己的 Machine/File
-class Th99EclMachine(EclMachine): ...
+class Th99EclMachine(EclMachineBase): ...      # 基类只定契约, opcode 用 @register 登记
 
 @register_anm("th99", version=2)
 class Th99AnmFile(...): ...

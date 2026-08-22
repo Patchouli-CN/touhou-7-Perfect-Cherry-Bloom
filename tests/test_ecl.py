@@ -12,9 +12,10 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.schema.archive import GameArchive  # noqa: E402
 from touhou.engine.ecl import (  # noqa: E402
-    EclFile, EclHost, EclMachine, EclOpcode, EclTimelineRunner, EclVarId,
-    EclWorld, Vec3,
+    EclFile, EclHost, EclOpcode, EclTimelineRunner, EclWorld, Vec3,
 )
+from touhou.games.th07.ecl_vm import EclMachineTh07 as EclMachine  # noqa: E402
+from touhou.games.th07.ecl_vm import EclVarId  # noqa: E402
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
