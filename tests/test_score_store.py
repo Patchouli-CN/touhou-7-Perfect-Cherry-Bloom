@@ -9,11 +9,12 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.engine.score_store import (  # noqa: E402
     CATK_CAP,
-    SPELLCARD_COUNT,
     ScoreStore,
     default_score,
     make_highscore_record,
 )
+
+SPELLCARD_COUNT = 141  # th07 符卡总数(引擎层已参数化, 本测试按 th07 口径构造)
 
 
 def _rec(score: int, **kw) -> dict:
@@ -26,7 +27,7 @@ def _rec(score: int, **kw) -> dict:
 # ---- JSON 往返 ----
 
 def test_json_roundtrip(tmp_path) -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     assert s.insert_score(_rec(123456)) == 0
     s.record_spellcard_attempt(3, "测试符卡", 0)
     s.record_spellcard_success(3, 0, 200000)
@@ -44,7 +45,7 @@ def test_json_roundtrip(tmp_path) -> None:
 
 
 def test_load_missing_file_returns_default(tmp_path) -> None:
-    s = ScoreStore.load(tmp_path / "nope.json")
+    s = ScoreStore.load(tmp_path / "nope.json", spellcard_count=SPELLCARD_COUNT)
     assert s.highscores == {} and len(s.catk) == SPELLCARD_COUNT
 
 
@@ -59,7 +60,7 @@ def test_load_missing_file_returns_default(tmp_path) -> None:
 def test_load_corrupted_falls_back_to_default(tmp_path, content) -> None:
     p = tmp_path / "score.json"
     p.write_text(content, encoding="utf-8")
-    s = ScoreStore.load(p)
+    s = ScoreStore.load(p, spellcard_count=SPELLCARD_COUNT)
     # 不炸, 坏字段回退默认; 顶层合法时好字段仍保留
     assert isinstance(s, ScoreStore)
     assert len(s.catk) == SPELLCARD_COUNT
@@ -82,7 +83,7 @@ def test_load_partial_keeps_good_fields(tmp_path) -> None:
 # ---- Top10 ----
 
 def test_insert_sorted_descending() -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     assert s.insert_score(_rec(300)) == 0
     assert s.insert_score(_rec(100)) == 1
     assert s.insert_score(_rec(200)) == 1
@@ -91,14 +92,14 @@ def test_insert_sorted_descending() -> None:
 
 def test_insert_tie_new_record_first() -> None:
     """LinkScore: 同分时新记录排在旧记录前。"""
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     s.insert_score(_rec(200, name="OLD"))
     s.insert_score(_rec(200, name="NEW"))
     assert [r["name"] for r in s.entries(1, 0)] == ["NEW", "OLD"]
 
 
 def test_insert_full_list_evicts_lowest() -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     for i in range(10):
         s.insert_score(_rec(1000 + i))
     assert len(s.entries(1, 0)) == 10
@@ -110,7 +111,7 @@ def test_insert_full_list_evicts_lowest() -> None:
 
 def test_insert_boundary_against_defaults() -> None:
     """空榜默认分 100000-k*10000: 低于默认榜尾(10000)不入展示位。"""
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     # 对纯空榜: 任何正分都进真实榜(默认位只是展示补齐)
     assert s.insert_score(_rec(1)) == 0
     assert default_score(0) == 100000 and default_score(9) == 10000
@@ -121,7 +122,7 @@ def test_insert_boundary_against_defaults() -> None:
 
 def test_high_score_floor_100000() -> None:
     """GetHighScore: 空榜/低分底线 100000。"""
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     assert s.high_score(1, 0) == 100000
     s.insert_score(_rec(50000))
     assert s.high_score(1, 0) == 100000
@@ -130,7 +131,7 @@ def test_high_score_floor_100000() -> None:
 
 
 def test_boards_are_per_difficulty_character() -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     s.insert_score(_rec(111, difficulty=0, character=2))
     s.insert_score(_rec(222, difficulty=1, character=0))
     assert [r["score"] for r in s.entries(0, 2)] == [111]
@@ -141,7 +142,7 @@ def test_boards_are_per_difficulty_character() -> None:
 # ---- catk ----
 
 def test_catk_attempt_and_success() -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     s.record_spellcard_attempt(10, "卡名", 2)
     s.record_spellcard_attempt(10, "卡名", 2)
     s.record_spellcard_success(10, 2, 150000)
@@ -156,7 +157,7 @@ def test_catk_attempt_and_success() -> None:
 
 
 def test_catk_cap_and_bounds() -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     s.catk[0]["attempts"][0] = CATK_CAP
     s.record_spellcard_attempt(0, "x", 0)
     assert s.catk[0]["attempts"][0] == CATK_CAP  # 封顶不再 ++
@@ -168,7 +169,7 @@ def test_catk_cap_and_bounds() -> None:
 # ---- CLRD / PSCR / PLST ----
 
 def test_clrd_records_max_stage() -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     s.record_clear(0, 1, 1, num_retries=0)
     assert s.clrd[0]["with_retries"][1] == 1
     assert s.clrd[0]["without_retries"][1] == 1
@@ -181,7 +182,7 @@ def test_clrd_records_max_stage() -> None:
 
 
 def test_pscr_plst_counters() -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     s.record_play(0, 1)
     s.record_play(0, 1)
     s.record_play(3, 2)
@@ -205,13 +206,13 @@ def test_default_name_and_date() -> None:
 
 def test_last_name_defaults_to_default_name() -> None:
     """从未输入过 → last_name = DEFAULT_NAME(原版 LSNM 缺省 8 空格, 本期 PLAYER)。"""
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     assert s.lsnm is None and s.last_name == "PLAYER"
 
 
 def test_lsnm_roundtrip(tmp_path) -> None:
     """set_last_name 登记 LSNM; JSON 往返保留(截断 8 字符)。"""
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     s.set_last_name("ZUN")
     assert s.lsnm == "ZUN" and s.last_name == "ZUN"
     s.set_last_name("TOOLONGNAME99")
@@ -227,7 +228,7 @@ def test_lsnm_roundtrip(tmp_path) -> None:
 
 def test_set_entry_name_renames_ranked_record() -> None:
     """名字输入完成 → 改写榜上第 rank 条的名字(原地改, 同原版改 curScore.name)。"""
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     assert s.insert_score(_rec(300, name="OLD")) == 0
     assert s.insert_score(_rec(100, name="OLD")) == 1
     s.set_entry_name(1, 0, 1, "NEW")

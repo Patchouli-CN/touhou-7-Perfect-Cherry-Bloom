@@ -42,7 +42,7 @@ def _tick_until_game_over(g: PerfectCherryBloom) -> None:
 def test_game_over_waits_for_continue_choice() -> None:
     """无残机死亡 → game_over → 待续关(不自动结算); 选 No 才进结算。"""
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
-                       score_store=ScoreStore())
+                       score_store=ScoreStore(spellcard_count=141))
     _tick_until_game_over(g)
     assert g.game_over and g.result is None
     assert g.continue_available, "难度<4 且次数未尽 → 应可续关"
@@ -69,7 +69,7 @@ def test_continue_play_resets_per_source() -> None:
     """续关 Yes 的重置清单 (AsciiManager.cpp:955-976): 分数清零/残机回满/
     bomb 回满/power=0/cherry=cherryStart/本关计数清, 总擦弹与死亡数保留。"""
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
-                       score_store=ScoreStore())
+                       score_store=ScoreStore(spellcard_count=141))
     _tick_until_game_over(g)
     # 弄脏状态(验证重置清单)
     gl = g.globals
@@ -115,7 +115,7 @@ def test_continue_gating() -> None:
     不出现续关菜单, game_over 次帧直接进结算。"""
     # Extra (difficulty>=4): 不可续关
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=4,
-                           score_store=ScoreStore())
+                           score_store=ScoreStore(spellcard_count=141))
     g.game_over = True
     assert not g.continue_available
     g.continue_play()  # 无效
@@ -124,7 +124,7 @@ def test_continue_gating() -> None:
     assert g.result is not None and not g.result["cleared"]
     # 次数用尽 (numRetries >= maxRetries): 不可续关
     g2 = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
-                            score_store=ScoreStore())
+                            score_store=ScoreStore(spellcard_count=141))
     assert g2.max_retries == 3  # plst.total_frames=0 → <7h → 3
     g2.globals.num_retries = g2.max_retries
     g2.game_over = True
@@ -133,7 +133,7 @@ def test_continue_gating() -> None:
     assert g2.result is not None
     # 续关后次数-1: 用尽前仍可续
     g3 = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
-                            score_store=ScoreStore())
+                            score_store=ScoreStore(spellcard_count=141))
     g3.globals.num_retries = g3.max_retries - 1
     g3.game_over = True
     assert g3.continue_available
@@ -151,7 +151,7 @@ def test_stage_clear_advances_to_next_stage() -> None:
     power/lives/grazeInTotal 带走, subrank/本关计数清零, 玩家回 SPAWNING。
     """
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
-                       score_store=ScoreStore())
+                       score_store=ScoreStore(spellcard_count=141))
     assert g.ecl_file is not None and g.ecl_timelines, "需要真实 ECL 数据"
     g.globals.score = 1234567
     g.globals.gui_score = 1234567
@@ -180,7 +180,7 @@ def test_stage_clear_advances_to_next_stage() -> None:
 def test_final_result_fields() -> None:
     """结算字段齐全(渲染层依赖): 分数/难度/各项计数/评级/名次/Slow%。"""
     g = PerfectCherryBloom(data_path=DAT, character=2, difficulty=3,
-                       score_store=ScoreStore())
+                       score_store=ScoreStore(spellcard_count=141))
     r = g.final_result(cleared=False)
     for k in ("score", "rating", "rank", "cleared", "clear_percent",
               "difficulty", "character", "stage", "name", "retries",
@@ -201,7 +201,7 @@ def test_catk_recorded_on_real_ecl_spellcard() -> None:
     演示 Boss 路径(_spawn_demo_boss)不统计。
     """
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
-                       score_store=ScoreStore())
+                       score_store=ScoreStore(spellcard_count=141))
     _tick_until_alive(g)
     # 手工造一个 ECL 敌人状态走 begin/end 桥(等价 ECL BEGIN_SPELLCARD 指令)
     from touhou.engine.ecl import EclEnemyState

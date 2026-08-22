@@ -1,5 +1,10 @@
 """bomb 视觉还原 —— 对照 th07 BombData.cpp 的 12 个 *Draw + Gui cutin/横幅。
 
+【th07 专属】本模块逐行对应妖妖梦 BombData.cpp/Gui.cpp, 机体常量 CHAR_* 与
+符卡名/cutin 贴图表(_BOMB_CUTIN)都绑死 th07 的 bomb 行为与资源编号,
+注入参数化的成本远大于收益 —— 从 games/th07/bomb import CHAR_* 属后端
+内聚, 是有意保留的作品耦合(新作品复用窗口版需自带 bomb view)。
+
 逻辑层 (games/th07/bomb.py) 只移植 *Calc 的伤害/清弹盒与 sub_info 运动状态,
 anm VM 全部留在本模块 (C++ 里 subInfo->vms 由 *Calc 里 ExecuteAnmIdx 启动、
 *Draw 里按公式摆位绘制; 这里由渲染层按相同条件自行持有 Vm2d):

@@ -327,8 +327,8 @@ class GameEngine(Protocol):
     @property
     def power(self) -> float: ...
 
-    @property
-    def cherry(self) -> int: ...
+    # cherry(樱点)是 th07 专属概念, 不进必选协议; 门面经
+    # ``getattr(impl, "cherry", 0)`` 能力位读取(无樱点的作品得 0)。
 
     # ---- boss / 结界 / 实体容器(只读形态) ----
     @property

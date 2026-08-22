@@ -118,7 +118,7 @@ def test_spellcard_page_empty() -> None:
 
 
 def test_spellcard_page_counts_and_total() -> None:
-    s = ScoreStore()
+    s = ScoreStore(spellcard_count=141)  # 141 = th07 符卡数
     s.record_spellcard_attempt(0, "霜符「Frost Columns」", 0)
     s.record_spellcard_attempt(0, "霜符「Frost Columns」", 0)
     s.record_spellcard_success(0, 0, 123456)

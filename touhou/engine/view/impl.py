@@ -18,13 +18,12 @@ import time
 
 from ...logger import logger as log
 
-from ...registry import GameData, get_renderer
+from ...registry import GameData, get_game, get_renderer
 from ..config import DEFAULT_CONFIG_PATH, GameConfig
 from ...schema.sound import SE
 from .. import replay as replay_mod
 from ..render import FrameInput, Renderer
 from ..score_store import ScoreStore
-from ...games.th07.world import DEFAULT_SCORE_PATH
 from .screens import (
     CHARACTERS,
     DIFFICULTIES,
@@ -46,7 +45,7 @@ from .screens import (
     practice_max_stage,
 )
 from .sound_player import SoundPlayer
-from ...paths import resolve_data_path
+from ...paths import DEFAULT_SCORE_PATH, resolve_data_path
 
 # 标题画面 BGM (MainMenu.cpp:230/2685: LoadAudio(8,"bgm/th07_01.mid"))
 _TITLE_BGM = "th07_01.mid"
@@ -55,6 +54,19 @@ _TITLE_BGM = "th07_01.mid"
 _RESULT_BGM = "init.mid"
 
 _UNIMPLEMENTED_HINT_FRAMES = 90
+
+
+def _default_spellcard_count() -> int:
+    """未传 game_data 时的符卡总数兜底: 注册表里 th07 的数值表, 找不到为 0。
+
+    延迟到运行时的注册表查询(registry 是叶子模块, 无循环 import);
+    引擎层不 import 作品包。
+    """
+    try:
+        data = get_game("th07").data
+    except KeyError:  # NotRegisteredError(未注册 th07)
+        return 0
+    return len(data.spellcard_scores) if data is not None else 0
 
 
 class GameApp:
@@ -98,6 +110,10 @@ class GameApp:
         self._practice_stage_items = (
             [f"Stage {i}" for i in range(1, gd.stage_count + 1)]
             if gd is not None else PRACTICE_STAGE_ITEMS)
+        # 符卡总数(catk 长度): game_data 优先, 缺省走注册表兜底
+        self._spellcard_count = (
+            len(gd.spellcard_scores) if gd is not None and gd.spellcard_scores
+            else _default_spellcard_count())
         self._diff = MenuCursor(self._difficulties, index=1)
         self._char = MenuCursor(self._characters, index=0)
         self._extra_mode = False  # Extra Start 流: 选机体 → 选 Extra/Phantasm
@@ -128,7 +144,7 @@ class GameApp:
         # config.keymap(键名) → 后端输入映射(改键后 _rebuild_keymap 重建)
         self._rebuild_keymap()
         # score.json 落盘位置: exe 同目录语义 → 仓库根(score_path 可覆盖, 测试用)
-        # 与 games/th07/world.py 的 DEFAULT_SCORE_PATH 同一位置, 别各算各的
+        # 默认值集中定义在 touhou/paths.py, 与 world.py 同一来源, 别各算各的
         if score_path is None:
             score_path = DEFAULT_SCORE_PATH
         self._score_path = score_path
@@ -510,7 +526,8 @@ class GameApp:
             # Player Data → Result 画面(MainMenu.cpp:430-433 curState=5)
             self._renderer.play_menu_se("ok")
             self._pd_flow = PlayerDataFlow()
-            self._pd_store = ScoreStore.load(self._score_path)
+            self._pd_store = ScoreStore.load(self._score_path,
+                                             spellcard_count=self._spellcard_count)
             self._screen = Screen.PLAYER_DATA
         elif act == "music_room":
             # Music Room → 音乐室(MainMenu.cpp:434-437 → MusicRoom::RegisterChain)
@@ -546,7 +563,8 @@ class GameApp:
     def _enter_practice_stage_select(self) -> None:
         """选完机体 → Practice 选关页: 按 clrd 算可解锁面数
         (MainMenu.cpp:1912-1926, without_retries[难度], 下限 1)。"""
-        store = ScoreStore.load(self._score_path)
+        store = ScoreStore.load(self._score_path,
+                                spellcard_count=self._spellcard_count)
         dif_idx = self._diff_index(self._practice_diff.current)
         self._practice_max_stage = practice_max_stage(
             store, self._char_index(self._char.current), dif_idx)
@@ -574,7 +592,8 @@ class GameApp:
         store = getattr(game, "store", None)
         if store is not None:
             try:
-                disk = ScoreStore.load(self._score_path)
+                disk = ScoreStore.load(self._score_path,
+                                       spellcard_count=self._spellcard_count)
                 disk.catk = store.catk      # catk 记(符卡挑战/捕获)
                 disk.save(self._score_path)
             except OSError:

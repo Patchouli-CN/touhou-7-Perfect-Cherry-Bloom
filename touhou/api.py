@@ -25,8 +25,11 @@ from .types import GameEngine, KeysTuple, PathLike
 
 
 # ---- 枚举 ----
+# ShotType/Difficulty 是"已知枚举"= th07 的 6 机体/6 难度(语义与原作一致的作品
+# 可直接复用)。Game/TouhouWorld 的 character/difficulty 参数接受裸 int, 不限定
+# 必须用这两个枚举; 新作品可在自己的 games/thXX/ 定义新枚举。
 class ShotType(IntEnum):
-    """机体(= 内部 shotType 0..5)。"""
+    """机体(= 内部 shotType 0..5; 名单为 th07 的 6 机体)。"""
     REIMU_A = 0
     REIMU_B = 1
     MARISA_A = 2
@@ -40,7 +43,7 @@ Character = ShotType
 
 
 class Difficulty(IntEnum):
-    """难度(= 内部 difficulty 0..5; Extra/Phantasm 对应 7/8 面)。"""
+    """难度(= 内部 difficulty 0..5; Extra/Phantasm 对应 7/8 面; th07 的 6 难度)。"""
     EASY = 0
     NORMAL = 1
     HARD = 2
@@ -319,7 +322,8 @@ class Game:
 
     @property
     def cherry(self) -> int:
-        return self._impl.cherry
+        # 樱点是 th07 专属能力位(非 GameEngine 必选协议): 无樱点系统的作品得 0
+        return getattr(self._impl, "cherry", 0)
 
     @property
     def cherry_max(self) -> int:

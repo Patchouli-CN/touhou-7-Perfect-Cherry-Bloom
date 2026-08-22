@@ -75,10 +75,8 @@ from .globals import ZunGlobals
 from .results import RunStats, ScoreRecord, TopList, clear_percent, rating
 from ...engine.score_store import ScoreStore, make_highscore_record
 from ...schema.sound import SE, SoundQueue
-from ...paths import DEFAULT_DATA, resolve_data_path  # noqa: F401 (DEFAULT_DATA 为兼容再导出)
-
-# score.json 默认位置: exe 同目录语义 → 仓库根(原版 score.dat 在 exe 旁)
-DEFAULT_SCORE_PATH = Path(__file__).resolve().parent.parent.parent.parent / "score.json"
+from ...paths import (DEFAULT_DATA, DEFAULT_SCORE_PATH,  # noqa: F401 (DEFAULT_DATA 为兼容再导出)
+                      resolve_data_path)
 
 # CHARACTER_SHT(角色 → .sht 文件名)已集中于同包 data.py(单一来源);
 # 这里的导入作 data 缺省/残缺的回落默认。
@@ -174,7 +172,8 @@ class PerfectCherryBloom:
         if score_store is not None:
             self.store = score_store
         else:
-            self.store = ScoreStore.load(score_path or DEFAULT_SCORE_PATH)
+            self.store = ScoreStore.load(score_path or DEFAULT_SCORE_PATH,
+                                         spellcard_count=len(self.data.spellcard_scores))
         self.store.record_play(character, difficulty)  # PSCR/PLST 开局计数
         self.result: dict | None = None   # 结算数据(通关/GameOver 后填, view 消费)
         self.cleared = False              # 通关标志(终面击破+timeline 完)
@@ -1472,7 +1471,9 @@ class PerfectCherryBloom:
         for ev in self.player.take_events():
             k = ev.kind
             if k == PlayerEventKind.DEATH_SETTLE:
-                assert ev.data is not None  # DEATH_SETTLE 事件必带 DeathSettle
+                # DEATH_SETTLE 事件必带 th07 的 DeathSettle(基类注解为通用基座,
+                # 本作品运行时恒为子类 —— isinstance 收窄兼作不变量断言)
+                assert isinstance(ev.data, DeathSettle)
                 pos = self._death_pos or self.player.pos
                 log.debug("玩家死亡 (frame={}, pos=({:.1f},{:.1f}), "
                           "power {}→{}, 残机={})", self.frame, pos.x, pos.y,

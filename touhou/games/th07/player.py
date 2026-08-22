@@ -1,4 +1,9 @@
-""" 玩家(自机) —— 基于真实 .sht 射击数据的完整实现。
+""" 玩家(自机, th07) —— 基于真实 .sht 射击数据的完整实现。
+
+通用骨架(状态机五态/移动/判定·擦弹 AABB/死亡重生流程/事件结构)已上移到
+引擎层基座 engine/player_base.py(PlayerBase/PlayerState/PlayerEventKind/
+PlayerEvent/DeathSettle/DeathContext/KillResult); 本模块留 th07 专属:
+.sht 驱动的射击系统、子机(§A.4)、樱点擦弹/死亡结算 hook、6 机体常量与回调表。
 
 移动速度、判定/擦弹半径、射击等级、每发弹的角度/速度/伤害/命中盒
 全部来自游戏资源解析的 ShotData(§A 规格)。
@@ -27,15 +32,28 @@ import msgspec
 from enum import IntEnum
 from typing import Callable, Iterator
 
-from ...engine.bullets import Bullet, SCREEN
+from ...engine.bullets import SCREEN
+from ...engine.player_base import (  # noqa: F401 (枚举/结构/常量为兼容再导出)
+    BULLET_GRACE_PERIOD,
+    GRAZE_EXPAND,
+    RESPAWN_INVULN,
+    SPAWN_INVULN,
+    SPAWN_TICKS,
+    KillResult,
+    PlayerBase,
+    PlayerEvent,
+    PlayerEventKind,
+    PlayerState,
+    _aabb_intersect,
+)
+from ...engine.player_base import DeathContext as _DeathContextBase
+from ...engine.player_base import DeathSettle as _DeathSettleBase
 from ...schema.shot_data import ShotData, ShotEntry
-from ...schema.sound import SoundQueue
 from ...utils import Vec2, normalize_angle_diff
 
 _DOWN = Vec2(0, 1)
 
-# ---- §A.7 关键常量(Player.cpp) ----
-GRAZE_EXPAND = 20.0          # CheckGraze 弹盒外扩像素
+# ---- §A.7 关键常量(Player.cpp; 通用骨架常量在 engine/player_base.py 并再导出) ----
 GRAZE_SCORE_DISPLAY = 200    # 擦弹显示分(代码值 AddScore(2000))
 GRAZE_SUBRANK = 6            # 擦弹 subrank 增量
 GRAZE_STAGE_CAP = 9999
@@ -44,10 +62,6 @@ DEATH_SUBRANK_PENALTY = 1600
 DEATH_POWER_LOSS = 16
 CHERRY_PENALTY_CAP = 100000        # 非咲夜
 CHERRY_PENALTY_CAP_SAKUYA = 60000
-RESPAWN_INVULN = 240               # 重生无敌帧数
-SPAWN_INVULN = 120                 # 出生 invulnerabilityTimer(AddedCallback)
-SPAWN_TICKS = 30                   # Respawn 触发阈值(invulnerabilityTimer>=30)
-BULLET_GRACE_PERIOD = 60           # 重生后每帧 RemoveAllBullets(0) 的帧数
 FOCUS_TRANSITION_FRAMES = 8        # 子机 focus/unfocus 过渡帧数
 OPTION_FOCUS_ANGLE = 0.22439948    # 咲夜B focus 子机夹角半宽
 OPTION_ANGLE_MIN = -2.1991148
@@ -86,15 +100,11 @@ MISSILE_BLAST = {
 }
 
 
-class PlayerState(IntEnum):
-    """玩家状态机(Player.hpp PlayerState)。"""
-
-    ALIVE = 0
-    SPAWNING = 1
-    DEAD = 2
-    INVULNERABLE = 3
-    BORDER = 4
-
+# PlayerState/PlayerEventKind/PlayerEvent/KillResult/DeathSettle/DeathContext
+# 已提升到引擎层(touhou/engine/player_base.py, 弹幕 STG 通用骨架); 本模块
+# 从引擎 import 并再导出, 保持 ``games.th07.player.*`` 引用兼容(测试与
+# world.py 仍经本模块取)。DeathSettle/DeathContext 在此子类化追加 th07 专属
+# 字段(樱点惩罚/subrank/咲夜判定)。
 
 class OptionState(IntEnum):
     """子机状态(Player.hpp OptionState)。"""
@@ -106,50 +116,20 @@ class OptionState(IntEnum):
     UNFOCUSING = 4
 
 
-class PlayerEventKind(IntEnum):
-    """step/判定透出的事件(由上层整合接线 globals/items/bullets)。"""
+class DeathSettle(_DeathSettleBase):
+    """死亡倒计时归 0 的结算(UpdateDeath, th07 扩展: 樱罚/subrank)。
+    通用字段(has_lives/new_power/掉 P/重撒)在基类。"""
 
-    DEATH_SETTLE = 1       # data: DeathSettle(死亡结算: power/掉 P/樱罚/重撒/subrank)
-    RESPAWNED = 2          # 重生完成(DEAD→INVULNERABLE); 上层扣残机/重置炸弹
-    GRAZE = 3              # 擦弹; value=显示分 200, 另见 GRAZE_SUBRANK
-    BREAK_BORDER = 4       # BORDER 中弹 → 结界破保命(不死)
-    REMOVE_ALL_BULLETS = 5  # bulletGracePeriod 内每帧透出(清弹信号)
-
-
-class PlayerEvent(msgspec.Struct):
-    kind: PlayerEventKind
-    value: int = 0
-    data: DeathSettle | None = None
-
-
-class DeathSettle(msgspec.Struct):
-    """死亡倒计时归 0 的结算(UpdateDeath)。数值均已算出, 待上层应用。"""
-
-    has_lives: bool
-    new_power: float
-    drop_power_big: int = 0     # 大 P 个数(有残机 1)
-    drop_power_small: int = 0   # 小 P 个数(有残机 5)
-    drop_full_power: int = 0    # FULL_POWER 个数(无残机 5)
     cherry_penalty: int = 0     # 已 cap + 向下取整 10
-    activate_all_items: bool = False
     subrank_delta: int = -DEATH_SUBRANK_PENALTY
 
 
-class DeathContext(msgspec.Struct):
-    """死亡结算需要的外部状态快照(上层每帧或仅死亡时传入)。"""
+class DeathContext(_DeathContextBase):
+    """死亡结算需要的外部状态快照(th07 扩展: 樱点/咲夜); lives 在基类。"""
 
-    lives: int = 1
     cherry: int = 0
     cherry_start: int = 0
     is_sakuya: bool = False
-
-
-class KillResult(IntEnum):
-    """CalcKillboxCollision 结果。"""
-
-    NONE = 0
-    DEATH = 1          # 命中且 ALIVE → Die()
-    BORDER_BREAK = 2   # 命中且 BORDER → 结界破
 
 
 _HISTORY_SENTINEL = Vec2(-999.0, 0.0)
@@ -201,11 +181,14 @@ class PlayerBulletTimer(msgspec.Struct):
     bullet: PlayerBullet | None = None
 
 
-class Player:
-    """自机: 状态机 + 移动 + 按 .sht 射击调度 + 判定/擦弹 + 死亡重生。"""
+class Player(PlayerBase[DeathContext]):
+    """自机(th07): 状态机/移动/判定/死亡重生骨架在引擎基类 PlayerBase;
+    本类实现按 .sht 射击调度、子机系统与 th07 专属结算 hook。"""
 
     # 射击总周期(fireTime 0..总周期-1), 见规格 A.5(以 30 帧滚动)
     FIRE_CYCLE = 30
+
+    DEATH_SE = 4  # SOUND_PICHUN (Player.cpp:1238, Die)
 
     def __init__(
         self,
@@ -217,31 +200,21 @@ class Player:
         power: float = 0.0,
         rotating_options: bool = False,
     ) -> None:
-        self.pos = pos or Vec2(SCREEN.x / 2, SCREEN.y - 64)
-        self.bounds = bounds or (Vec2(8, 16), Vec2(SCREEN.x - 8, SCREEN.y - 16))
+        # 判定/擦弹半宽(来自 .sht, A.3: 半宽 = radius/2)
+        super().__init__(
+            hitbox_radius=shot_data.hitbox_radius / 2,
+            graze_radius=shot_data.grab_item_radius / 2,
+            initial_respawn_timer=shot_data.initial_respawn_timer,
+            pos=pos, bounds=bounds)
         self.shot_data = shot_data
         self.shot_data_focus = shot_data_focus or shot_data
         self.power = power
         # 咲夜B: 子机绕 optionAngle 旋转(§A.4)
         self.rotating_options = rotating_options
 
-        # 判定/擦弹半宽(来自 .sht, A.3: 半宽 = radius/2)
-        self.hitbox_radius = shot_data.hitbox_radius / 2
-        self.graze_radius = shot_data.grab_item_radius / 2
-
-        self.focus = False
-        # 状态机(AddedCallback): SPAWNING + invulnerabilityTimer=120
-        self.state = PlayerState.SPAWNING
-        self.invulnerability_timer = SPAWN_INVULN
-        self.respawn_timer = shot_data.initial_respawn_timer
-        self.bullet_grace_period = 0
-        self.events: list[PlayerEvent] = []
         self.fire_time = -1       # fireBulletTimer: -1=未射击, 0..29 滚动
         self._firing = False      # 是否按住射击
         self._fire_active = False
-        self.frame = 0
-        self._move = Vec2.zero()
-        self.velocity = Vec2.zero()
         # 子机(A.4): optionState 状态机 + focusMovementTimer 8 帧过渡
         self.option_state = OptionState.UNFOCUSED
         self.focus_movement_timer = 0
@@ -261,8 +234,6 @@ class Player:
         self.bomb_active = False     # 炸弹使用中(持续弹压计时/伤害 /3)
         self.dialog_active = False   # 对话框中(持续弹压计时)
         self.is_marisa_b = False     # MarisaB: 炸弹中不发射(UpdateFireBulletTimer)
-        # 发声队列(schema.sound.SoundQueue, 上层注入; None = 静音)
-        self.sound: SoundQueue | None = None
         # 随机数注入点: rand_float(r) 返回 [0, r) 的浮点
         self.rand_float: Callable[[float], float] = lambda r: random.random() * r
 
@@ -271,93 +242,34 @@ class Player:
         """存活自机弹视图(旧接口: impl/view/enemies 迭代; 写 dead=True 消弹)。"""
         return [b for b in self.bullet_pool if b.bullet_state != 0]
 
-    # ---- 向后兼容派生字段(impl.py 在用) ----
-    @property
-    def alive(self) -> bool:
-        return self.state != PlayerState.DEAD
-
-    @alive.setter
-    def alive(self, v: bool) -> None:
-        self.state = PlayerState.ALIVE if v else PlayerState.DEAD
-
-    @property
-    def invuln(self) -> int:
-        return self.invulnerability_timer
-
-    @invuln.setter
-    def invuln(self, v: int) -> None:
-        self.invulnerability_timer = v
-
-    def take_events(self) -> list[PlayerEvent]:
-        """取走并清空当前累计的事件。"""
-        ev, self.events = self.events, []
-        return ev
-
-    def _play_sound(self, idx: int) -> None:
-        """PlaySoundByIdx 透出(上层注入 SoundQueue; 未注入则静音)。"""
-        if self.sound is not None:
-            self.sound.play(idx)
-
-    # ---- 输入 ----
-    def push(self, x: int, y: int, *, focus: bool = False, firing: bool = True) -> None:
-        self._move = Vec2(float(x), float(y))
-        self.focus = focus
+    # ---- 基类 hook 实现 ----
+    def _on_push(self, firing: bool) -> None:
+        """push 的射击按住状态。"""
         self._firing = firing
 
-    def push_keys(self, *, left=False, right=False, up=False, down=False,
-                  focus=False, firing=True) -> None:
-        self.push((1 if right else 0) - (1 if left else 0),
-                  (1 if down else 0) - (1 if up else 0), focus=focus, firing=firing)
+    def _tick_options(self) -> None:
+        """子机系统(§A.4): optionState 状态机 + 角度回中。"""
+        self._update_options()
+        self._update_option_angle()
 
-    # ---- 每帧(对照 Player::OnUpdate 简化) ----
-    def step(self, death_ctx: DeathContext | None = None) -> None:
-        self.frame += 1
-        self.events = []
-
-        # UpdateState: bulletGracePeriod 内每帧清弹
-        if self.bullet_grace_period > 0:
-            self.bullet_grace_period -= 1
-            self.events.append(PlayerEvent(PlayerEventKind.REMOVE_ALL_BULLETS))
-
-        if self.state == PlayerState.DEAD:
-            self._update_death(death_ctx)
-        elif self.state == PlayerState.SPAWNING:
-            # Respawn: invulnerabilityTimer>=30 → INVULNERABLE(240)
-            # (AddedCallback 给 120>=30, 出生次帧即转入)
-            if self.invulnerability_timer >= SPAWN_TICKS:
-                self._enter_invulnerable()
-        elif self.state == PlayerState.INVULNERABLE:
-            self.invulnerability_timer -= 1
-            if self.invulnerability_timer <= 0:
-                self.invulnerability_timer = 0
-                self.state = PlayerState.ALIVE
-
-        # HandlePlayerInputs: DEAD/SPAWNING 不移动
-        if self.state not in (PlayerState.DEAD, PlayerState.SPAWNING):
-            self._move_player()
-            self._update_options()
-            self._update_option_angle()
-
-        # OnUpdate 顺序: UpdateShots → UpdateFireBulletTimer(内部 SpawnBullets)
+    def _tick_shots(self) -> None:
+        """射击调度: OnUpdate 顺序 UpdateShots → UpdateFireBulletTimer(内部 SpawnBullets)。"""
         self._update_shots()
         self._update_fire_timer()
 
-    # ---- 死亡/重生(§A.7: Die/UpdateDeath/Respawn) ----
-    def die(self) -> None:
-        self.state = PlayerState.DEAD
-        self.invulnerability_timer = 0
-        self.respawn_timer = self.shot_data.initial_respawn_timer
-        self._play_sound(4)  # SOUND_PICHUN (Player.cpp:1238, Die)
+    def _current_speeds(self) -> tuple[float, float]:
+        """当前 (直线速度, 斜向速度): 按 focus 查 .sht。"""
+        sd = self.shot_data
+        if self.focus:
+            return sd.speed_focus, sd.speed_diagonal_focus
+        return sd.speed, sd.speed_diagonal
 
-    def _update_death(self, ctx: DeathContext | None) -> None:
-        if self.respawn_timer > 0:
-            self.respawn_timer -= 1
-            if self.respawn_timer == 0:
-                self.events.append(PlayerEvent(
-                    PlayerEventKind.DEATH_SETTLE, data=self._settle_death(ctx)))
-                self.respawn()
-                self.events.append(PlayerEvent(PlayerEventKind.RESPAWNED))
+    def _on_graze(self) -> None:
+        """擦弹结算: 音效 + GRAZE 事件(显示分 200, subrank+6 由上层接)。"""
+        self._play_sound(30)  # SOUND_GRAZE (Player.cpp:1210, ScoreGraze)
+        self.events.append(PlayerEvent(PlayerEventKind.GRAZE, value=GRAZE_SCORE_DISPLAY))
 
+    # ---- 死亡结算(th07: power 罚/掉 P/樱罚/重撒; 骨架在基类) ----
     def _settle_death(self, ctx: DeathContext | None) -> DeathSettle:
         ctx = ctx or DeathContext()
         if ctx.lives > 0:
@@ -379,93 +291,6 @@ class Player:
             settle = DeathSettle(False, 0.0, drop_full_power=5)
         self.power = settle.new_power
         return settle
-
-    def respawn(self, pos: Vec2 | None = None) -> None:
-        """重生: INVULNERABLE + 240 无敌 + 60 帧清弹期(Respawn)。"""
-        self.pos = pos or Vec2(SCREEN.x / 2, SCREEN.y - 64)
-        self._enter_invulnerable()
-
-    def _enter_invulnerable(self) -> None:
-        self.state = PlayerState.INVULNERABLE
-        self.invulnerability_timer = RESPAWN_INVULN
-        self.respawn_timer = self.shot_data.initial_respawn_timer
-        self.bullet_grace_period = BULLET_GRACE_PERIOD
-
-    # ---- 判定/擦弹(§A.7: CheckGraze/CalcKillboxCollision, AABB) ----
-    def check_graze(self, center: Vec2, size: tuple[float, float]) -> bool:
-        """擦弹判定: 弹盒 center±size/2 外扩 20px 与擦弹盒(半宽 graze_radius) AABB 相交。
-        DEAD/SPAWNING 不擦。命中透出 GRAZE 事件(显示分 200, subrank+6)。"""
-        if self.state in (PlayerState.DEAD, PlayerState.SPAWNING):
-            return False
-        hx, hy = size[0] / 2 + GRAZE_EXPAND, size[1] / 2 + GRAZE_EXPAND
-        if not _aabb_intersect(center, hx, hy, self.pos, self.graze_radius, self.graze_radius):
-            return False
-        self._play_sound(30)  # SOUND_GRAZE (Player.cpp:1210, ScoreGraze)
-        self.events.append(PlayerEvent(PlayerEventKind.GRAZE, value=GRAZE_SCORE_DISPLAY))
-        return True
-
-    def graze_bullet(self, b: Bullet, size: tuple[float, float]) -> bool:
-        """对一颗敌弹做擦弹判定; 每颗弹只擦一次(擦过置 grazed=True)。"""
-        if b.grazed:
-            return False
-        if self.check_graze(b.pos, size):
-            b.grazed = True
-            return True
-        return False
-
-    def check_killbox(self, center: Vec2, size: tuple[float, float]) -> KillResult:
-        """命中判定: 弹盒 center±size/2 与判定盒(半宽 hitbox_radius) AABB 相交。"""
-        if not _aabb_intersect(center, size[0] / 2, size[1] / 2,
-                               self.pos, self.hitbox_radius, self.hitbox_radius):
-            return KillResult.NONE
-        if self.state == PlayerState.BORDER:
-            self.events.append(PlayerEvent(PlayerEventKind.BREAK_BORDER))
-            return KillResult.BORDER_BREAK
-        if self.state != PlayerState.ALIVE:
-            return KillResult.NONE
-        self.die()
-        return KillResult.DEATH
-
-    def check_contact(self, center: Vec2, size: tuple[float, float]) -> bool:
-        """体术命中判定 (Player::CalcKillboxCollision 返回 1 的分支,
-        Player.cpp:1014-1039): 盒 center±size/2 与判定盒 AABB 相交即算命中 ——
-        BORDER → 结界破事件, ALIVE → die(), 其余状态(无敌/出生/死亡)仅命中
-        无玩家侧效果(敌人侧 life-=10 由调用方做, EnemyManager.cpp:589-594)。
-        C++ 开头 CheckBombGraze(返回 2) 分支不走这里: 炸弹盒由上层管线处理
-        (impl 炸弹中跳过体术判定, 见 tick)。"""
-        if not _aabb_intersect(center, size[0] / 2, size[1] / 2,
-                               self.pos, self.hitbox_radius, self.hitbox_radius):
-            return False
-        if self.state == PlayerState.BORDER:
-            self.events.append(PlayerEvent(PlayerEventKind.BREAK_BORDER))
-            return True
-        if self.state == PlayerState.ALIVE:
-            self.die()
-        return True
-
-    # ---- 旧接口(impl.py 在用, 圆形近似; 整合任务将替换为上面的 AABB) ----
-    def is_hit(self, pos: Vec2) -> bool:
-        return self.pos.distance(pos) <= self.hitbox_radius
-
-    def grazes(self, pos: Vec2) -> bool:
-        return self.pos.distance(pos) <= self.graze_radius
-
-    # ---- 移动(速度来自 .sht) ----
-    def _move_player(self) -> None:
-        sd = self.shot_data
-        if self.focus:
-            straight, diagonal = sd.speed_focus, sd.speed_diagonal_focus
-        else:
-            straight, diagonal = sd.speed, sd.speed_diagonal
-        mv = self._move
-        if mv.x and mv.y:
-            v = Vec2(mv.x * diagonal, mv.y * diagonal)
-        else:
-            v = Vec2(mv.x * straight, mv.y * straight)
-        self.velocity = v
-        self.pos = self.pos + v
-        lo, hi = self.bounds
-        self.pos = Vec2(max(lo.x, min(self.pos.x, hi.x)), max(lo.y, min(self.pos.y, hi.y)))
 
     # ---- 子机(§A.4, HandlePlayerInputs 的 optionState 状态机) ----
     def _update_options(self) -> None:
@@ -912,12 +737,7 @@ class Player:
                                                 bomb_active=bomb_active))
 
 
-def _aabb_intersect(c1: Vec2, hx1: float, hy1: float,
-                    c2: Vec2, hx2: float, hy2: float) -> bool:
-    """两 AABB(中心+半宽) 是否相交(边相接算相交, 同 C++ 的 > 判定)。"""
-    return not (c1.x - hx1 > c2.x + hx2 or c1.y - hy1 > c2.y + hy2
-                or c1.x + hx1 < c2.x - hx2 or c1.y + hy1 < c2.y - hy2)
-
+# _aabb_intersect 已上移到 engine/player_base.py(顶部 import 再导出)。
 
 def _bullet_out_of_bounds(b: PlayerBullet) -> bool:
     """弹中心±半宽完全离开 [0,384]x[0,448] 版面(GameManager::IsInBounds)。

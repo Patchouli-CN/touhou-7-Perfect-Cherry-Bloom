@@ -24,7 +24,7 @@ NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
 
 def _make(stage: int = 1, difficulty: int = 1) -> PerfectCherryBloom:
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=difficulty,
-                           score_store=ScoreStore())
+                           score_store=ScoreStore(spellcard_count=141))
     if stage != 1:
         g.enter_stage(stage)
     return g
@@ -226,7 +226,7 @@ def test_stage1_to_2_continuous_run() -> None:
     from tests.test_stage_smoke import _bosses, _crush, _move_keys, _signature
 
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
-                           score_store=ScoreStore())
+                           score_store=ScoreStore(spellcard_count=141))
     results_fired = 0
     orig = g._on_stage_results
 

@@ -3,9 +3,10 @@
 用带键盘选择的场景状态机组织:
   Title(原版 8 项主菜单) → (Difficulty → Character → 开始游戏 | 退出)
 
-名单/面数的单一来源是 th07 数值表(touhou/games/th07/data.py); 本模块的
-CHARACTERS/DIFFICULTIES 等常量是"默认 = th07 表"的引用(保持 list 形态供
-MenuCursor/下标运算), GameApp 实例级名单另经 GameSpec.data 参数化
+名单/面数的默认来源是**注册表**里 th07 登记的数值表(``get_game("th07").data``,
+延迟到本模块 import 时查询; registry 是叶子模块, 无循环 import; 引擎层不
+import 作品包)。注册表缺失时回落到内置兜底常量(与 th07 表同值, 仅保证
+模块可独立使用)。GameApp 实例级名单另经 GameSpec.data 参数化
 (见 view/impl.py 的 game_data 参数)。
 """
 
@@ -15,24 +16,44 @@ import msgspec
 from enum import IntEnum
 from pathlib import Path
 
-from ...games.th07.data import (
-    CHARACTERS as _TH07_CHARACTERS,
-    DIFFICULTIES as _TH07_DIFFICULTIES,
-    EXTRA_STAGES as _TH07_EXTRA_STAGES,
-    PRACTICE_DIFFICULTY_COUNT as _TH07_PRACTICE_DIFF_COUNT,
-    STAGE_COUNT as _TH07_STAGE_COUNT,
-)
 from ...paths import DEFAULT_DATA
+from ...registry import get_game
 from ...schema.archive import GameArchive
 from ...schema.musiccmt import parse_musiccmt
 from ..config import (LIVES_MAX, LIVES_MIN, SCALE_MAX, SCALE_MIN, VOLUME_MAX,
                       VOLUME_MIN, GameConfig)
 
-# 默认名单 = th07 表(games/th07/data.py); 作品级覆盖走 GameApp(game_data=...)
-DIFFICULTIES = list(_TH07_DIFFICULTIES)
-CHARACTERS = list(_TH07_CHARACTERS)
+# 内置兜底名单(与 games/th07/data.py 同值; 仅在注册表未登记 th07 时使用,
+# 正常经 ``import touhou`` 链注册表必命中 —— touhou/__init__ 先登记 th07
+# 数值表再 import api→view 链)
+_FALLBACK_CHARACTERS = ("ReimuA", "ReimuB", "MarisaA", "MarisaB", "SakuyaA", "SakuyaB")
+_FALLBACK_DIFFICULTIES = ("Easy", "Normal", "Hard", "Lunatic", "Extra", "Phantasm")
+_FALLBACK_EXTRA_STAGES = ("Extra", "Phantasm")
+_FALLBACK_STAGE_COUNT = 6
+_FALLBACK_PRACTICE_DIFF_COUNT = 4
+
+
+def _default_game_data():
+    """默认名单来源: 注册表里 th07 登记的 GameData; 未登记返回 None(走兜底)。"""
+    try:
+        return get_game("th07").data
+    except KeyError:  # NotRegisteredError(未注册 th07)
+        return None
+
+
+_gd = _default_game_data()
+
+# 默认名单 = 注册表 th07 表(作品级覆盖走 GameApp(game_data=...))
+DIFFICULTIES = list(_gd.difficulties) if _gd is not None and _gd.difficulties \
+    else list(_FALLBACK_DIFFICULTIES)
+CHARACTERS = list(_gd.characters) if _gd is not None and _gd.characters \
+    else list(_FALLBACK_CHARACTERS)
 # Extra Start 后的关卡选择(简化: 原版 Phantasm 需 Extra 通关后才会出现)
-EXTRA_STAGES = list(_TH07_EXTRA_STAGES)
+EXTRA_STAGES = list(_gd.extra_stages) if _gd is not None and _gd.extra_stages \
+    else list(_FALLBACK_EXTRA_STAGES)
+_TH07_PRACTICE_DIFF_COUNT = _gd.practice_difficulty_count \
+    if _gd is not None else _FALLBACK_PRACTICE_DIFF_COUNT
+_TH07_STAGE_COUNT = _gd.stage_count if _gd is not None else _FALLBACK_STAGE_COUNT
 
 # 暂停面板菜单项(游戏内 Esc; Save Replay 见 engine/replay.py)。
 # 纯菜单数据, 归纯逻辑层; 绘制在 option_view.render_pause。

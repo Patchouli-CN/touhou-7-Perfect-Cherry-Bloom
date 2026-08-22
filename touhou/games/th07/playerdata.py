@@ -16,7 +16,7 @@ ResultScreen, MainMenu.cpp:430-433 case 4 切入):
 
 from __future__ import annotations
 
-from ...engine.score_store import SPELLCARD_COUNT, ScoreStore
+from ...engine.score_store import ScoreStore
 
 # 未遇到符卡的名字占位(原版 GBK 字 "丠丠丠丠丠", 显示为问号列)
 UNKNOWN_CARD_NAME = "?????"
@@ -40,7 +40,7 @@ def spellcard_page(store: ScoreStore, shot: int) -> dict:
         shot = 6
     cards = []
     attempted = captured = attempts = successes = 0
-    for i, e in enumerate(store.catk[:SPELLCARD_COUNT]):
+    for i, e in enumerate(store.catk):
         a, s = e["attempts"][shot], e["successes"][shot]
         if a <= 0:
             continue

@@ -6,8 +6,11 @@
 - highscores: Hscr 子集 —— 每 (难度, 角色) 一个 Top10 榜
   {score, character, difficulty, stage, name, numRetries, date(ISO 字符串)}。
   空位不入库, 展示时按默认分 100000-k*10000 补齐 (GetHighScore 的 100000 底线)。
-- catk: 141 张符卡统计 {name, attempts[7], successes[7], highscore[7]},
+- catk: 符卡统计 {name, attempts[7], successes[7], highscore[7]},
   下标 0..5 = shotType, 6 = 合计 (EclManager BeginSpellcard/EndSpellcard)。
+  张数是作品专属数据(th07 = 141), 引擎层不硬编码: 由构造参数
+  ``spellcard_count`` 注入(作品层传 ``len(GameData.spellcard_scores)``);
+  读档时若传入值小于存档实际长度, 按存档长度扩容(读档不丢卡)。
 - clrd: 每角色 {with_retries[6], without_retries[6]}, 值为到达的最大面数
   (GameManager.cpp 过关时 currentStage-1 取 max)。
 - pscr: 每 (难度, 角色) {play_count, highscore} (PSCR 简化)。
@@ -27,7 +30,6 @@ from datetime import datetime
 from pathlib import Path
 
 SCORE_JSON_VERSION = 1
-SPELLCARD_COUNT = 141
 NUM_CHARACTERS = 6
 NUM_DIFFICULTIES = 6
 TOP_SIZE = 10
@@ -69,11 +71,16 @@ def _is_int_list(v, n: int) -> bool:
 
 
 class ScoreStore:
-    """内存中的成绩总库 + JSON 读写。纯逻辑, 不依赖 pygame。"""
+    """内存中的成绩总库 + JSON 读写。纯逻辑, 不依赖 pygame。
 
-    def __init__(self) -> None:
+    ``spellcard_count`` = 作品的符卡总数(引擎不硬编码, 由作品层注入,
+    th07 = 141); catk 按此长度分配, 符卡入账按 ``len(catk)`` 做越界保护。
+    """
+
+    def __init__(self, *, spellcard_count: int = 0) -> None:
         self.highscores: dict[str, list[dict]] = {}   # "difficulty,character" -> [rec]
-        self.catk: list[dict] = [_new_catk_entry() for _ in range(SPELLCARD_COUNT)]
+        self.catk: list[dict] = [_new_catk_entry()
+                                 for _ in range(max(0, int(spellcard_count)))]
         self.clrd = [{"with_retries": [0] * NUM_DIFFICULTIES,
                       "without_retries": [0] * NUM_DIFFICULTIES}
                      for _ in range(NUM_CHARACTERS)]
@@ -145,7 +152,7 @@ class ScoreStore:
     # ---- catk 符卡统计 (EclManager Begin/EndSpellcard) ----
     def record_spellcard_attempt(self, idx: int, name: str, shot: int) -> None:
         """BeginSpellcard: attempts[shot]/attempts[6] ++ (封顶 9999), 记名字。"""
-        if not 0 <= idx < SPELLCARD_COUNT:
+        if not 0 <= idx < len(self.catk):
             return
         e = self.catk[idx]
         e["name"] = str(name)[:48]
@@ -155,7 +162,7 @@ class ScoreStore:
 
     def record_spellcard_success(self, idx: int, shot: int, score: int) -> None:
         """EndSpellcard 捕获成功: successes ++, highscore 取 max (捕获分+擦弹加成)。"""
-        if not 0 <= idx < SPELLCARD_COUNT:
+        if not 0 <= idx < len(self.catk):
             return
         e = self.catk[idx]
         for s in (int(shot), 6):
@@ -221,9 +228,13 @@ class ScoreStore:
         tmp.replace(path)  # 原子替换, 避免半截文件
 
     @classmethod
-    def from_dict(cls, data) -> "ScoreStore":
-        """从 JSON 对象恢复; 任何字段不对就回退该字段默认值。"""
-        store = cls()
+    def from_dict(cls, data, *, spellcard_count: int = 0) -> "ScoreStore":
+        """从 JSON 对象恢复; 任何字段不对就回退该字段默认值。
+
+        catk 目标长度 = max(spellcard_count, 存档实际条数): 未指定/偏小时
+        按存档扩容(读档不丢卡), 有效条目按原下标覆盖, 无效条目留默认值。
+        """
+        store = cls(spellcard_count=spellcard_count)
         if not isinstance(data, dict):
             return store
         hs = data.get("highscores")
@@ -236,7 +247,10 @@ class ScoreStore:
                 store.highscores[key] = good[:TOP_SIZE]
         catk = data.get("catk")
         if isinstance(catk, list):
-            for i, e in enumerate(catk[:SPELLCARD_COUNT]):
+            if len(store.catk) < len(catk):
+                store.catk.extend(_new_catk_entry()
+                                  for _ in range(len(catk) - len(store.catk)))
+            for i, e in enumerate(catk):
                 if _is_catk_entry(e):
                     store.catk[i] = e
         clrd = data.get("clrd")
@@ -265,16 +279,17 @@ class ScoreStore:
         return store
 
     @classmethod
-    def load(cls, path: str | Path) -> "ScoreStore":
+    def load(cls, path: str | Path, *, spellcard_count: int = 0) -> "ScoreStore":
         """读文件; 缺失/损坏/JSON 不合法 → 全新默认值 (不抛异常)。
 
         msgspec.DecodeError 是 ValueError 子类, 坏 UTF-8/坏 JSON 同样落网。
+        spellcard_count 语义见 from_dict(作品的符卡总数, 读档可按存档扩容)。
         """
         try:
             data = msgspec.json.decode(Path(path).read_bytes())
         except (OSError, ValueError):
-            return cls()
-        return cls.from_dict(data)
+            return cls(spellcard_count=spellcard_count)
+        return cls.from_dict(data, spellcard_count=spellcard_count)
 
 
 def _is_highscore_record(r) -> bool:

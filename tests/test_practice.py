@@ -16,7 +16,7 @@ class StubPracticeGame:
         from touhou.engine.score_store import ScoreStore
 
         self.kw = kw
-        self.store = ScoreStore()
+        self.store = ScoreStore(spellcard_count=141)  # 141 = th07 符卡数
         self.stage_no = 1
         self.entered = None
         self.result = None

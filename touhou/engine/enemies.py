@@ -13,7 +13,7 @@ from typing import Callable, Sequence
 from .bullets import BulletWorld
 from .ecl import EnemyBulletShooter, Vec3
 from .ecl_base import EclMachineBase
-from ..games.th07.player import PlayerState
+from .player_base import PlayerCombatFace, PlayerState
 from ..utils import Vec2, angle_to
 
 
@@ -231,7 +231,7 @@ class EnemyHost:
                 e.step(world, rng=rng)
         self._enemies = [e for e in self._enemies if e.alive and not e.done]
 
-    def contact_hits(self, player) -> bool:
+    def contact_hits(self, player: PlayerCombatFace) -> bool:
         """敌人体术判定 (EnemyManager.cpp:754-775 → Enemy::CheckBulletPlayerCollision
         :576-595)。每帧在 shoot_hits 前调用(同 C++ OnUpdate 伤害段顺序)。
 
@@ -279,7 +279,7 @@ class EnemyHost:
                     e.life -= 10
         return died
 
-    def shoot_hits(self, player, targeting: Targeting, *, is_focus: bool,
+    def shoot_hits(self, player: PlayerCombatFace, targeting: Targeting, *, is_focus: bool,
                    is_sakuya: bool, bomb_in_use: bool, stage: int,
                    spellcard_active: bool = False, used_bomb: bool = False,
                    is_reimu_a: bool = False, bomb_box_hit=None

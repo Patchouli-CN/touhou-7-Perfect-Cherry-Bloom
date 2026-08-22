@@ -14,9 +14,10 @@
 - playerdata.py Player Data 画面装配
 - world.py      对局主逻辑 PerfectCherryBloom(register_world_impl("th07") 登记)
 
-engine/ 只留可复用机制(bullets/lasers/enemies/ecl/replay/config/score_store)。
-注意 import 顺序: player 必须先于 boss/ecl_host/world 导入
-(engine/enemies.py 运行时引回 PlayerState, 是 engine → games 的唯一反向边)。
+engine/ 只留可复用机制(bullets/lasers/enemies/ecl/replay/config/score_store/
+player_base 玩家状态基座)。PlayerState 定义在 engine/player_base.py, 本包
+player.py 再导出以保持 ``games.th07.player.PlayerState`` 引用兼容; engine 层
+不再 import games.*(单向依赖: 引擎 ←—— 作品)。
 导入本包即完成 th07 在 registry 的 world/hooks/data 维度注册
 (ECL/ANM 经 engine.ecl/schema.anm 链; ``import touhou`` 保证全链触发)。
 """

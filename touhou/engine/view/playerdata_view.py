@@ -1,5 +1,9 @@
 """ Player Data(Result 画面)渲染(pygame) —— 风格对齐 result_view。
 
+【th07 专属】数据装配直接调 games/th07/playerdata.py(符卡页/统计页语义绑死
+th07 的 catk/clrd 口径), 属后端内聚的有意耦合; 新作品复用窗口版需自带
+playerdata view。
+
 布局(640x480, 简化版 ResultScreen):
 - 背景 result.jpg(缺失回退 title00.jpg, 再退纯色), 上盖半透明面板;
 - 页头 "Player Data" + 板块名(分数榜/符卡/统计) + 当前难度/机体页;
