@@ -1,8 +1,24 @@
-# touhou07
+# touhou
 
-《东方妖妖梦》(TH07 / Perfect Cherry Blossom) 的 Python 重实现。
-引擎逻辑对照原版反编译逐帧移植, 对外提供干净的 Pythonic API(`touhou.apis.basic`),
-窗口版游戏用 pygame 渲染。
+通用东方弹幕游戏框架 —— TH07《东方妖妖梦》(Perfect Cherry Blossom) 为
+首个接入作品/参考实现: 引擎逻辑对照原版反编译逐帧移植, 对外提供干净的
+Pythonic API(`touhou.apis.basic`), 窗口版游戏用 pygame 渲染。
+发行包名与入口命令沿用 `touhou07`。
+
+## 架构
+
+三层结构, 作品经注册表接入框架(各维度见下文"接入新作品"):
+
+- **框架层**(`touhou/` 顶层): 作品无关的对外 API(`apis/`)、注册表
+  (`registry.py` decorator)、类型门面(`types.py`)、工具与基础设施
+  (`utils/`、`exceptions.py`、`paths.py`、`env.py`、`logger.py`)。
+- **引擎层**(`touhou/engine/`): 跨作品可复用机制 —— ECL 虚拟机基类、
+  Player/Bomb/Globals/Item/Boss 基座、弹幕/激光/敌人宿主,
+  以及 `render/`(Renderer 协议 + D3DX-like 管线接口)与 `view/`
+  (作品无关渲染基建)。
+- **作品层**(`touhou/games/th07/`): TH07 的全部具体实现(对局主逻辑/
+  自机/符卡/炸弹/道具/ECL VM/数值表/表现层), 在 `import touhou` 时
+  经 decorator 完成全维度注册 —— 也是接新作品时照抄的骨架。
 
 ## 安装
 
@@ -21,7 +37,8 @@ python -m touhou        # 或直接用模块入口
 
 ## 游戏资源
 
-需要原版游戏数据 `th07.dat`(BGM 用同目录的 `thbgm.dat`, 自动推导)。
+各作品使用对应的原版游戏数据(th07 为 `th07.dat`, BGM 用同目录的
+`thbgm.dat`, 自动推导), 运行时解包, 仓库不分发任何二进制资源。
 路径解析顺序:
 
 1. 显式参数(`Game(data_path=...)` / `GameApp(data_path=...)`)
@@ -75,10 +92,12 @@ print(game.score, game.lives, game.result)  # 结算后 result 非 None
   在类型检查期也可 `from touhou.types import Input, GameEvent, ...` 解析
   (运行时请从 `touhou`/`touhou.apis.basic` 导入)。
 
-## 扩展新作品
+## 接入新作品
 
-`touhou.registry` 是框架与作品的接缝: 全局注册表 + decorator, th07 是
-第一个注册作品(各组件在定义处"引用注册", 不移动文件)。注册维度:
+接新作品(th08…)的姿势: 照 `games/th07/` 抄一套骨架, 组件在定义处用
+decorator 注册即可, 框架代码零改动。`touhou.registry` 是框架与作品的
+接缝: 全局注册表 + decorator, th07 是第一个注册作品(各组件在定义处
+"引用注册", 不移动文件)。注册维度:
 
 - `@register_ecl(name, file_format=...)` — ECL 虚拟机(指令集解释器类 + ecldata 解析类)
 - `@register_anm(name, version=...)` — ANM 格式变体(解析类 + 版本号)

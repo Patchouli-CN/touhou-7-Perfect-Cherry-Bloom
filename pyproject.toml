@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "touhou07"
 version = "0.1.0"
-description = "TH07 (Touhou Youyoumu) Python reimplementation"
+description = "通用东方弹幕游戏框架; TH07《东方妖妖梦》为首个接入作品/参考实现"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

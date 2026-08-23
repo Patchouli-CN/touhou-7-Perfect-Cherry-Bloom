@@ -1,6 +1,8 @@
-"""touhou —— 《东方妖妖梦》(TH07) 的 Python 重实现。
+"""touhou —— 通用东方弹幕游戏框架; TH07《东方妖妖梦》为首个接入作品/参考实现。
 
-对外 API 见 touhou/apis/basic.py; 顶层直接导出全部公共类型。
+对外 API 见 touhou/apis/basic.py; 顶层直接导出全部公共类型。作品经
+touhou/registry.py 的 decorator 注册接入; import 本包即完成 th07 的
+全维度注册(见下方 games.th07 的触发 import)。
 
 窗口版游戏入口: ``python -m touhou`` 或安装后的 ``touhou07`` 命令。
 """
