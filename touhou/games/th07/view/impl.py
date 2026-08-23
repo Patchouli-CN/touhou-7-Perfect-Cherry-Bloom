@@ -18,6 +18,7 @@ import time
 
 from ....logger import logger as log
 
+from ....apis.basic import Game
 from ....registry import GameData, get_game, get_renderer, register_app
 from ....engine.config import DEFAULT_CONFIG_PATH, GameConfig
 from ....schema.sound import SE
@@ -83,10 +84,18 @@ class GameApp:
                  data_path=None, score_path=None,
                  config_path=None, replay_dir=None, bgm_path=None,
                  game_data: GameData | None = None,
-                 renderer: "str | Renderer" = "pygame") -> None:
+                 renderer: "str | Renderer" = "pygame",
+                 spectate=None) -> None:
         data_path = resolve_data_path(data_path)
         self._data_path = data_path
         self._make_game = make_game
+        # 观战模式(registry.register_app 的可选契约): spectate 非 None 时是
+        # "facade(Game) -> Input" 的逐帧策略 —— run() 跳过标题菜单直接开局,
+        # 每帧输入由策略产出(键盘仅保留 Esc 中止观战/关窗退出);
+        # 角色/难度/残机/种子以对局构造时注入的值为准(不再做 config 覆写
+        # 与时间播种)。None = 正常键盘游玩, 行为不变。
+        self._spectate = spectate
+        self._spectate_facade: Game | None = None  # 包局内 live 对局的门面
         # 渲染后端: 名字经 registry 解析(默认 "pygame"), 或直接传实现实例
         # (测试插桩用; 构造契约 cls(data_path=None), 见 registry.register_renderer)
         if isinstance(renderer, str):
@@ -197,7 +206,12 @@ class GameApp:
         log.info("渲染后端就绪; config={}", self._config)
         # 标题画面 BGM (MainMenu.cpp:230/2685: LoadAudio(8,"bgm/th07_01.mid"))
         self._sound.ensure_loaded()
-        if self._screen == Screen.MAIN_MENU:
+        if self._spectate is not None:
+            # 观战: 跳过标题状态机直接开局(菜单没人会选;
+            # 角色/难度由 make_game 包装层定, 见 TouhouWorld.run)
+            log.debug("观战模式: 跳过标题直接开局")
+            self._start_game()
+        elif self._screen == Screen.MAIN_MENU:
             self._sound.play_music(_TITLE_BGM)
         running = True
         while running:
@@ -629,14 +643,21 @@ class GameApp:
                  ch, ch_idx, dif_idx, extra_stage, stage)
         self._game = self._make_game(difficulty=dif_idx, character=ch_idx)
         # 回放确定性: 每局一个种子(原版 Rng 以时间播种; 回放播放传录像种子)
-        self._run_seed = (int(time.time() * 1000) & 0xFFFF) if seed is None \
-            else (seed & 0xFFFF)
-        if hasattr(self._game, "set_seed"):
-            self._game.set_seed(self._run_seed)
+        if self._spectate is not None and seed is None:
+            # 观战: 种子在对局构造时已注入(TouhouWorld.seed; None=impl 默认
+            # 固定种子), 不再覆写 —— meta 记 impl 实际种子即可复现
+            self._run_seed = int(getattr(self._game, "seed", 0x5EED))
+        else:
+            self._run_seed = (int(time.time() * 1000) & 0xFFFF) if seed is None \
+                else (seed & 0xFFFF)
+            if hasattr(self._game, "set_seed"):
+                self._game.set_seed(self._run_seed)
         # Option 初始残机: make_game 签名固定 (difficulty, character) 无法透参,
         # 这里按 config 覆写初始残(difficulty>=4 固定 2 不动, 同 impl __init__)
+        # 观战跳过此覆写: 残机以对局构造注入值(TouhouWorld.lives)为准
         g0 = getattr(self._game, "globals", None)
-        if g0 is not None and dif_idx < 4 and hasattr(g0, "lives_remaining"):
+        if self._spectate is None and g0 is not None and dif_idx < 4 \
+                and hasattr(g0, "lives_remaining"):
             g0.lives_remaining = float(self._config.initial_lives)
             # 续关回残基数同步(retry 菜单 Yes: SetLivesRemaining(defaultCfg->lifeCount))
             if hasattr(self._game, "initial_lives"):
@@ -666,6 +687,11 @@ class GameApp:
         if target_stage and target_stage != 1 \
                 and hasattr(self._game, "enter_stage"):
             self._game.enter_stage(target_stage)
+        if self._spectate is not None:
+            # 观战: 包局内 live 对局为 Game 门面(不重复构造对局;
+            # policy 拿到的观测面与自建 Game 一致)
+            self._spectate_facade = Game._from_impl(
+                self._game, get_game("th07"), "th07")
         self._screen = Screen.PLAYING
         self._paused = False
         self._in_continue = False
@@ -690,6 +716,12 @@ class GameApp:
                 log.debug("回放播放中止 (Esc, frame={})",
                           getattr(self._game, "frame", "?"))
                 self._quit_playback()
+                return
+            if self._spectate is not None:
+                # 观战中止: Esc 直接退出(不弹暂停菜单, 观战无标题可回)
+                log.debug("观战中止 (Esc, frame={})",
+                          getattr(self._game, "frame", "?"))
+                self._finished = True
                 return
             self._paused = True
             self._pause_cursor.index = 0
@@ -750,6 +782,17 @@ class GameApp:
             pb["idx"] += 1
             game.tick(keys=keys6, bomb=bomb_pressed,
                       advance=adv and msg_active, skip=skip)
+        elif self._spectate is not None:
+            # 观战: 本帧输入来自策略(policy 的实参 = 包 live 对局的 Game 门面,
+            # 观测面与自建 Game 一致); 键盘仅保留 Esc(上面已处理)。
+            # advance 与正常路径同按对话门控; 录制复用既有路径(记实际喂入)
+            pi = self._spectate(self._spectate_facade)
+            keys6 = pi._keys()
+            bomb_pressed = pi.bomb
+            adv = pi.advance and msg_active
+            game.tick(keys=keys6, bomb=bomb_pressed, advance=adv, skip=pi.skip)
+            if self._recorder is not None:
+                self._recorder.record(keys6, bomb_pressed, adv, pi.skip)
         else:
             game.tick(keys=keys6, bomb=bomb_pressed,
                       advance=inp.advance and msg_active, skip=skip)
@@ -789,6 +832,12 @@ class GameApp:
                 log.debug("回放播到 GameOver (frame={}) → 回标题", game.frame)
                 self._quit_playback()
                 return
+            if self._spectate is not None:
+                # 观战不可续关: 等价选 No → 结算 → 结束观战
+                log.debug("观战 GameOver (frame={}) → 结算退出", game.frame)
+                game.finalize_game_over()
+                self._finished = True
+                return
             self._run_continue_menu(menu_actions)
             return
         # Practice: 练习关打完直接回标题(不进结算/排行榜)。
@@ -809,6 +858,12 @@ class GameApp:
                 log.debug("回放播到结局 (frame={}) → 回标题", game.frame)
                 self._quit_playback()
                 return
+            if self._spectate is not None:
+                # 观战: 结局自动看完 → 总结算 → 结束观战
+                log.debug("观战播到结局 (frame={}) → 结束观战", game.frame)
+                game.finish_ending()
+                self._finished = True
+                return
             # 结局曲: .end 脚本 @m 指令(Ending.cpp:300 LoadAudio(0)+PlayLoadedAudio(0),
             # 如 end00.end → bgm/th07_14.mid); 没有 @m 则淡出
             ending_bgm = getattr(game.ending, "music", None)
@@ -827,6 +882,11 @@ class GameApp:
                 # 播放模式不进结算(不写榜), 直接回标题
                 log.debug("回放播到结算 (frame={}) → 回标题", game.frame)
                 self._quit_playback()
+                return
+            if self._spectate is not None:
+                # 观战不进结算画面(不写榜), 直接结束观战
+                log.debug("观战到结算 (frame={}) → 结束观战", game.frame)
+                self._finished = True
                 return
             self._enter_result()
             return

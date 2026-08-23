@@ -1,6 +1,12 @@
 """观战/AI 示例: headless 跑一局, 打印流式事件, 并用自定义策略开车。
 
 运行: uv run python examples/auto_play.py
+
+观战变体(窗口里看 AI 打): 去掉 headless=True 改为
+``TouhouWorld(..., headless=False, auto_input=my_policy)`` 再 ``tw.run()``
+—— 窗口照开但跳过标题菜单直接进游戏, 每帧输入来自策略, Esc 中止观战。
+headless 侧顺带录像: ``stream.save_replay()`` 存下喂过的每帧输入
+(engine/replay.py 格式, 可在窗口版 Replay 菜单播放)。
 """
 from __future__ import annotations
 

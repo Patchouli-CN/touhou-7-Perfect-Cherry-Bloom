@@ -70,6 +70,25 @@ tw2 = TouhouWorld(wd=wd, headless=False)
 tw2.run()                      # 非 headless: 弹出游戏窗口(阻塞)
 ```
 
+观战(在窗口里看 AI 打游戏)与录像:
+
+```python
+def my_policy(game) -> Input:  # 逐帧输入策略: 观测面与 Game 门面一致
+    return Input(shoot=True, advance=True,
+                 left=(game.frame // 90) % 2 == 0)
+
+# headless=False + auto_input=callable → 观战: 窗口照开, 跳过标题菜单直接
+# 进游戏, 每帧输入来自策略而非键盘(角色/难度/残机/种子以 TouhouWorld 自身
+# 属性为准); Esc 随时中止观战
+tw3 = TouhouWorld(character=Character.MARISA_A, difficulty=Difficulty.NORMAL,
+                  headless=False, auto_input=my_policy)
+tw3.run()
+
+# headless 流自动录下喂过的每帧输入(engine/replay.py 格式), 存盘后可在
+# 窗口版 Replay 菜单播放, 或脚本按 meta 重建逐帧喂回复现
+stream.save_replay()           # None → replays/ 下时间戳命名; 返回实际路径
+```
+
 细粒度控制用 `Game` 门面:
 
 ```python

@@ -202,6 +202,13 @@ def register_app(name: str) -> Callable[[type], type]:
     须有 ``run()`` 方法(弹窗并阻塞至关窗)。``TouhouWorld.run()``
     (headless=False) 经此解析; th07 的实现是 games/th07/view/impl.py 的
     GameApp。
+
+    可选观战契约: ``TouhouWorld(auto_input=callable, headless=False)`` 时
+    追加关键字参数 ``spectate=<policy>``(``game -> Input`` 逐帧策略, 作品
+    无关形态见 touhou/types.py 的 ``InputSource``)。App 可声明同名带默认值
+    的 kwarg 支持观战(跳过标题菜单直接开局, 每帧输入来自策略而非键盘;
+    policy 的实参应有完整观测面, 如包出现存对局的 apis.basic.Game);
+    不声明的 App 收不到该参数, 行为不变。
     """
     def deco(cls: type) -> type:
         _put(_APP, "窗口 App", name, cls)

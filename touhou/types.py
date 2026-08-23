@@ -66,6 +66,7 @@ __all__ = [
     "GameEngine",
     "GameGlobalsFace",
     "IntHook",
+    "InputSource",
     "ItemFace",
     "KeysTuple",
     "LaserFace",
@@ -94,6 +95,11 @@ KeysTuple: TypeAlias = tuple[bool, bool, bool, bool, bool, bool]
 #: 一帧内发生的事件列表(``Game.step`` 的返回类型)。注解专用(运行时是字符串,
 #: GameEvent 运行时定义在 touhou.apis.basic, 避免循环 import)。
 EventList: TypeAlias = "list[GameEvent]"
+
+#: 一帧输入的来源: 固定输入 ``Input`` 或逐帧策略 ``Callable[[Game], Input]``
+#: (观战/AI 的入口 —— TouhouWorld 的 ``auto_input`` 与 register_app 的
+#: ``spectate`` 契约共用此形态)。注解专用(运行时是字符串, 同 EventList)。
+InputSource: TypeAlias = "Input | Callable[[Game], Input]"
 
 
 # ---- 结构式 Protocol(鸭子类型, 引擎实体天然满足) ----

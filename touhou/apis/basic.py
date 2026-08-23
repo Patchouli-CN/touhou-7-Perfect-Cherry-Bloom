@@ -22,8 +22,9 @@ from pathlib import Path
 from typing import Callable, Generic, Iterator, Literal, TypeVar, overload
 
 from ..engine.lasers import LaserState
+from ..engine.replay import ReplayRecorder, make_meta, new_replay_name
 from ..registry import GameSpec, get_game
-from ..types import GameEngine, KeysTuple, PathLike
+from ..types import GameEngine, InputSource, KeysTuple, PathLike
 
 
 # ---- 枚举 ----
@@ -225,6 +226,22 @@ class Game:
         if stage != 1:
             self._impl.enter_stage(stage)
         self._prev = self._probe()  # 事件差的基准帧状态(每帧 step 后更新)
+
+    @classmethod
+    def _from_impl(cls, impl: GameEngine, spec: GameSpec, game_name: str
+                   ) -> "Game":
+        """包一个现存对局 impl 为 Game 门面(不重新构造对局)。
+
+        观战模式用: 窗口 App 把局内 live 对局包出门面喂 policy(输入策略拿到的
+        与 ``Game(...)`` 自建门面是同一观测面)。基准帧状态 ``_prev`` 按现况
+        初始化(事件差从下一次 step 起算), 与 ``__init__`` 的基准帧逻辑一致。
+        """
+        obj = cls.__new__(cls)
+        obj.spec = spec
+        obj.game_name = game_name
+        obj._impl = impl
+        obj._prev = obj._probe()
+        return obj
 
     # ---- 逐帧推进 ----
     def step(self, input: Input = Input.none()) -> list[GameEvent]:
@@ -436,8 +453,13 @@ class TouhouWorldEventStream:
     """headless 世界的事件流——``TouhouWorld.run()``(headless=True) 的返回值。
 
     迭代即驱动: 每取一个事件, 世界按 ``policy``(缺省为世界的
-    ``auto_input``)推进到下一个事件。终局自动收尾(GAME_OVER 等价续关
-    菜单选 No, ENDING 自动看完), 流到总结算(RESULT)时迭代结束。
+    ``auto_input``; ``auto_input`` 是 callable 时直接作流的默认 policy)
+    推进到下一个事件。终局自动收尾(GAME_OVER 等价续关菜单选 No, ENDING
+    自动看完), 流到总结算(RESULT)时迭代结束。
+
+    流是 headless 对局的唯一输入源, 故顺带零成本录像: 喂过的每帧输入都进
+    内置 ``ReplayRecorder``(engine/replay.py 格式), ``save_replay()`` 落盘后
+    可在窗口版 Replay 菜单播放或脚本重建复现。
 
     用法::
 
@@ -445,6 +467,7 @@ class TouhouWorldEventStream:
         for event in stream:
             ...
         print(stream.result)      # 迭代结束后可读总结算 dict
+        stream.save_replay()      # 存录像(默认 replays/ 下时间戳命名)
         stream.policy = lambda game: Input(...)   # 中途接管输入(如 AI)
     """
 
@@ -453,6 +476,8 @@ class TouhouWorldEventStream:
         self._world = world
         self.policy = policy
         self._done = False
+        # 录像器懒建(首次迭代/显式 save_replay 时): 造流不强制建对局
+        self._recorder: ReplayRecorder | None = None
 
     @property
     def game(self) -> Game:
@@ -464,10 +489,44 @@ class TouhouWorldEventStream:
         """总结算数据(流结束后非 None)。"""
         return self._world.game.result
 
+    def _new_recorder(self) -> ReplayRecorder:
+        """按世界参数建录像器; meta 记实际生效值(可据此逐帧复现整局)。"""
+        w = self._world
+        g = w.game
+        # 种子取 impl 实际用的(能力位: GameEngine 协议外, getattr 回落):
+        # seed=None 时 th07 用固定默认种子, 记实际值回放才能复现
+        seed = getattr(g._impl, "seed", None)
+        if not isinstance(seed, int):
+            seed = 0x5EED if w.seed is None else (w.seed & 0xFFFF)
+        return ReplayRecorder(make_meta(
+            difficulty=int(w.difficulty), character=int(w.character),
+            stage=w.stage, seed=seed, initial_lives=w.lives))
+
+    def save_replay(self, path: PathLike | None = None) -> Path:
+        """把本流已驱动的全部输入帧存成录像文件, 返回实际路径。
+
+        ``path=None`` 时按 ``new_replay_name()`` 在默认录像目录(replays/)
+        生成时间戳名; 尚未迭代过则存 0 帧录像(meta 仍完整)。
+        """
+        if self._recorder is None:
+            self._recorder = self._new_recorder()
+        if path is None:
+            path = new_replay_name()
+        return self._recorder.save(path)
+
     def __iter__(self) -> Iterator[GameEvent]:
         g = self.game
+        if self._recorder is None:
+            self._recorder = self._new_recorder()
         while not self._done:
-            inp = self.policy(g) if self.policy is not None                 else self._world.auto_input
+            if self.policy is not None:
+                inp = self.policy(g)
+            else:
+                default = self._world.auto_input
+                inp = default(g) if callable(default) else default
+            # 录像: 记本帧实际喂给对局的输入(与 tick 收到的同构)
+            self._recorder.record(inp._keys(), bomb=inp.bomb,
+                                  advance=inp.advance, skip=inp.skip)
             for ev in g.step(inp):
                 yield ev
             ph = g.phase
@@ -499,6 +558,15 @@ class TouhouWorld(Generic[_H]):
 
     需要 AI 介入时给 ``stream.policy`` 赋一个 ``game -> Input`` 的函数,
     或直接用 ``tw.game.step(your_input)`` 自己逐帧驱动。
+
+    ``auto_input`` 接受固定 ``Input`` 或 ``game -> Input`` 策略: headless 下
+    callable 直接作事件流的默认 policy; 非 headless 下 callable 进入
+    **观战模式** —— 窗口照开但跳过标题菜单直接进游戏, 每帧输入来自策略
+    (角色/难度/残机/种子以 TouhouWorld 自身属性为准), Esc 随时中止观战::
+
+        tw = TouhouWorld(character=Character.MARISA_A, headless=False,
+                         auto_input=my_policy)
+        tw.run()   # 看 AI 打游戏
     """
 
     # headless 字面量进泛型参数: run() 返回类型随之为 Stream / None(mypy 精确收窄)
@@ -511,7 +579,7 @@ class TouhouWorld(Generic[_H]):
                  stage: int = 1,
                  game: str = "th07",
                  seed: int | None = None,
-                 auto_input: Input | None = None) -> None: ...
+                 auto_input: InputSource | None = None) -> None: ...
     @overload
     def __init__(self: "TouhouWorld[Literal[False]]",
                  wd: WorldData | None = None,
@@ -521,7 +589,7 @@ class TouhouWorld(Generic[_H]):
                  stage: int = 1, *,
                  game: str = "th07",
                  seed: int | None = None,
-                 auto_input: Input | None = None) -> None: ...
+                 auto_input: InputSource | None = None) -> None: ...
     @overload
     def __init__(self, wd: WorldData | None = None,
                  character: ShotType = ShotType.REIMU_A,
@@ -530,7 +598,7 @@ class TouhouWorld(Generic[_H]):
                  stage: int = 1, *,
                  game: str = "th07",
                  seed: int | None = None,
-                 auto_input: Input | None = None) -> None: ...
+                 auto_input: InputSource | None = None) -> None: ...
     def __init__(self, wd: WorldData | None = None,
                  character: ShotType = ShotType.REIMU_A,
                  difficulty: Difficulty = Difficulty.NORMAL,
@@ -538,7 +606,7 @@ class TouhouWorld(Generic[_H]):
                  stage: int = 1, *,
                  game: str = "th07",
                  seed: int | None = None,
-                 auto_input: Input | None = None) -> None:
+                 auto_input: InputSource | None = None) -> None:
         # 经注册表解析作品(未注册名在此即报 KeyError, 与 headless 无关)
         self.spec = _require_world(game)
         self.game_name = game
@@ -592,6 +660,10 @@ class TouhouWorld(Generic[_H]):
         if self.headless:
             return TouhouWorldEventStream(self)
 
+        # auto_input 是 callable(逐帧策略)时进入观战模式: 窗口照开,
+        # 输入由策略驱动而非键盘; 普通 Input / None 则行为不变(键盘游玩)
+        spectate = self.auto_input if callable(self.auto_input) else None
+
         world = self.spec.world
         assert world is not None  # __init__ 里 _require_world 已校验
 
@@ -604,6 +676,11 @@ class TouhouWorld(Generic[_H]):
                 f"(需要 @register_app({self.game_name!r}) 装饰窗口应用类)")
 
         def make_game(*, difficulty: int, character: int) -> GameEngine:
+            if spectate is not None:
+                # 观战: 标题菜单被跳过(没人会选), 角色/难度以 TouhouWorld
+                # 自身的属性为准, 忽略 App 传入的实参
+                difficulty = int(self.difficulty)
+                character = int(self.character)
             kwargs: dict = {}
             if self.spec.data is not None:
                 kwargs["data"] = self.spec.data  # 数值表(注册表注入)
@@ -614,8 +691,13 @@ class TouhouWorld(Generic[_H]):
             return impl
 
         # 构造契约见 registry.register_app:
-        # app_cls(make_game, *, data_path, bgm_path, game_data)
+        # app_cls(make_game, *, data_path, bgm_path, game_data, [spectate])
+        # spectate 是可选 kwarg, 仅在观战时传(不声明支持的作品 App 不受影响)
+        app_kwargs: dict = {}
+        if spectate is not None:
+            app_kwargs["spectate"] = spectate
         app = app_cls(make_game, data_path=self.wd.resolve_res(),
-                      bgm_path=self.wd.resolve_bgm(), game_data=self.spec.data)
+                      bgm_path=self.wd.resolve_bgm(), game_data=self.spec.data,
+                      **app_kwargs)
         app.run()
         return None
