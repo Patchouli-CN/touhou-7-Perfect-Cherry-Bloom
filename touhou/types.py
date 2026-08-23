@@ -214,6 +214,11 @@ class PlayerFace(Positioned, Protocol):
     @property
     def invulnerability_timer(self) -> int: ...
 
+    @property
+    def hitbox_radius(self) -> float:
+        """自机判定半宽(px, 作品常量; engine PlayerBase 逐实例携带)。"""
+        ...
+
 
 class BulletFace(Positioned, Protocol):
     """敌弹只读形态。"""
@@ -226,6 +231,11 @@ class BulletFace(Positioned, Protocol):
 
     @property
     def sprite(self) -> int: ...
+
+    @property
+    def hitbox(self) -> float:
+        """判定半径(碰撞盒半宽 px; 生成时由引擎物化到实例, 与碰撞判定同源)。"""
+        ...
 
 
 class EnemyFace(Positioned, Protocol):

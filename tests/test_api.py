@@ -396,3 +396,79 @@ def test_environment_detection() -> None:
     # 坏路径不炸
     bad = detect_environment(data_path="/nonexistent/th07.dat")
     assert bad["res_entries"] == "未找到"
+
+
+# ---- 判定半径观测面 + numpy 快路径 ----
+def test_snapshot_hitbox_matches_engine() -> None:
+    from touhou.utils import Vec2
+
+    game = Game(seed=1)
+    _run(game, 200, Input(shoot=True))
+    game._impl.bullets.spawn_demo_wave(Vec2(192, 100))  # 确定性造弹(环+扇)
+    game.step(Input(shoot=True))
+    snap = game.snapshot()
+    assert snap.bullets
+    r = game._impl.bullets.bullet_radius
+    for b in snap.bullets:
+        # 快照判定半径与引擎实际判定半宽(均匀 AABB 盒)同源
+        assert b.hitbox == r
+    # 已知弹型样本: demo wave 用 sprite=0(小弹), 判定半径同为世界半宽
+    assert any(b.sprite == 0 and b.hitbox == r for b in snap.bullets)
+    # 自机判定半宽: 作品常量(th07 约 1~2px), 与引擎玩家实例一致
+    assert snap.player.hitbox == game._impl.player.hitbox_radius
+    assert 0.0 < snap.player.hitbox <= 4.0
+
+
+def test_bullets_array_matches_snapshot() -> None:
+    import math
+
+    from touhou.utils import Vec2
+
+    game = Game(seed=1)
+    _run(game, 200, Input(shoot=True))
+    game._impl.bullets.spawn_demo_wave(Vec2(192, 100))
+    arr = game.bullets_array()
+    snap = game.snapshot()
+    assert arr.shape == (len(snap.bullets), 6)
+    for row, b in zip(arr, snap.bullets):
+        assert (row[0], row[1]) == (b.x, b.y)
+        # vx/vy: angle/speed 按屏幕系(y 向下)换算的速度向量
+        assert row[2] == pytest.approx(b.speed * math.cos(b.angle))
+        assert row[3] == pytest.approx(b.speed * math.sin(b.angle))
+        assert row[4] == b.hitbox
+        assert row[5] == b.sprite
+    # 标量自机坐标口与快照一致
+    assert game.player_pos == (snap.player.x, snap.player.y)
+
+
+def test_bullets_array_empty_and_lasers_array() -> None:
+    game = Game(seed=1)
+    game._impl.bullets.clear()
+    assert game.bullets_array().shape == (0, 6)   # 空场形状正确
+    la = game.lasers_array()
+    assert la.ndim == 2 and la.shape[1] == 5      # 开局无激光 → (0, 5)
+
+
+def test_player_hitbox_capability_fallback() -> None:
+    """玩家对象不带 hitbox_radius 的作品(协议外能力位) → snapshot 得 None。"""
+    from types import SimpleNamespace
+
+    from touhou.registry import get_game
+    from touhou.utils import Vec2
+
+    impl = SimpleNamespace(
+        frame=0, stage_no=1, lives=3.0, game_over=False, cleared=False,
+        result=None, stage_results=None, ending=None, boss=None,
+        globals=SimpleNamespace(deaths=0, bombs_used=0.0,
+                                spell_cards_captured=0, score=0),
+        player=SimpleNamespace(pos=Vec2(192, 400),
+                               state=SimpleNamespace(name="ALIVE"),
+                               focus=False, invulnerability_timer=0),
+        bullets=SimpleNamespace(alive=list),
+        host=SimpleNamespace(alive=list),
+        items=SimpleNamespace(alive=list),
+        lasers=SimpleNamespace(lasers=[]))
+    game = Game._from_impl(impl, get_game("th07"), "stub")
+    snap = game.snapshot()
+    assert snap.player.hitbox is None
+    assert game.bullets_array().shape == (0, 6)

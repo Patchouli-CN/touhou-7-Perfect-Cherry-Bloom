@@ -104,7 +104,9 @@ print(game.score, game.lives, game.result)  # 结算后 result 非 None
 
 - `stream.policy = lambda game: Input(...)` 可随时接管输入(自定义策略/AI)。
 - `game.snapshot()` 返回当前帧不可变实体快照(bullets/enemies/items/lasers/
-  player/boss), 供外部渲染或 AI 观测; 每帧构造有开销, 按需调用。
+  player/boss, 子弹/自机均带判定半径 hitbox), 供外部渲染或 AI 观测;
+  每帧构造有开销, 按需调用。躲弹等逐帧热循环用 `game.bullets_array()`
+  (numpy (N,6): x/y/vx/vy/hitbox/sprite, 无逐对象装箱) + `game.player_pos`。
 - 属性 `score/lives/bombs/power/cherry/graze/frame/phase/stage/result` 均只读。
 - `touhou.types` 是类型门面: 集中公共类型别名(`PathLike`/`KeysTuple`/事件钩子
   签名)与结构式 Protocol(`PosLike`/`Positioned`), 供 IDE 类型提示; 公共数据类型

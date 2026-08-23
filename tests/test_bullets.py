@@ -396,3 +396,22 @@ def test_spawn_state_no_offscreen_despawn_no_hit() -> None:
     for _ in range(11):
         w3.step()
     assert w3.hits_player()
+
+
+# ======================================================================
+# 判定半径物化 (fire 时把 BulletWorld.bullet_radius 写到 Bullet.hitbox,
+# 供 apis 观测面读取; 判定消费仍走世界字段, 行为不变)
+# ======================================================================
+def test_bullet_hitbox_materialized_from_world() -> None:
+    w = BulletWorld()
+    w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 4, 1, 2.0, 2.0, 0.1, sprite=0))
+    assert [b.hitbox for b in w.alive()] == [w.bullet_radius] * 4
+    # 世界半宽改动后, 新生成的弹携带新值; 已生成的保持生成时的值
+    w.bullet_radius = 5.0
+    w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 2, 1, 2.0, 2.0, 0.1, sprite=7))
+    assert sorted({b.hitbox for b in w.alive()}) == [3.5, 5.0]
+
+
+def test_bullet_default_hitbox() -> None:
+    # 直接构造(不经 fire)给与世界字段默认一致的 3.5
+    assert Bullet(Vec2(0, 0), 0.0, 1.0).hitbox == 3.5

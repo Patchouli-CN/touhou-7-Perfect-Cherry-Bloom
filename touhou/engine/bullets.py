@@ -228,15 +228,20 @@ class Burst(msgspec.Struct, frozen=True):
 
 class Bullet(BulletState):
     __slots__ = ("sprite", "sprite_offset", "state2", "age", "dead", "grazed",
-                 "out_of_bounds_time", "spawn_state", "spawn_frames")
+                 "out_of_bounds_time", "spawn_state", "spawn_frames", "hitbox")
 
     def __init__(self, pos: Vec2, angle: float, speed: float, sprite: int = 0,
-                 size: Vec2 | None = None, sprite_offset: int = 0) -> None:
+                 size: Vec2 | None = None, sprite_offset: int = 0,
+                 hitbox: float = 3.5) -> None:
         # C++ spawn 时 angle = AddNormalizeAngle(bulletAngle, 0)
         super().__init__(pos, normalize_angle_diff(angle), speed,
                          size=size if size is not None else _DEFAULT_BULLET_SIZE)
         self.sprite = sprite
         self.sprite_offset = sprite_offset  # C bullet->spriteOffset
+        # 判定半径(碰撞盒半宽, 观测面用): 本引擎的擦弹/命中盒是
+        # pos±BulletWorld.bullet_radius 的均匀 AABB (见 world 的判定管线),
+        # fire() 生成时把世界当前值物化到实例上; 默认 3.5 与该字段默认一致
+        self.hitbox = hitbox
         self.state2 = 0      # C bullet->state2 (ExIns 的每弹标记位)
         self.age = 0
         self.dead = False
@@ -265,6 +270,8 @@ class BulletWorld(msgspec.Struct):
     rng: Rng = msgspec.field(default_factory=Rng)
     player_pos: Vec2 = msgspec.field(default_factory=lambda: SCREEN / 2)
     player_radius: float = 2.0
+    # 敌弹判定半宽(擦弹/命中盒 = 弹 pos±bullet_radius 的均匀 AABB; 作品层判定
+    # 管线消费本字段, fire() 生成子弹时把它物化到 Bullet.hitbox 供观测面读取)
     bullet_radius: float = 3.5
     _bullets: list[Bullet] = msgspec.field(default_factory=list)
     # g_Supervisor.effectiveFramerateMultiplier 的弹幕侧 (ExIns 10/11 妖梦减速):
@@ -281,7 +288,8 @@ class BulletWorld(msgspec.Struct):
             for arm in range(burst.arms):
                 angle, speed = burst.angle_speed(arm, ring, self.rng)
                 b = Bullet(burst.path, angle, speed, sprite=burst.sprite, size=size,
-                           sprite_offset=burst.sprite_offset)
+                           sprite_offset=burst.sprite_offset,
+                           hitbox=self.bullet_radius)
                 if self.time_scale != 1.0:
                     # SpawnSingleBullet: velocity = speed * effectiveFramerateMultiplier
                     b.vel = b.vel * self.time_scale

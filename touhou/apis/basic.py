@@ -8,7 +8,7 @@
 
 - 枚举: ShotType / Difficulty / GamePhase —— 替代内部 shotType/difficulty 整数
 - Input: 命名布尔字段的一帧输入, 替代 tick 的 keys 元组
-- Game: 开局/逐帧 step/只读状态属性/按需实体快照
+- Game: 开局/逐帧 step/只读状态属性/按需实体快照 + numpy 快路径(bullets_array)
 - GameEvent: 每帧事件流(符卡/死亡/Bomb/奖残/过关…), 由帧前后状态差映射
 
 架构铁律: 本层(apis)与 engine 一样不 import games.* —— 窗口 App 等作品
@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import msgspec
+import numpy as np
 from enum import Enum, IntEnum
 from pathlib import Path
 from typing import Callable, Generic, Iterator, Literal, TypeVar, overload
@@ -123,6 +124,7 @@ class PlayerSnapshot(msgspec.Struct, frozen=True):
     state: str            # alive/spawning/dead/invulnerable/border
     focus: bool
     invulnerable: bool
+    hitbox: float | None = None  # 自机判定半宽(作品常量, 未提供的作品为 None)
 
 
 class BulletSnapshot(msgspec.Struct, frozen=True):
@@ -131,6 +133,7 @@ class BulletSnapshot(msgspec.Struct, frozen=True):
     angle: float
     speed: float
     sprite: int           # 弹型模板号(0..10)
+    hitbox: float         # 判定半径(碰撞盒半宽, 与引擎实际判定同源)
 
 
 class EnemySnapshot(msgspec.Struct, frozen=True):
@@ -358,6 +361,13 @@ class Game:
         return self._impl.globals.graze_in_total
 
     @property
+    def player_pos(self) -> tuple[float, float]:
+        """自机坐标 (x, y) —— 标量级便宜读取, 逐帧热循环安全(配合
+        bullets_array() 的躲弹算法无需每帧 snapshot() 装箱全场)。"""
+        p = self._impl.player.pos
+        return (p.x, p.y)
+
+    @property
     def stage(self) -> int:
         return self._impl.stage_no
 
@@ -394,13 +404,16 @@ class Game:
         """当前帧实体快照(不可变 msgspec.Struct)。
 
         每帧都调用有构造开销(全场实体逐个装箱), 建议按需调用
-        (如每 N 帧一次), 热循环里直接读 score/lives 等标量属性。
+        (如每 N 帧一次); 躲弹等逐帧热循环请用 ``bullets_array()``
+        (无逐对象 Struct 装箱的 numpy 快路径), 标量读 score/lives 等属性。
         """
         g = self._impl
         p = g.player
         player = PlayerSnapshot(
             x=p.pos.x, y=p.pos.y, state=p.state.name.lower(),
-            focus=p.focus, invulnerable=p.invulnerability_timer > 0)
+            focus=p.focus, invulnerable=p.invulnerability_timer > 0,
+            # 判定半宽是作品常量能力位(协议外): 未提供的作品回落 None
+            hitbox=getattr(p, "hitbox_radius", None))
         boss = None
         if g.boss is not None:
             b = g.boss
@@ -411,7 +424,7 @@ class Game:
             frame=g.frame, phase=self.phase, player=player, boss=boss,
             bullets=tuple(BulletSnapshot(
                 x=b.pos.x, y=b.pos.y, angle=b.angle, speed=b.speed,
-                sprite=b.sprite) for b in g.bullets.alive()),
+                sprite=b.sprite, hitbox=b.hitbox) for b in g.bullets.alive()),
             enemies=tuple(EnemySnapshot(
                 x=e.pos.x, y=e.pos.y, life=int(e.life), radius=e.radius,
                 is_boss=bool(e.is_boss)) for e in g.host.alive()),
@@ -423,6 +436,44 @@ class Game:
                 active=l.state == LaserState.ACTIVE)
                 for l in g.lasers.lasers if l.in_use),
         )
+
+    # ---- 实体 numpy 快路径(热循环用; 面向 BulletFace/LaserFace 协议构造) ----
+    def bullets_array(self) -> np.ndarray:
+        """全场敌弹的 numpy 观测面, 形状 (N, 6), float64。
+
+        列: x, y, vx, vy, hitbox, sprite。vx/vy 由 angle/speed 按屏幕系
+        (y 轴向下)换算 —— 躲弹算法要的是速度向量; 注意这是子弹当前
+        angle/speed 的外推基准, 与命令(变速/转向)作用中的瞬时 vel 可能有
+        偏差, 线性外推只是近似。
+        空场返回形状正确的 (0, 6) 空数组。每帧调用安全: 只面向 BulletFace
+        协议逐字段读 + 单次数组装配, 无逐对象 msgspec.Struct 装箱;
+        snapshot() 是全景观测, 热循环用本方法。
+        """
+        bullets = list(self._impl.bullets.alive())
+        if not bullets:
+            return np.empty((0, 6), dtype=np.float64)
+        raw = np.array(
+            [(b.pos.x, b.pos.y, b.angle, b.speed, b.hitbox, float(b.sprite))
+             for b in bullets], dtype=np.float64)
+        vx = raw[:, 3] * np.cos(raw[:, 2])
+        vy = raw[:, 3] * np.sin(raw[:, 2])
+        return np.column_stack((raw[:, 0], raw[:, 1], vx, vy,
+                                raw[:, 4], raw[:, 5]))
+
+    def lasers_array(self) -> np.ndarray:
+        """在场激光的 numpy 观测面, 形状 (N, 5), float64。
+
+        列: x, y, angle, width, active(1.0=全宽命中态, 0.0=出现/消散中)。
+        只含 in_use 槽位(与 snapshot().lasers 口径一致); 空场返回 (0, 5)。
+        与 bullets_array() 同为无装箱快路径, 每帧调用安全。
+        """
+        lasers = [l for l in self._impl.lasers.lasers if l.in_use]
+        if not lasers:
+            return np.empty((0, 5), dtype=np.float64)
+        return np.array(
+            [(l.pos.x, l.pos.y, l.angle, l.width,
+              1.0 if l.state == LaserState.ACTIVE else 0.0)
+             for l in lasers], dtype=np.float64)
 
 
 # ---- 资源包 + 世界入口(用户级 API) ----
