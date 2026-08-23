@@ -35,7 +35,7 @@ from .apis.basic import (
     TouhouWorldEventStream,
     WorldData,
 )
-from .apis.modding import Mods
+from .apis.modding import ModApi
 from .registry import (
     AnmSpec,
     EclSpec,
@@ -91,7 +91,7 @@ __all__ = [
     "Input",
     "ItemSnapshot",
     "LaserSnapshot",
-    "Mods",
+    "ModApi",
     "MsgParseError",
     "NotImplementedEclError",
     "NotRegisteredError",

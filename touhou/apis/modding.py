@@ -1,7 +1,7 @@
 """对外公共魔改 API —— 给 mod 制作者用的写入门面。
 
-与 basic.py 的读写分离约定: ``Game`` = 只读观测, ``Mods`` = 改写。
-**Mods 是官方魔改口子: 这里的写操作(无敌/资源直改/自定义弹幕)绕过正常
+与 basic.py 的读写分离约定: ``Game`` = 只读观测, ``ModApi`` = 改写。
+**ModApi 是官方魔改口子: 这里的写操作(无敌/资源直改/自定义弹幕)绕过正常
 游戏规则**, 仅供魔改/实验/调试, 不计入正常对局语义。
 
 作品无关约定(与 basic.py 同一铁律: 本层不 import games.*, AST 守护钉死):
@@ -24,18 +24,18 @@ from ..registry import GameData
 from ..utils import Vec2
 from .basic import Game
 
-# 再导出: mod 脚本 ``from touhou.apis.modding import Mods, Burst, Aim, Vec2``
+# 再导出: mod 脚本 ``from touhou.apis.modding import ModApi, Burst, Aim, Vec2``
 # 一条龙, 不必再摸 engine.bullets 内部模块
-__all__ = ["Aim", "Burst", "Mods", "Vec2"]
+__all__ = ["Aim", "Burst", "ModApi", "Vec2"]
 
 #: getattr 三参默认值的哨兵(区分"成员缺失"与"成员值为 None")
 _MISSING: Any = object()
 
 
-class Mods:
+class ModApi:
     """mod 制作的官方入口: 包住一个 ``Game``(只读观测), 叠加写操作面。用法::
 
-        mods = Mods(game)
+        mods = ModApi(game)
         def policy(game):            # 输入策略每帧被调
             mods.god_mode()          # 无敌挂(计时每帧递减, 故要每帧重置)
             mods.set_power(mods.full_power)
@@ -73,8 +73,12 @@ class Mods:
                 f"(ModdableEngine 协议要求可写, 见 touhou/types.py)")
 
     # ---- 玩家 ----
-    def god_mode(self, timer: int = 999) -> None:
-        """无敌挂: 把自机无敌计时重置为 ``timer`` 帧。
+    def god_mode(self) -> None:
+        """ 无敌挂 """
+        return self.set_invulnerability_time(999)
+        
+    def set_invulnerability_time(self, timer: int = 999) -> None:
+        """无敌时间设置: 把自机无敌计时重置为 ``timer`` 帧。
 
         引擎每帧递减该计时(归零即恢复可中弹), 故须在输入策略(policy)里
         **每帧调用**才能持续无敌; 单次调用只保 ``timer`` 帧。

@@ -1,7 +1,7 @@
 """公共魔改 API(touhou/apis/modding.py)门面行为测试。
 
 夹具模式照 test_api.py: 真实 th07.dat headless 开局; 引擎内部状态读回验证
-时允许摸 game._impl(测试本就需要校验 Mods 的写入落到了引擎里)。
+时允许摸 game._impl(测试本就需要校验 ModApi 的写入落到了引擎里)。
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from touhou.apis.basic import Difficulty, Game, Input, ShotType
-from touhou.apis.modding import Aim, Burst, Mods
+from touhou.apis.modding import Aim, Burst, ModApi
 from touhou.paths import DEFAULT_DATA
 from touhou.utils import Vec2
 
@@ -19,10 +19,10 @@ pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(),
                                 reason="需要真实 th07.dat")
 
 
-def _mods(seed: int = 1) -> tuple[Game, Mods]:
+def _mods(seed: int = 1) -> tuple[Game, ModApi]:
     game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL,
                 seed=seed)
-    return game, Mods(game)
+    return game, ModApi(game)
 
 
 # ---- 资源 setter(写入后经 Game 只读属性读回验证) ----
@@ -64,7 +64,7 @@ def test_god_mode_resets_invulnerability() -> None:
     # 计时被重置, 且快照的 invulnerable 观测同步为真
     assert game._impl.player.invulnerability_timer == 999
     assert game.snapshot().player.invulnerable
-    mods.god_mode(timer=42)
+    mods.set_invulnerability_time(timer=42)
     assert game._impl.player.invulnerability_timer == 42
 
 
@@ -100,7 +100,7 @@ def _duck_game() -> Game:
 
 
 def test_duck_engine_missing_capabilities() -> None:
-    mods = Mods(_duck_game())
+    mods = ModApi(_duck_game())
     with pytest.raises(NotImplementedError, match="不支持无敌改写"):
         mods.god_mode()
     with pytest.raises(NotImplementedError, match="不支持火力改写"):
@@ -123,4 +123,4 @@ def test_readonly_property_reported() -> None:
     game._impl = _Duck(player=game._impl.player, globals=game._impl.globals,
                        bullets=game._impl.bullets)
     with pytest.raises(NotImplementedError, match="只读"):
-        Mods(game).set_power(1)
+        ModApi(game).set_power(1)

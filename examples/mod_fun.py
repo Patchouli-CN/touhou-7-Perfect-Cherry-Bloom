@@ -1,21 +1,21 @@
 """modding 教程示例: 无敌 + 满火力 + 每 3 秒以自机为中心放一圈自定义环形弹幕。
 
-演示官方魔改入口 Mods(touhou.apis.modding): 包住对局门面 Game 即得写操作面,
+演示官方魔改入口 ModApi(touhou.apis.modding): 包住对局门面 Game 即得写操作面,
 全程只用公共 API(touhou 顶层 + touhou.apis.modding), 不摸引擎内部成员。
-注意: Mods 的写操作绕过正常游戏规则, 仅供魔改/实验。
+注意: ModApi 的写操作绕过正常游戏规则, 仅供魔改/实验。
 
 运行: uv run python examples/mod_fun.py
 """
 from __future__ import annotations
 
 from touhou import Difficulty, Input, TouhouWorld
-from touhou.apis.modding import Mods
+from touhou.apis.modding import ModApi
 
 
 def main() -> None:
     tw = TouhouWorld(difficulty=Difficulty.LUNATIC, headless=True, seed=7)
     stream = tw.run()
-    mods = Mods(tw.game)  # 官方魔改口子: 包住对局门面, 叠加写操作面
+    mods = ModApi(tw.game)  # 官方魔改口子: 包住对局门面, 叠加写操作面
 
     def godmode_and_danmaku(game) -> Input:
         # 无敌挂: 无敌计时每帧被引擎递减, 故放在 policy 里每帧重置
