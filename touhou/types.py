@@ -27,6 +27,9 @@ from typing import (
 )
 
 if TYPE_CHECKING:
+    # 弹幕结构(仅类型检查期): ModdableEngine 协议的 fire 签名用;
+    # 运行时不 import, 保持本模块"零引擎依赖"的分层约定
+    from .engine.bullets import Burst
     # 公共数据类型再导出(仅类型检查期可见; 运行时请 from touhou.apis.basic import …)
     from .apis.basic import (
         BossSnapshot,
@@ -66,6 +69,10 @@ __all__ = [
     "ItemFace",
     "KeysTuple",
     "LaserFace",
+    "ModdableBulletWorldFace",
+    "ModdableEngine",
+    "ModdableGlobalsFace",
+    "ModdablePlayerFace",
     "PathLike",
     "PlayerFace",
     "PosLike",
@@ -366,6 +373,71 @@ class GameEngine(Protocol):
 def _perfect_cherry_bloom_satisfies_game_engine(
         impl: "PerfectCherryBloom") -> GameEngine:
     """静态断言: th07 主逻辑天然满足 GameEngine 协议(鸭子, 无 adapter)。
+
+    仅供 mypy 检查(协议面与实现对漂移时这里报错); 运行时不被调用。
+    """
+    return impl
+
+
+# ---- ModdableEngine 可变协议(apis.modding.Mods 魔改门面的写入面) ----
+# 与上面的只读 Face 对应: 同名成员改写为"可赋值属性"声明(只读 property 是
+# 其超集约束, 故可变面天然兼容 GameEngine 协议; msgspec.Struct 字段与带
+# setter 的 property 都满足)。成员命名全部是作品无关语义(power/bombs/lives/
+# invulnerability_timer/score), 不出现 th07 的内部字段名(current_power 等);
+# th07 主逻辑天然满足本协议, 无需 adapter。声明顺序: 组件面 → 引擎面。
+
+
+class ModdablePlayerFace(PlayerFace, Protocol):
+    """玩家可写形态 —— 在只读面上追加可改写的无敌计时。"""
+
+    # 覆写只读 property 为可赋值属性: 无敌挂(god_mode)靠每帧重置它实现
+    invulnerability_timer: int
+
+
+class ModdableGlobalsFace(GameGlobalsFace, Protocol):
+    """全局计数可写形态 —— 真实分的直接改写口(score, int)。"""
+
+    score: int                 # 覆写只读 property 为可赋值属性
+
+
+class ModdableBulletWorldFace(BulletWorldFace, Protocol):
+    """敌弹容器可写形态 —— 追加自定义弹幕的发射口。"""
+
+    def fire(self, burst: "Burst") -> int:
+        """把一发 Burst 展开成实际子弹, 返回生成颗数。"""
+        ...
+
+
+class ModdableEngine(GameEngine, Protocol):
+    """可变对局引擎协议 —— 作品的引擎满足此协议即可被 apis.modding.Mods 改写。
+
+    在 GameEngine(只读观测面)之上把资源三件套改为可赋值属性, 并把
+    player/globals/bullets 收窄为对应可写面。资源数值为引擎内部 float
+    表示(公共 API Mods 用 int, 内部转换); 火力上限等作品数值语义经
+    registry 的 GameData 提供, 不进协议。
+    Mods 内部按"能力位探测 + 清晰报错"消费: 调用到引擎不满足的成员时抛
+    NotImplementedError(带缺失成员名的中文说明), 不静默失败。
+    符合性由文件末尾的 _perfect_cherry_bloom_satisfies_moddable_engine 钉住。
+    """
+
+    # 覆写只读 property 为可赋值属性: 火力/炸弹/残机的直接改写口
+    power: float
+    bombs: float
+    lives: float
+
+    @property
+    def player(self) -> ModdablePlayerFace: ...
+
+    @property
+    def globals(self) -> ModdableGlobalsFace: ...
+
+    @property
+    def bullets(self) -> ModdableBulletWorldFace: ...
+
+
+def _perfect_cherry_bloom_satisfies_moddable_engine(
+        impl: "PerfectCherryBloom") -> ModdableEngine:
+    """静态断言: th07 主逻辑天然满足 ModdableEngine 协议(鸭子, 无 adapter)。
 
     仅供 mypy 检查(协议面与实现对漂移时这里报错); 运行时不被调用。
     """
