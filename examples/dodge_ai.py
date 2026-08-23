@@ -12,8 +12,11 @@
 - 只看敌弹, 不看激光与敌人体术;
 - 8 向离散输出, 非连续控制。
 
-运行(headless, 无需窗口): uv run python examples/dodge_ai.py
-帧数用环境变量 DODGE_AI_FRAMES 覆盖(默认 3600 ≈ 1 分钟)。
+运行(默认开窗口观战, 看 AI 打全流程; Esc 中止):
+    uv run python examples/dodge_ai.py
+headless 跑数据(测试/调参用, 无需窗口):
+    DODGE_AI_HEADLESS=1 uv run python examples/dodge_ai.py
+    帧数用环境变量 DODGE_AI_FRAMES 覆盖(默认 3600 ≈ 1 分钟)。
 """
 from __future__ import annotations
 
@@ -22,7 +25,8 @@ import os
 
 import numpy as np
 
-from touhou import Difficulty, Game, GameEventKind, GamePhase, Input, ShotType
+from touhou import (Difficulty, Game, GameEventKind, GamePhase, Input,
+                    ShotType, TouhouWorld)
 
 PREDICT_FRAMES = 16     # 线性外推帧数(视野)
 THREAT_RADIUS = 96.0    # 只规避此半径内的威胁(px)
@@ -73,6 +77,17 @@ def dodge_policy(game: Game) -> Input:
 
 
 def main() -> None:
+    if os.environ.get("DODGE_AI_HEADLESS") != "1":
+        # 窗口观战: 跳过标题菜单直接进游戏, 每帧输入来自 dodge_policy;
+        # Esc 中止, 终局(通关/GameOver)自动退出。观战自动录像(replays/)。
+        tw = TouhouWorld(character=ShotType.REIMU_A,
+                         difficulty=Difficulty.NORMAL, seed=42,
+                         headless=False, auto_input=dodge_policy)
+        print("[dodge_ai] 窗口观战启动(Esc 中止)")
+        tw.run()    # 阻塞至关窗/终局
+        print("[dodge_ai] 观战结束")
+        return
+
     frames = int(os.environ.get("DODGE_AI_FRAMES", "3600"))
     game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL,
                 seed=42)

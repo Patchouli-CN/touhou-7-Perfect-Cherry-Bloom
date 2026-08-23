@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(),
 def test_dodge_ai_smoke() -> None:
     root = Path(__file__).resolve().parent.parent
     env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy",
-               DODGE_AI_FRAMES="600")
+               DODGE_AI_HEADLESS="1", DODGE_AI_FRAMES="600")
     r = subprocess.run([sys.executable, "examples/dodge_ai.py"],
                        capture_output=True, text=True, timeout=300,
                        cwd=root, env=env)
