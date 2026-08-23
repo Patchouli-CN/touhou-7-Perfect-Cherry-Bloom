@@ -1,58 +1,69 @@
-# touhou
+<div align="center">
 
-通用东方弹幕游戏框架 —— TH07《东方妖妖梦》(Perfect Cherry Blossom) 为
-首个接入作品/参考实现: 引擎逻辑对照原版反编译逐帧移植, 对外提供干净的
-Pythonic API(`touhou.apis.basic`), 窗口版游戏用 pygame 渲染。
-发行包名与入口命令沿用 `touhou07`。
+# 東方エンジン ～ touhou-engine
 
-## 架构
+**少女祈祷中……** 🌸
 
-三层结构, 作品经注册表接入框架(各维度见下文"接入新作品"):
+![python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)
+![pygame](https://img.shields.io/badge/render-pygame-green)
+![msgspec](https://img.shields.io/badge/data-msgspec-orange)
+![tests](https://img.shields.io/badge/tests-767%20passed-brightgreen)
 
-- **框架层**(`touhou/` 顶层): 作品无关的对外 API(`apis/`)、注册表
-  (`registry.py` decorator)、类型门面(`types.py`)、工具与基础设施
-  (`utils/`、`exceptions.py`、`paths.py`、`env.py`、`logger.py`)。
-- **引擎层**(`touhou/engine/`): 跨作品可复用机制 —— ECL 虚拟机基类、
-  Player/Bomb/Globals/Item/Boss 基座、弹幕/激光/敌人宿主,
-  以及 `render/`(Renderer 协议 + D3DX-like 管线接口)与 `view/`
-  (作品无关渲染基建)。
-- **作品层**(`touhou/games/th07/`): TH07 的全部具体实现(对局主逻辑/
-  自机/符卡/炸弹/道具/ECL VM/数值表/表现层), 在 `import touhou` 时
-  经 decorator 完成全维度注册 —— 也是接新作品时照抄的骨架。
+![gameplay](docs/assets/gameplay.png)
 
-## 安装
+*通用东方弹幕游戏框架 —— TH07《东方妖妖梦 ～ Perfect Cherry Blossom》为首个接入作品*
+
+</div>
+
+---
+
+## 「Story」这是什么
+
+> 那是，发生在 Python 之上的春雪异变——
+
+引擎逻辑对照原版反编译逐帧移植，对外提供干净的 Pythonic API。
+不再是"只能玩"的游戏，而是**可以 import 的幻想乡**：
+
+- 🎮 **完整可玩**：标题菜单 / 选人 / 6 面 + Ex + Phantasm / 符卡宣言 /
+  对话立绘 / 3D 背景 / BGM·SE / 结算入榜，pygame 渲染
+- 🌊 **事件流 API**：headless 模式逐帧驱动对局，符卡/死亡/Bomb/过关
+  全是流式事件——给 AI 训练、自动化、工具链用
+- 👀 **观战模式**：`headless=False + auto_input=policy`，窗口里看 AI 打游戏
+- 📼 **确定性录像**：种子 + 逐帧输入即可完整复现一局，Replay 菜单可播
+- 🔧 **官方魔改口**：`ModApi`（无敌/资源直改/自定义弹幕），不摸引擎内部
+- 🧩 **可扩展架构**：作品经 decorator 注册接入，th08 来了照 `games/th07/`
+  抄骨架即可，框架零改动
+
+## 「How to Play」安装与运行
 
 ```bash
 pip install -e .        # 或: uv pip install -e .
+
+touhou07                # 开玩
+python -m touhou        # 模块入口亦可
 ```
 
-依赖: Python ≥ 3.12, numpy, pillow, pygame, loguru, msgspec。
+依赖：Python ≥ 3.12, numpy, pillow, pygame, loguru, msgspec。
 
-## 运行游戏
+**操作**：方向键移动 ／ `Z` 射击·确认 ／ `X` Bomb ／ `Shift` 低速（显判定点）／
+`Ctrl` 快进对话 ／ `Esc` 暂停
 
-```bash
-touhou07                # 安装后的入口脚本
-python -m touhou        # 或直接用模块入口
-```
+**游戏资源**：各作品使用对应原版数据（th07 为 `th07.dat`，BGM 用同目录
+`thbgm.dat` 自动推导），运行时解包，**仓库不分发任何二进制资源**。
+路径解析顺序：
 
-## 游戏资源
-
-各作品使用对应的原版游戏数据(th07 为 `th07.dat`, BGM 用同目录的
-`thbgm.dat`, 自动推导), 运行时解包, 仓库不分发任何二进制资源。
-路径解析顺序:
-
-1. 显式参数(`Game(data_path=...)` / `GameApp(data_path=...)`)
+1. 显式参数（`Game(data_path=...)` / `GameApp(data_path=...)`）
 2. 环境变量 `TOUHOU_DAT`
-3. 内置默认路径(见 `touhou/paths.py`)
+3. 内置默认路径（见 `touhou/paths.py`）
 
 ```bash
 set TOUHOU_DAT=D:\games\th07\th07.dat   # Windows
 export TOUHOU_DAT=/games/th07/th07.dat  # Linux
 ```
 
-## API 用法
+## 「API」像调用库一样玩东方
 
-统一入口 `TouhouWorld`(headless 事件流 / 窗口版游戏):
+统一入口 `TouhouWorld`（headless 事件流 / 窗口版游戏）：
 
 ```python
 from touhou import TouhouWorld, WorldData, Character, Difficulty
@@ -67,19 +78,18 @@ for event in stream:         # 迭代即驱动世界, 终局自动收尾
 print(stream.result)         # 迭代结束后: 总结算 dict
 
 tw2 = TouhouWorld(wd=wd, headless=False)
-tw2.run()                      # 非 headless: 弹出游戏窗口(阻塞)
+tw2.run()                    # 非 headless: 弹出游戏窗口(阻塞)
 ```
 
-观战(在窗口里看 AI 打游戏)与录像:
+**观战**（在窗口里看 AI 打游戏）与**录像**：
 
 ```python
-def my_policy(game) -> Input:  # 逐帧输入策略: 观测面与 Game 门面一致
+def my_policy(game) -> Input:   # 逐帧输入策略: 观测面与 Game 门面一致
     return Input(shoot=True, advance=True,
                  left=(game.frame // 90) % 2 == 0)
 
-# headless=False + auto_input=callable → 观战: 窗口照开, 跳过标题菜单直接
-# 进游戏, 每帧输入来自策略而非键盘(角色/难度/残机/种子以 TouhouWorld 自身
-# 属性为准); Esc 随时中止观战
+# 窗口照开, 跳过标题菜单直接进游戏, 每帧输入来自策略而非键盘
+# (角色/难度/残机/种子以 TouhouWorld 自身属性为准); Esc 随时中止
 tw3 = TouhouWorld(character=Character.MARISA_A, difficulty=Difficulty.NORMAL,
                   headless=False, auto_input=my_policy)
 tw3.run()
@@ -89,7 +99,7 @@ tw3.run()
 stream.save_replay()           # None → replays/ 下时间戳命名; 返回实际路径
 ```
 
-细粒度控制用 `Game` 门面:
+**细粒度控制**用 `Game` 门面：
 
 ```python
 from touhou import Game, Input, ShotType, Difficulty, GamePhase
@@ -102,70 +112,74 @@ while game.phase in (GamePhase.RUNNING, GamePhase.DIALOG):
 print(game.score, game.lives, game.result)  # 结算后 result 非 None
 ```
 
-- `stream.policy = lambda game: Input(...)` 可随时接管输入(自定义策略/AI)。
-- `game.snapshot()` 返回当前帧不可变实体快照(bullets/enemies/items/lasers/
-  player/boss, 子弹/自机均带判定半径 hitbox), 供外部渲染或 AI 观测;
-  每帧构造有开销, 按需调用。躲弹等逐帧热循环用 `game.bullets_array()`
-  (numpy (N,6): x/y/vx/vy/hitbox/sprite, 无逐对象装箱) + `game.player_pos`。
+- `stream.policy = lambda game: Input(...)` 可随时接管输入（自定义策略/AI）。
+- `game.snapshot()` 返回当前帧不可变实体快照（bullets/enemies/items/lasers/
+  player/boss，子弹/自机均带判定半径 hitbox）；每帧构造有开销，按需调用。
+  躲弹等逐帧热循环用 `game.bullets_array()`（numpy (N,6)：
+  x/y/vx/vy/hitbox/sprite，无逐对象装箱）+ `game.player_pos`。
 - 属性 `score/lives/bombs/power/cherry/graze/frame/phase/stage/result` 均只读。
-- `touhou.types` 是类型门面: 集中公共类型别名(`PathLike`/`KeysTuple`/事件钩子
-  签名)与结构式 Protocol(`PosLike`/`Positioned`), 供 IDE 类型提示; 公共数据类型
-  在类型检查期也可 `from touhou.types import Input, GameEvent, ...` 解析
-  (运行时请从 `touhou`/`touhou.apis.basic` 导入)。
+- `touhou.types` 是类型门面：集中公共类型别名与结构式 Protocol，供 IDE
+  类型提示（运行时请从 `touhou`/`touhou.apis.basic` 导入）。
 
-## 接入新作品
+**魔改**（`ModApi`，官方写入口，与只读的 `Game` 读写分离）：
 
-接新作品(th08…)的姿势: 照 `games/th07/` 抄一套骨架, 组件在定义处用
-decorator 注册即可, 框架代码零改动。`touhou.registry` 是框架与作品的
-接缝: 全局注册表 + decorator, th07 是第一个注册作品(各组件在定义处
-"引用注册", 不移动文件)。注册维度:
+```python
+from touhou.apis.modding import ModApi
 
-- `@register_ecl(name, file_format=...)` — ECL 虚拟机(指令集解释器类 + ecldata 解析类)
-- `@register_anm(name, version=...)` — ANM 格式变体(解析类 + 版本号)
+mods = ModApi(tw.game)
+mods.set_invulnerability_time()   # 无敌(计时每帧递减, policy 里每帧调)
+mods.set_power(mods.full_power)   # 满火力(上限取自作品数值表)
+mods.fire_ring(x, y, arms=24)     # 自定义环形弹幕
+```
+
+**ECL 编解码**（作品脚本文件的工具链入口）：
+
+```python
+from touhou.engine.ecl_codec import EclCodec
+
+codec = EclCodec("th07")                  # 实现从注册表解析
+ecl = codec.decode(data)                  # bytes → 作品无关 msgspec.Struct
+assert codec.encode(ecl) == data          # 逐字节 round-trip
+```
+
+完整示例见 `examples/`：`auto_play.py`（策略开车）、`mod_fun.py`（魔改）、
+`dodge_ai.py`（势能场躲弹 baseline，直接运行=窗口观战）。
+
+## 「Architecture」三层架构
+
+作品经注册表接入框架，框架代码零改动：
+
+- **框架层**（`touhou/` 顶层）：作品无关的对外 API（`apis/`）、注册表
+  （`registry.py` decorator）、类型门面（`types.py`）、工具与基础设施
+  （`utils/`、`exceptions.py`、`paths.py`、`env.py`、`logger.py`）。
+- **引擎层**（`touhou/engine/`）：跨作品可复用机制 —— ECL 虚拟机基类、
+  Player/Bomb/Globals/Item/Boss 基座、弹幕/激光/敌人宿主，
+  以及 `render/`（Renderer 协议 + D3DX-like 管线接口）与 `view/`
+  （作品无关渲染基建）。
+- **作品层**（`touhou/games/th07/`）：TH07 的全部具体实现（对局主逻辑/
+  自机/符卡/炸弹/道具/ECL VM/数值表/表现层），在 `import touhou` 时
+  经 decorator 完成全维度注册 —— 也是接新作品时照抄的骨架。
+
+## 「Extend」接入新作品
+
+接新作品（th08…）的姿势：照 `games/th07/` 抄一套骨架，组件在定义处用
+decorator 注册即可。`touhou.registry` 是框架与作品的接缝。注册维度：
+
+- `@register_ecl(name, file_format=...)` — ECL 虚拟机（指令集解释器类 + ecldata 解析类）
+- `@register_anm(name, version=...)` — ANM 格式变体（解析类 + 版本号）
 - `@register_game_hooks(name, stage_file=..., ecl_file=..., msg_file=...)` —
-  游戏回调包(EclHost 宿主实现类 + 关卡资源命名规则)
-- `@register_world_impl(name)` — 对局主逻辑类, `TouhouWorld(game=name)` 经此构造
-- `register_game_data(name, GameData)` — 数值表/名单(符卡分值/炸弹参数/
-  掉落表/火力档/机体 sht 映射/角色与难度名单), 构造对局时经 `data=` 注入
+  游戏回调包（EclHost 宿主实现类 + 关卡资源命名规则）
+- `@register_world_impl(name)` — 对局主逻辑类，`TouhouWorld(game=name)` 经此构造
+- `register_game_data(name, GameData)` — 数值表/名单（符卡分值/炸弹参数/
+  掉落表/火力档/机体 sht 映射/角色与难度名单），构造对局时经 `data=` 注入
+- `@register_app(name)` — 窗口 App（非 headless 入口，契约见 registry docstring）
 
-同一维度同名重复注册报 `ValueError`(防静默覆盖); 查找未注册名报带已注册
-列表的 `KeyError`。th07 的注册点: `games/th07/ecl_vm.py:EclMachineTh07`、
-`schema/anm.py:AnmFile`、`games/th07/ecl_host.py:GameEclHost`、
-`games/th07/world.py:PerfectCherryBloom`、`games/th07/data.py:TH07_DATA`。
+同一维度同名重复注册报 `ValueError`（防静默覆盖）；查找未注册名报带已注册
+列表的 `KeyError`。门面只面向 `touhou.types.GameEngine` 协议编程，对局实现
+鸭子满足该协议即可，无需 adapter；符卡/对话等作品专属探测走可选方法
+`spellcard_active()`/`msg_active()`（不实现则门面按 False 回落）。
 
-门面(`touhou.apis.basic.Game`)只面向 `touhou.types.GameEngine` 协议编程
-(tick/frame/stage_no/globals/boss/border/player + bullets/host/items/lasers
-容器), 对局实现鸭子满足该协议即可, 无需 adapter; 符卡/对话等作品专属探测
-走可选方法 `spellcard_active()`/`msg_active()`(不实现则门面按 False 回落)。
-th07 的数值表集中在 `touhou/games/th07/data.py`(单一来源), 作品包模块
-(boss/bomb/items)的模块级同名常量即该表 —— 不经注册表单独用这些模块也是
-th07 默认行为。窗口版 GameApp 的名单/难度/面数经 `game_data` 参数化
-(HUD/选人贴图布局为 th07 专属, 见各 view 模块 docstring)。
-
-## 包结构
-
-- `touhou/apis/basic.py` / `types.py` / `registry.py` — 对外门面、类型门面、
-  作品注册表(渲染后端维度: `register_renderer`, 默认 "pygame")
-- `touhou/games/th07/` — th07 的游戏逻辑包: `world.py`(对局主逻辑
-  PerfectCherryBloom)、`player.py`(自机)、`boss.py`(符卡)、`bomb.py`
-  (炸弹+结界)、`items.py`(道具经济)、`globals.py`(樱点/计数)、
-  `results.py`(评级)、`ecl_host.py`(ECL 宿主钩子)、`ecl_vm.py`
-  (TH07 ECL 虚拟机: EclMachineTh07 + EclVarId + opcode handler)、
-  `playerdata.py`(Player Data 装配)、`data.py`(数值表, 单一来源)、
-  `view/`(th07 表现层: GameApp 应用壳、菜单场景、HUD/战斗画面、
-  PygameRenderer 后端)
-- `touhou/engine/` — 跨作品可复用机制: `ecl.py`(ECL 文件解析+状态结构)、
-  `ecl_base.py`(ECL VM 框架基类 EclMachineBase)、`bullets.py` /
-  `bullet_commands.py` / `lasers.py`(弹幕/激光原语)、`enemies.py`
-  (EclEnemy 宿主+伤害管线)、`player_base.py` / `bomb_base.py` /
-  `boss_base.py` / `globals_base.py` / `item_base.py`(各系统的作品无关
-  基座)、`ending.py`(结局脚本)、`rng.py`(确定性随机)、
-  `replay.py` / `config.py` / `score_store.py`(机制类)、
-  `render/`(渲染后端协议 Renderer + FrameInput)、`view/`(作品无关渲染
-  基建: anm 脚本 VM/特效层/.std 3D 背景/SpriteBank/SoundPlayer/震屏)
-- `touhou/schema/` — 资源格式解析(dat/anm/std/ecl/sht/msg/thbgm 等)
-
-新作品(以假想的 th99 为例)的骨架:
+以假想的 th99 为例的骨架：
 
 ```python
 from touhou.registry import (
@@ -194,15 +208,50 @@ class Th99Game: ...            # 鸭子满足 GameEngine 协议; 也可直接复
 tw = TouhouWorld(game="th99", headless=True)   # 从注册表解析
 ```
 
-最小路径(只换数据/资源, 不改引擎): 复用 `PerfectCherryBloom` 作对局实现,
+最小路径（只换数据/资源，不改引擎）：复用 `PerfectCherryBloom` 作对局实现，
 只注册自己的 `GameData` —— 示例见 `tests/test_registry.py` 的
-`test_stub_game_with_custom_data_reuses_th07_engine`。ECL 指令集拆分为独立
-子包仍是新作品落地时的工作。
+`test_stub_game_with_custom_data_reuses_th07_engine`。
 
-## 测试
+## 「Package」包结构
+
+- `touhou/apis/` — 对外门面：`basic.py`（Game/TouhouWorld/事件流）、
+  `modding.py`（ModApi 魔改口）
+- `touhou/types.py` / `registry.py` — 类型门面、作品注册表
+  （渲染后端维度：`register_renderer`，默认 "pygame"）
+- `touhou/games/th07/` — th07 游戏逻辑包：`world.py`（对局主逻辑
+  PerfectCherryBloom）、`player.py`（自机）、`boss.py`（符卡）、`bomb.py`
+  （炸弹+结界）、`items.py`（道具经济）、`globals.py`（樱点/计数）、
+  `results.py`（评级）、`ecl_host.py`（ECL 宿主钩子）、`ecl_vm.py`
+  （EclMachineTh07 + opcode handler）、`playerdata.py`、`data.py`
+  （数值表，单一来源）、`view/`（GameApp 应用壳/菜单场景/HUD/战斗画面/
+  PygameRenderer 后端）
+- `touhou/engine/` — 跨作品机制：`ecl.py`（ECL 状态结构）、`ecl_base.py`
+  （VM 框架基类）、`ecl_codec.py`（EclCodec 编解码入口）、`bullets.py` /
+  `bullet_commands.py` / `lasers.py`（弹幕/激光原语）、`enemies.py`、
+  `player_base.py` / `bomb_base.py` / `boss_base.py` / `globals_base.py` /
+  `item_base.py`（各系统基座）、`ending.py`（结局脚本）、`rng.py`
+  （确定性随机）、`replay.py` / `config.py` / `score_store.py`、
+  `render/`（Renderer 协议 + FrameInput + D3DX-like 管线）、`view/`
+  （anm 脚本 VM/特效层/.std 3D 背景/SpriteBank/SoundPlayer/震屏）
+- `touhou/schema/` — 资源格式解析（dat/anm/std/ecl/sht/msg/thbgm 等）
+
+## 「Test」
 
 ```bash
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy uv run python -m pytest -q
 ```
 
-测试用真实 th07.dat 数据(默认路径或 `TOUHOU_DAT` 指向)。
+测试用真实 th07.dat 数据（默认路径或 `TOUHOU_DAT` 指向）。
+
+---
+
+<div align="center">
+
+🌸 *原作《东方妖妖梦 ～ Perfect Cherry Blossom》© 上海アリス幻樂団（ZUN）* 🌸
+
+*本仓库为爱好者再实现/二次创作，不含亦不分发任何原版游戏资源；*
+*反编译参考来自 [some100/th07](https://github.com/some100/th07)（100% 实现 / 99.78% 精度）。*
+
+**少女已祈祷完毕 —— 弹幕，就绪。**
+
+</div>
