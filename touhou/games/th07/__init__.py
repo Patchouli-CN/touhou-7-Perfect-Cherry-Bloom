@@ -23,7 +23,8 @@ engine/player_base.py, 本包 player.py 再导出以保持
 games.*(单向依赖: 引擎 ←—— 作品; 唯一例外是 engine/render 协议在
 TYPE_CHECKING 下引用本包 screens.py 的菜单流类型, 仅 mypy 可见)。
 导入本包即完成 th07 在 registry 的 world/hooks/data 维度注册
-(ECL/ANM 经 engine.ecl/schema.anm 链; ``import touhou`` 保证全链触发)。
+(ECL/ANM 经 engine.ecl/schema.anm 链; 窗口 App 与 pygame 渲染后端经
+view 子包注册, ``import touhou`` 保证全链触发)。
 """
 from .data import TH07_DATA
 from .player import Player, PlayerState

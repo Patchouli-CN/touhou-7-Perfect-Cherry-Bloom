@@ -3,13 +3,16 @@
 本模块只面向 GameEngine 协议(touhou/types.py)编程: ``Game._impl`` 锚定为
 协议类型, 对局实现经 registry 按作品名解析(默认 th07); 作品的专属探测
 (符卡/对话进行中)走协议的可选能力位(getattr 回落 False), 不认具体类。
-内部引擎(games/th07/world.py 的 PerfectCherryBloom 及各 engine 模块)保持
-C 移植风格并经全量测试验证, 本模块只做封装, 不改引擎行为:
+作品实现(games/thXX/ 的对局主逻辑及各 engine 模块)保持 C 移植风格并经
+全量测试验证, 本模块只做封装, 不改引擎行为:
 
 - 枚举: ShotType / Difficulty / GamePhase —— 替代内部 shotType/difficulty 整数
 - Input: 命名布尔字段的一帧输入, 替代 tick 的 keys 元组
 - Game: 开局/逐帧 step/只读状态属性/按需实体快照
 - GameEvent: 每帧事件流(符卡/死亡/Bomb/奖残/过关…), 由帧前后状态差映射
+
+架构铁律: 本层(apis)与 engine 一样不 import games.* —— 窗口 App 等作品
+组件一律经 registry 按作品名解析(register_app; AST 守护测试钉死)。
 """
 from __future__ import annotations
 
@@ -19,27 +22,15 @@ from pathlib import Path
 from typing import Callable, Generic, Iterator, Literal, TypeVar, overload
 
 from ..engine.lasers import LaserState
-from ..engine.render import Renderer
-from ..games.th07.view import GameApp
-from ..games.th07.view.pygame_backend import PygameRenderer
 from ..registry import GameSpec, get_game
 from ..types import GameEngine, KeysTuple, PathLike
-
-
-def _pygame_backend_satisfies_renderer(r: PygameRenderer) -> Renderer:
-    """静态断言: 默认后端满足 Renderer 协议(仅供 mypy 检查, 运行时不调用)。
-
-    协议在 engine/render, 实现在 games/th07/view(mypy 豁免区) —— engine 不
-    反向 import games, 断言落在本门面(被 mypy 检查, 且双向依赖都合法)。
-    """
-    return r
-
 
 
 # ---- 枚举 ----
 # ShotType/Difficulty 是"已知枚举"= th07 的 6 机体/6 难度(语义与原作一致的作品
 # 可直接复用)。Game/TouhouWorld 的 character/difficulty 参数接受裸 int, 不限定
-# 必须用这两个枚举; 新作品可在自己的 games/thXX/ 定义新枚举。
+# 必须用这两个枚举; 新作品可在自己的 games/thXX/ 定义新枚举, 经 game= 参数
+# 传入使用, 不需要改动本模块。
 class ShotType(IntEnum):
     """机体(= 内部 shotType 0..5; 名单为 th07 的 6 机体)。"""
     REIMU_A = 0
@@ -196,7 +187,7 @@ def _require_world(game: str) -> GameSpec:
 
 
 class Game:
-    """一局妖妖梦。典型用法::
+    """一局作品对局(默认 th07, ``game=`` 指定其他已注册作品)。典型用法::
 
         game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL)
         while game.phase == GamePhase.RUNNING:
@@ -263,6 +254,9 @@ class Game:
         # spellcard_active() 蕴含 boss 非空(boss.is_active 且 spellcard_idx>=0)
         if boss is not None and self._spellcard_active():
             spell_key = (boss.spellcard_idx, boss.name)
+            
+        border = getattr(g, "border", None)
+        
         return {
             "lives": g.lives,
             "deaths": g.globals.deaths,
@@ -273,7 +267,7 @@ class Game:
             "cleared": g.cleared,
             "ending": g.ending is not None,
             "stage": g.stage_no,
-            "border_active": g.border.active,
+            "border_active": bool(getattr(border, "active", False)),
         }
 
     def _diff_events(self, prev: dict, now: dict) -> list[GameEvent]:
@@ -339,7 +333,8 @@ class Game:
 
     @property
     def cherry_max(self) -> int:
-        return self._impl.globals.cherry_max
+        # 与 cherry 同理: th07 专属能力位, 无樱点系统的作品得 0
+        return int(getattr(self._impl.globals, "cherry_max", 0))
 
     @property
     def graze(self) -> int:
@@ -366,7 +361,7 @@ class Game:
 
     @property
     def result(self) -> dict | None:
-        """总结算数据(结算后非 None; 字段见 games.th07.world.final_result)。"""
+        """总结算数据(结算后非 None; 字段由作品实现定义)。"""
         return self._impl.result
 
     def finalize_game_over(self) -> None:
@@ -417,20 +412,20 @@ class Game:
 class WorldData(msgspec.Struct, frozen=True):
     """游戏资源包路径。
 
-    res_dat: th07.dat(主资源包; None = 按 paths.resolve_data_path 规则解析:
-            环境变量 TOUHOU_DAT > 内置默认路径)
-    bgm_dat: thbgm.dat(WAV 高音质 BGM; None = 与 res_dat 同目录的 thbgm.dat,
-            缺失时自动回退 MIDI 音源)
+    res_dat: 主资源包(th07 的例子: th07.dat; None = 按 paths.resolve_data_path
+            规则解析: 环境变量 TOUHOU_DAT > 内置默认路径)
+    bgm_dat: WAV 高音质 BGM 包(th07 的例子: thbgm.dat; None = 与 res_dat
+            同目录推导, 缺失时自动回退 MIDI 音源)
     """
     res_dat: PathLike | None = None
     bgm_dat: PathLike | None = None
 
     def resolve_res(self) -> Path | None:
-        """解析后的 th07.dat 路径(None = 交给内置默认解析)。"""
+        """解析后的主资源包路径(None = 交给内置默认解析)。"""
         return Path(self.res_dat) if self.res_dat is not None else None
 
     def resolve_bgm(self) -> Path | None:
-        """解析后的 thbgm.dat 路径(None = res_dat 同目录推导/自动回退)。"""
+        """解析后的 BGM 包路径(None = res_dat 同目录推导/自动回退)。"""
         return Path(self.bgm_dat) if self.bgm_dat is not None else None
 
 
@@ -485,7 +480,7 @@ class TouhouWorldEventStream:
 
 
 class TouhouWorld(Generic[_H]):
-    """一局妖妖梦世界的统一入口。典型用法::
+    """一部作品对局世界的统一入口(默认 th07)。典型用法::
 
         from touhou import TouhouWorld, WorldData, Character, Difficulty
 
@@ -500,7 +495,7 @@ class TouhouWorld(Generic[_H]):
         tw2.run()                        # 非 headless: 弹出游戏窗口, 阻塞至关窗
 
     ``game`` 参数(默认 "th07")经 registry 全局注册表解析作品的
-    ECL VM/ANM 格式/回调包/对局实现; 未注册名报清晰 KeyError。
+    ECL VM/ANM 格式/回调包/对局实现/窗口 App; 未注册名报清晰 KeyError。
 
     需要 AI 介入时给 ``stream.policy`` 赋一个 ``game -> Input`` 的函数,
     或直接用 ``tw.game.step(your_input)`` 自己逐帧驱动。
@@ -592,12 +587,21 @@ class TouhouWorld(Generic[_H]):
     def run(self) -> TouhouWorldEventStream | None: ...
     def run(self) -> TouhouWorldEventStream | None:
         """headless=True: 返回 ``TouhouWorldEventStream``(迭代即驱动世界);
-        headless=False: 弹出 pygame 游戏窗口, 阻塞直到关窗, 返回 None。"""
+        headless=False: 弹出作品的窗口 App(th07 = pygame 窗口), 阻塞直到
+        关窗, 返回 None。"""
         if self.headless:
             return TouhouWorldEventStream(self)
 
         world = self.spec.world
         assert world is not None  # __init__ 里 _require_world 已校验
+
+        # 窗口 App 经注册表按作品名解析(apis 不 import games.*, 架构铁律);
+        # 未登记窗口 App 的作品只能 headless 运行
+        app_cls = self.spec.app
+        if app_cls is None:
+            raise ValueError(
+                f"作品 {self.game_name!r} 已注册, 但缺窗口 App"
+                f"(需要 @register_app({self.game_name!r}) 装饰窗口应用类)")
 
         def make_game(*, difficulty: int, character: int) -> GameEngine:
             kwargs: dict = {}
@@ -609,7 +613,9 @@ class TouhouWorld(Generic[_H]):
                 initial_lives=self.lives, hooks=self.spec.hooks, **kwargs)
             return impl
 
-        app = GameApp(make_game, data_path=self.wd.resolve_res(),
+        # 构造契约见 registry.register_app:
+        # app_cls(make_game, *, data_path, bgm_path, game_data)
+        app = app_cls(make_game, data_path=self.wd.resolve_res(),
                       bgm_path=self.wd.resolve_bgm(), game_data=self.spec.data)
         app.run()
         return None

@@ -19,8 +19,10 @@ ANM_OFFSET/特效 gid 等 th07 数值, 以及默认渲染后端 PygameRenderer�
 - ``screens``: 菜单状态纯逻辑(不含 pygame)
 
 依赖方向: 本包 → engine(view/render/config/…), 反向禁止。
-PygameRenderer 满足 Renderer 协议的静态断言在 api.py(本包整体在 mypy
-豁免区, 断言须落在被检查的模块; engine 不认作品, 放不了 engine 侧)。
+GameApp 经 ``@register_app("th07")`` 登记到 registry(TouhouWorld.run()
+非 headless 分支按作品名解析); PygameRenderer 满足 Renderer 协议的
+符合性由运行时测试兜底(tests/test_registry.py —— 本包整体在 mypy
+豁免区, engine/apis 均不 import 本包, 静态断言无处安放)。
 """
 from .impl import GameApp
 from .pygame_backend import PygameRenderer, _load_font

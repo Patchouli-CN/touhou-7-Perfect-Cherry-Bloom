@@ -3,14 +3,14 @@
 分层约定:
 
 - 本模块运行时只依赖 typing/pathlib, **不 import 任何引擎实现**,
-  因此引擎内部(ecl_host 等)与 api.py 都可安全引用, 无循环 import。
+  因此引擎内部(ecl_host 等)与 apis 门面都可安全引用, 无循环 import。
 - 别名与 Protocol: ``PathLike`` / ``KeysTuple`` / ``PosLike`` /
   ``Positioned`` / ECL 宿主钩子(``SetBossHook`` 等), 运行时可正常导入。
 - 公共数据类型(Input/GameEvent/Snapshot/枚举/TouhouWorldEventStream…)
-  正放在 touhou.api, 并随 ``touhou`` 顶层导出; 这里仅在 TYPE_CHECKING 下
-  再导出, 供 IDE ``from touhou.types import Input`` 解析。
-  (运行时若直接 import api 会形成 api → engine → types → api 循环,
-  故运行时代码请 ``from touhou.api import …``。)
+  正放在 touhou.apis.basic, 并随 ``touhou`` 顶层导出; 这里仅在 TYPE_CHECKING
+  下再导出, 供 IDE ``from touhou.types import Input`` 解析。
+  (运行时若直接 import apis.basic 会形成 apis → engine → types → apis
+  循环, 故运行时代码请 ``from touhou.apis.basic import …``。)
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    # 公共数据类型再导出(仅类型检查期可见; 运行时请 from touhou.api import …)
+    # 公共数据类型再导出(仅类型检查期可见; 运行时请 from touhou.apis.basic import …)
     from .apis.basic import (
         BossSnapshot,
         BulletSnapshot,
@@ -85,7 +85,7 @@ PathLike: TypeAlias = str | Path
 KeysTuple: TypeAlias = tuple[bool, bool, bool, bool, bool, bool]
 
 #: 一帧内发生的事件列表(``Game.step`` 的返回类型)。注解专用(运行时是字符串,
-#: GameEvent 运行时定义在 touhou.api, 避免循环 import)。
+#: GameEvent 运行时定义在 touhou.apis.basic, 避免循环 import)。
 EventList: TypeAlias = "list[GameEvent]"
 
 
@@ -127,7 +127,7 @@ EndSpellcardHook: TypeAlias = Callable[["EclEnemyState"], None]
 IntHook: TypeAlias = Callable[[int], None]
 
 
-# ---- GameEngine 协议(api.Game 门面只面向它编程, 不认具体作品) ----
+# ---- GameEngine 协议(apis 的 Game 门面只面向它编程, 不认具体作品) ----
 # 全成员声明为只读 property: 协变判定让 int 字段可满足 float 声明
 # (如 EclEnemy.life), msgspec.Struct/普通类的同名属性天然满足。
 # th07 的 games.th07.world.PerfectCherryBloom 鸭子满足本协议(无 adapter),
@@ -287,7 +287,7 @@ class GameEngine(Protocol):
     """对局引擎协议 —— 一部作品的"主逻辑类"应满足的最小面。
 
     api.Game 的 _probe/_diff_events/snapshot/phase 只消费这里声明的成员;
-    作品的专属探测逻辑不进协议, 走可选能力位(api 用 getattr 回落 False):
+    作品的专属探测逻辑不进协议, 走可选能力位(apis 门面用 getattr 回落 False):
     - ``spellcard_active() -> bool``: 符卡进行中(无符卡概念可不实现)
     - ``msg_active() -> bool``:       对话/剧情进行中(无对话概念可不实现)
     """

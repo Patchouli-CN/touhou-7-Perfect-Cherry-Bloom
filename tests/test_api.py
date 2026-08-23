@@ -1,6 +1,7 @@
-"""公共 API(touhou/api.py)门面行为 + 打包/import 隔离测试。"""
+"""公共 API(touhou/apis/basic.py)门面行为 + 打包/import 隔离测试。"""
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -188,8 +189,6 @@ def test_top_level_exports_complete() -> None:
 
 def test_no_function_level_imports_in_package() -> None:
     # 包代码禁止函数内 import(用户规约; 测试目录豁免)
-    import ast
-
     pkg = Path(__file__).resolve().parent.parent / "touhou"
     offenders = []
     for f in pkg.rglob("*.py"):
@@ -207,8 +206,6 @@ def test_no_function_level_imports_in_package() -> None:
 def test_logic_layer_has_no_pygame_dependency() -> None:
     # engine(非 view)/schema/games/logger 不得 import pygame(AST 级检查;
     # 注释/docstring 提及不算)
-    import ast
-
     pkg = Path(__file__).resolve().parent.parent / "touhou"
     files = [*pkg.glob("*.py")]
     for sub in (pkg / "engine", pkg / "schema", pkg / "games"):
@@ -222,6 +219,54 @@ def test_logic_layer_has_no_pygame_dependency() -> None:
                             if a.name.split(".")[0] == "pygame"], f
             elif isinstance(node, ast.ImportFrom) and node.module:
                 assert node.module.split(".")[0] != "pygame", f
+
+
+def _type_checking_node_ids(tree: ast.AST) -> set[int]:
+    """``if TYPE_CHECKING:`` 块内全部节点的 id 集合(仅 mypy 可见的豁免区)。"""
+    ids: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        t = node.test
+        if (isinstance(t, ast.Name) and t.id == "TYPE_CHECKING") or \
+                (isinstance(t, ast.Attribute) and t.attr == "TYPE_CHECKING"):
+            ids.update(id(s) for s in ast.walk(node))
+    return ids
+
+
+def test_apis_and_engine_do_not_import_games() -> None:
+    # 架构铁律: 顶层框架(apis)与 engine 不 import games.*(反向依赖已清零,
+    # AST 级守住; 注释/docstring 提及不算)。唯一豁免: engine/render 在
+    # TYPE_CHECKING 下引用 games.th07.view.screens 的菜单流类型(仅 mypy
+    # 可见, 运行时不产生依赖, 见该模块注释)
+    pkg = Path(__file__).resolve().parent.parent / "touhou"
+    offenders = []
+    for sub in (pkg / "apis", pkg / "engine"):
+        for f in sub.rglob("*.py"):
+            if "__pycache__" in f.parts:
+                continue
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+            exempt = _type_checking_node_ids(tree)
+            for node in ast.walk(tree):
+                if id(node) in exempt:
+                    continue
+                if isinstance(node, ast.Import):
+                    hit = any(a.name == "touhou.games"
+                              or a.name.startswith("touhou.games.")
+                              for a in node.names)
+                elif isinstance(node, ast.ImportFrom):
+                    mod = node.module or ""
+                    if node.level == 0:
+                        hit = mod == "touhou.games" or mod.startswith("touhou.games.")
+                    else:
+                        # 相对 import: apis/engine 内的模块离 touhou 包 ≥2 层,
+                        # "..games.…"/"...games.…" 均指向 touhou.games
+                        hit = mod == "games" or mod.startswith("games.")
+                else:
+                    continue
+                if hit:
+                    offenders.append(f"{f}:{node.lineno}")
+    assert not offenders, offenders
 
 
 # ---- TouhouWorld / WorldData 入口 ----

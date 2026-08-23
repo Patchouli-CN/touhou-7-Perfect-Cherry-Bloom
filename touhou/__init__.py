@@ -1,15 +1,18 @@
 """touhou —— 《东方妖妖梦》(TH07) 的 Python 重实现。
 
-对外 API 见 touhou/api.py; 顶层直接导出全部公共类型。
+对外 API 见 touhou/apis/basic.py; 顶层直接导出全部公共类型。
 
 窗口版游戏入口: ``python -m touhou`` 或安装后的 ``touhou07`` 命令。
 """
 from __future__ import annotations
 
 from .games.th07 import data as _th07_data    # noqa: F401  (登记 th07 数值表)
-from .games.th07 import world as _th07_world  # noqa: F401  (触发 th07 全维度注册:
+from .games.th07 import world as _th07_world  # noqa: F401  (触发 th07 注册:
                                               #  world/ecl_host; ecl 经 world→ecl_vm,
-                                              #  anm/renderer 经 apis.basic→games.th07.view 链)
+                                              #  anm 经 world→…→schema.anm 链)
+from .games.th07 import view as _th07_view    # noqa: F401  (登记 th07 窗口 App 与
+                                              #  pygame 渲染后端; apis 不 import
+                                              #  games.* 后, 注册触发点在本模块)
 from .apis.basic import (
     BossSnapshot,
     BulletSnapshot,
@@ -38,11 +41,13 @@ from .registry import (
     GameSpec,
     get_game,
     register_anm,
+    register_app,
     register_ecl,
     register_game_data,
     register_game_hooks,
     register_world_impl,
     registered_games,
+    registered_renderers,
 )
 from .exceptions import (
     ArchiveFormatError,
@@ -98,9 +103,11 @@ __all__ = [
     "WorldData",
     "get_game",
     "register_anm",
+    "register_app",
     "register_ecl",
     "register_game_data",
     "register_game_hooks",
     "register_world_impl",
     "registered_games",
+    "registered_renderers",
 ]

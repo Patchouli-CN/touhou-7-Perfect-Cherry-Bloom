@@ -6,7 +6,9 @@ import pytest
 import touhou
 from touhou import TouhouWorld
 from touhou.games.th07.world import PerfectCherryBloom
+from touhou.games.th07.view import GameApp
 from touhou.engine.ecl import EclFile
+from touhou.engine.render import Renderer
 from touhou.games.th07.ecl_vm import EclMachineTh07 as EclMachine
 from touhou.games.th07.ecl_host import GameEclHost
 from touhou.paths import DEFAULT_DATA
@@ -14,7 +16,9 @@ from touhou.registry import (
     GameData,
     GameHooks,
     get_game,
+    get_renderer,
     register_anm,
+    register_app,
     register_ecl,
     register_game_data,
     register_game_hooks,
@@ -41,6 +45,7 @@ def test_th07_registered_on_import() -> None:
     assert spec.hooks.ecl_file == "ecldata{n}.ecl"
     assert spec.hooks.msg_file == "msg{n}.dat"
     assert spec.world is PerfectCherryBloom
+    assert spec.app is GameApp
     assert "th07" in registered_games()
 
 
@@ -134,7 +139,52 @@ def test_registry_exported_at_top_level() -> None:
     """注册表 API 从包顶层可拿(框架公共面)。"""
     assert touhou.get_game is get_game
     assert "register_ecl" in touhou.__all__
+    assert "register_app" in touhou.__all__
     assert "GameSpec" in touhou.__all__
+
+
+# ---- 窗口 App 维度 ----
+def test_th07_window_app_registered() -> None:
+    """import touhou 即登记 th07 窗口 App(games.th07.view.GameApp)。"""
+    assert get_game("th07").app is GameApp
+
+
+def test_register_app_stub() -> None:
+    """app 维度同样可插桩/防静默覆盖(契约: make_game + 关键字子集)。"""
+
+    class StubApp:
+        def __init__(self, make_game, *, data_path, bgm_path, game_data) -> None:
+            self._make_game = make_game
+
+        def run(self) -> None:
+            pass
+
+    register_app("th94")(StubApp)
+    assert get_game("th94").app is StubApp
+    assert "th94" in registered_games()
+    with pytest.raises(ValueError, match="重复注册.*th94"):
+        register_app("th94")(StubApp)
+
+
+def test_world_registered_but_no_window_app() -> None:
+    """有对局实现但没登记窗口 App 的作品: run()(headless=False) 报清晰错误。"""
+    register_world_impl("th93")(PerfectCherryBloom)
+    tw = TouhouWorld(headless=False, game="th93")
+    with pytest.raises(ValueError, match="缺窗口 App.*register_app"):
+        tw.run()
+
+
+def test_pygame_renderer_satisfies_renderer_protocol() -> None:
+    """注册表取回的 "pygame" 后端类实现 Renderer 协议全部成员(运行时探测)。
+
+    替代原 apis.basic 的 mypy 静态断言(_pygame_backend_satisfies_renderer):
+    games.th07.view 是 mypy 豁免区, 断言落不了实现侧; apis 去 th07 耦合后
+    由本测试兜底协议符合性(只查成员存在, 签名/语义由全量测试覆盖)。
+    """
+    cls = get_renderer("pygame")
+    missing = [m for m in dir(Renderer)
+               if not m.startswith("_") and not callable(getattr(cls, m, None))]
+    assert not missing, missing
 
 
 # ---- GameData 数值表维度 ----

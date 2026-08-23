@@ -180,7 +180,3 @@ class Renderer(Protocol):
         """菜单音效("select"/"ok"/"cancel"); 未加载/无声卡静音跳过。"""
         ...
 
-# 默认后端 PygameRenderer 满足本协议的静态断言在 touhou/api.py
-# (协议在 engine, 实现在 games/th07/view —— engine 不反向 import games,
-# 而 games.th07.view.* 整体在 mypy 豁免区, 断言须落在被检查的门面模块)。
-

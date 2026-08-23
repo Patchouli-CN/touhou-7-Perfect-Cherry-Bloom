@@ -18,7 +18,7 @@ import time
 
 from ....logger import logger as log
 
-from ....registry import GameData, get_game, get_renderer
+from ....registry import GameData, get_game, get_renderer, register_app
 from ....engine.config import DEFAULT_CONFIG_PATH, GameConfig
 from ....schema.sound import SE
 from ....engine import replay as replay_mod
@@ -69,8 +69,15 @@ def _default_spellcard_count() -> int:
     return len(data.spellcard_scores) if data is not None else 0
 
 
+@register_app("th07")
 class GameApp:
-    """完整应用: 标题菜单 + 游戏流程(渲染/输入由 Renderer 后端承担)。"""
+    """完整应用: 标题菜单 + 游戏流程(渲染/输入由 Renderer 后端承担)。
+
+    经 ``@register_app("th07")`` 登记到 registry; ``TouhouWorld.run()``
+    (headless=False) 按作品名解析本类。构造契约(register_app):
+    ``GameApp(make_game, *, data_path, bgm_path, game_data)`` —— 其余关键字
+    参数均有默认值, 契约是关键字子集。
+    """
 
     def __init__(self, make_game, *, scale: int | None = None,
                  data_path=None, score_path=None,

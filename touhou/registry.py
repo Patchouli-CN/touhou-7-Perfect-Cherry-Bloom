@@ -9,6 +9,9 @@
 - 数值表:       ``register_game_data(name, GameData)``  登记作品的数值表/名单
   (符卡分值/炸弹参数/掉落表/火力档/机体 sht 映射/角色与难度名单), th07 的
   实例集中在 touhou/games/th07/data.py(TH07_DATA)
+- 窗口 App:     ``@register_app(name)``              装饰窗口应用类(th07 =
+  games.th07.view.GameApp), ``TouhouWorld.run()``(headless=False) 经此构造;
+  未登记的作品只能 headless 运行
 
 另有与作品名无关的正交维度:
 - 渲染后端:     ``@register_renderer(name)``            装饰 Renderer 实现类
@@ -44,6 +47,7 @@ __all__ = [
     "get_game",
     "get_renderer",
     "register_anm",
+    "register_app",
     "register_ecl",
     "register_game_data",
     "register_game_hooks",
@@ -117,6 +121,7 @@ class GameSpec:
     hooks: GameHooks
     world: type | None  # 对局实现类(register_world_impl 登记)
     data: GameData | None = None  # 数值表(register_game_data 登记; None=未登记)
+    app: type | None = None       # 窗口 App 类(register_app 登记; None=未登记)
 
 
 # ---- 全局注册表(按维度分表; 同名不同维度允许共存) ----
@@ -125,6 +130,7 @@ _ANM: dict[str, AnmSpec] = {}
 _HOOKS: dict[str, GameHooks] = {}
 _WORLD: dict[str, type] = {}
 _DATA: dict[str, GameData] = {}
+_APP: dict[str, type] = {}
 _RENDERER: dict[str, type] = {}  # 渲染后端(与作品名无关的正交维度)
 
 
@@ -188,9 +194,25 @@ def register_game_data(name: str, data: GameData) -> GameData:
     return data
 
 
+def register_app(name: str) -> Callable[[type], type]:
+    """注册作品的窗口 App(装饰窗口应用类/工厂, 原样返回)。
+
+    构造契约: ``app_factory(make_game, *, data_path, bgm_path, game_data)``
+    (被装饰类可有多余的带默认值关键字参数 —— 契约是关键字子集), 返回对象
+    须有 ``run()`` 方法(弹窗并阻塞至关窗)。``TouhouWorld.run()``
+    (headless=False) 经此解析; th07 的实现是 games/th07/view/impl.py 的
+    GameApp。
+    """
+    def deco(cls: type) -> type:
+        _put(_APP, "窗口 App", name, cls)
+        return cls
+    return deco
+
+
 def registered_games() -> list[str]:
     """全部已注册作品名(任一维度出现即算), 排序返回。"""
-    return sorted(set(_ECL) | set(_ANM) | set(_HOOKS) | set(_WORLD) | set(_DATA))
+    return sorted(set(_ECL) | set(_ANM) | set(_HOOKS) | set(_WORLD) | set(_DATA)
+                  | set(_APP))
 
 
 # ---- 渲染后端维度(与作品名正交: 后端名 → Renderer 实现类) ----
@@ -225,9 +247,10 @@ def get_game(name: str) -> GameSpec:
     """按作品名取注册描述; 未注册报带已注册列表的 NotRegisteredError。"""
     if name not in _ECL and name not in _ANM \
             and name not in _HOOKS and name not in _WORLD \
-            and name not in _DATA:
+            and name not in _DATA and name not in _APP:
         raise NotRegisteredError(
             f"未注册的作品: {name!r} (已注册: {registered_games()})")
     return GameSpec(name=name, ecl=_ECL.get(name), anm=_ANM.get(name),
                     hooks=_HOOKS.get(name, GameHooks()),
-                    world=_WORLD.get(name), data=_DATA.get(name))
+                    world=_WORLD.get(name), data=_DATA.get(name),
+                    app=_APP.get(name))
