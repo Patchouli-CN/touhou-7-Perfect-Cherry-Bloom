@@ -130,7 +130,13 @@ mods = ModApi(tw.game)
 mods.set_invulnerability_time()   # 无敌(计时每帧递减, policy 里每帧调)
 mods.set_power(mods.full_power)   # 满火力(上限取自作品数值表)
 mods.fire_ring(x, y, arms=24)     # 自定义环形弹幕
+mods.set_cherry(50000)            # 作品专属能力(th07 樱点), 经能力表分发
+mods.available()                  # 全部能力清单: 通用核 + 作品能力, 带一句话说明
 ```
+
+作品专属机制（th07 樱点/结界等）不进 `ModApi` 通用核，由作品包
+（`games/th07/mods.py`）经 `@register_mods("th07")` 登记提供者类，
+`ModApi` 构造时收割其公开方法进 `capabilities` 能力表。
 
 **ECL 编解码**（作品脚本文件的工具链入口）：
 

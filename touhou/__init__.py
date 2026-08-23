@@ -15,6 +15,8 @@ from .games.th07 import world as _th07_world  # noqa: F401  (触发 th07 注册:
 from .games.th07 import view as _th07_view    # noqa: F401  (登记 th07 窗口 App 与
                                               #  pygame 渲染后端; apis 不 import
                                               #  games.* 后, 注册触发点在本模块)
+from .games.th07 import mods as _th07_mods    # noqa: F401  (登记 th07 mod 能力
+                                              #  提供者 Th07Mods)
 from .apis.basic import (
     BossSnapshot,
     BulletSnapshot,
@@ -48,6 +50,7 @@ from .registry import (
     register_ecl,
     register_game_data,
     register_game_hooks,
+    register_mods,
     register_world_impl,
     registered_games,
     registered_renderers,
@@ -111,6 +114,7 @@ __all__ = [
     "register_ecl",
     "register_game_data",
     "register_game_hooks",
+    "register_mods",
     "register_world_impl",
     "registered_games",
     "registered_renderers",

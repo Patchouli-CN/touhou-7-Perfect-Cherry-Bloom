@@ -12,6 +12,10 @@
 - 窗口 App:     ``@register_app(name)``              装饰窗口应用类(th07 =
   games.th07.view.GameApp), ``TouhouWorld.run()``(headless=False) 经此构造;
   未登记的作品只能 headless 运行
+- mod 能力:     ``@register_mods(name)``             装饰作品专属 mod 能力
+  提供者类(th07 = games.th07.mods.Th07Mods), ``ModApi(game)`` 构造时实例化
+  并把其公开方法收割进 capabilities 能力表(作品机制不堆进 ModApi 通用核,
+  见 apis/modding.py 的分层纪律)
 
 另有与作品名无关的正交维度:
 - 渲染后端:     ``@register_renderer(name)``            装饰 Renderer 实现类
@@ -51,6 +55,7 @@ __all__ = [
     "register_ecl",
     "register_game_data",
     "register_game_hooks",
+    "register_mods",
     "register_renderer",
     "register_world_impl",
     "registered_games",
@@ -123,6 +128,7 @@ class GameSpec:
     world: type | None  # 对局实现类(register_world_impl 登记)
     data: GameData | None = None  # 数值表(register_game_data 登记; None=未登记)
     app: type | None = None       # 窗口 App 类(register_app 登记; None=未登记)
+    mods: type | None = None      # mod 能力提供者类(register_mods 登记; None=未登记)
 
 
 # ---- 全局注册表(按维度分表; 同名不同维度允许共存) ----
@@ -132,6 +138,7 @@ _HOOKS: dict[str, GameHooks] = {}
 _WORLD: dict[str, type] = {}
 _DATA: dict[str, GameData] = {}
 _APP: dict[str, type] = {}
+_MODS: dict[str, type] = {}
 _RENDERER: dict[str, type] = {}  # 渲染后端(与作品名无关的正交维度)
 
 
@@ -217,10 +224,24 @@ def register_app(name: str) -> Callable[[type], type]:
     return deco
 
 
+def register_mods(name: str) -> Callable[[type], type]:
+    """注册作品专属 mod 能力提供者类(装饰提供者类, 原样返回)。
+
+    契约: ``provider(game)`` 构造(game 是 apis.basic.Game 门面; 作品包内摸
+    ``game._impl`` 是同层操作), 其**公开方法**(非 ``_`` 开头、callable)被
+    ``ModApi(game)`` 收割进 ``capabilities`` 能力表(见 apis/modding.py)。
+    作品专属机制(如 th07 樱点/结界)经此喂给 ModApi, 不进通用核。
+    """
+    def deco(cls: type) -> type:
+        _put(_MODS, "mod 能力提供者", name, cls)
+        return cls
+    return deco
+
+
 def registered_games() -> list[str]:
     """全部已注册作品名(任一维度出现即算), 排序返回。"""
     return sorted(set(_ECL) | set(_ANM) | set(_HOOKS) | set(_WORLD) | set(_DATA)
-                  | set(_APP))
+                  | set(_APP) | set(_MODS))
 
 
 # ---- 渲染后端维度(与作品名正交: 后端名 → Renderer 实现类) ----
@@ -255,10 +276,11 @@ def get_game(name: str) -> GameSpec:
     """按作品名取注册描述; 未注册报带已注册列表的 NotRegisteredError。"""
     if name not in _ECL and name not in _ANM \
             and name not in _HOOKS and name not in _WORLD \
-            and name not in _DATA and name not in _APP:
+            and name not in _DATA and name not in _APP \
+            and name not in _MODS:
         raise NotRegisteredError(
             f"未注册的作品: {name!r} (已注册: {registered_games()})")
     return GameSpec(name=name, ecl=_ECL.get(name), anm=_ANM.get(name),
                     hooks=_HOOKS.get(name, GameHooks()),
                     world=_WORLD.get(name), data=_DATA.get(name),
-                    app=_APP.get(name))
+                    app=_APP.get(name), mods=_MODS.get(name))

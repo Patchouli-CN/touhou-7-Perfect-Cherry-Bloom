@@ -13,6 +13,8 @@
   handler, register_ecl("th07") 登记; VM 框架在 engine/ecl_base.py)
 - playerdata.py Player Data 画面装配
 - world.py      对局主逻辑 PerfectCherryBloom(register_world_impl("th07") 登记)
+- mods.py       作品专属 mod 能力提供者 Th07Mods(register_mods("th07") 登记,
+  樱点/结界能力经 ModApi.capabilities 能力表暴露)
 - view/         表现层(GameApp 应用壳/菜单场景/贴图渲染/PygameRenderer 后端;
   通用渲染机制留在 engine/view/, 协议在 engine/render/)
 

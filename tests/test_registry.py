@@ -22,6 +22,7 @@ from touhou.registry import (
     register_ecl,
     register_game_data,
     register_game_hooks,
+    register_mods,
     register_world_impl,
     registered_games,
 )
@@ -277,3 +278,29 @@ def test_boss_spellcard_scores_override() -> None:
     b2 = Boss(spellcard_scores=(777000,))
     b2.begin_spellcard(0, 600)
     assert b2.capture_score == 777000                 # 注入表
+
+
+# ---- mod 能力提供者维度 ----
+def test_th07_mods_registered() -> None:
+    """import touhou 即登记 th07 mod 能力提供者(games.th07.mods.Th07Mods)。"""
+    from touhou.games.th07.mods import Th07Mods
+
+    assert get_game("th07").mods is Th07Mods
+
+
+def test_register_mods_stub() -> None:
+    """mods 维度同样可插桩/防静默覆盖(契约: provider(game) 构造)。"""
+    from touhou.games.th07.mods import Th07Mods
+
+    class StubProvider:
+        def __init__(self, game) -> None:
+            self._game = game
+
+    register_mods("th92")(StubProvider)
+    assert get_game("th92").mods is StubProvider
+    assert "th92" in registered_games()
+    with pytest.raises(ValueError, match="重复注册.*th92"):
+        register_mods("th92")(StubProvider)
+    # th07 自身维度同名重复注册同样报错
+    with pytest.raises(ValueError, match="重复注册.*th07"):
+        register_mods("th07")(Th07Mods)

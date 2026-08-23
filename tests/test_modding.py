@@ -12,7 +12,9 @@ import pytest
 
 from touhou.apis.basic import Difficulty, Game, Input, ShotType
 from touhou.apis.modding import Aim, Burst, ModApi
+from touhou.games.th07.bomb import BorderState
 from touhou.paths import DEFAULT_DATA
+from touhou.registry import GameHooks, GameSpec, get_game, register_mods
 from touhou.utils import Vec2
 
 pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(),
@@ -124,3 +126,100 @@ def test_readonly_property_reported() -> None:
                        bullets=game._impl.bullets)
     with pytest.raises(NotImplementedError, match="只读"):
         ModApi(game).set_power(1)
+
+
+# ---- 作品专属能力表(register_mods 维度收割, __getattr__ 查表分发) ----
+def test_capability_dispatch_and_readback() -> None:
+    """注册链验证: import touhou 后 th07 能力进表, 调用经 __getattr__ 分发。"""
+    game, mods = _mods()
+    assert mods.is_capabilities_exist("set_cherry")
+    assert not mods.is_capabilities_exist("set_power")  # 通用核真方法不在表内
+    assert not mods.is_capabilities_exist("nope")
+    assert callable(mods.capabilities["set_cherry"])
+    mods.set_cherry(50000)
+    assert game.cherry == 50000          # 写入落到引擎, 只读面读回一致
+    assert game._impl.globals.cherry == 50000
+
+
+def test_unknown_capability_attribute_error() -> None:
+    """未知名抛 AttributeError(hasattr/getattr 语义正确), 信息列已注册能力。"""
+    _, mods = _mods()
+    assert hasattr(mods, "set_cherry")
+    assert not hasattr(mods, "nope")
+    with pytest.raises(AttributeError, match="nope.*已注册能力"):
+        mods.nope()
+
+
+def test_available_lists_core_and_game_capabilities() -> None:
+    """available() = 通用核(手写映射) + 作品能力(docstring 首行)。"""
+    _, mods = _mods()
+    avail = mods.available()
+    assert "set_power" in avail and "god_mode" in avail      # 通用核
+    assert avail["set_cherry"].startswith("樱点直改")          # 作品能力(docstring 首行)
+    assert "border_break" in avail and "set_cherry_max" in avail
+
+
+def test_capability_name_conflict_fails_fast() -> None:
+    """作品能力与通用核真方法重名: ModApi 构造即 ValueError(不许静默被核覆盖)。"""
+
+    class BadProvider:
+        def __init__(self, game: Game) -> None:
+            self._game = game
+
+        def set_power(self, power: int) -> None:
+            pass
+
+    register_mods("th91")(BadProvider)
+    game, _ = _mods()
+    game.spec = get_game("th91")
+    with pytest.raises(ValueError, match="重名"):
+        ModApi(game)
+
+
+def test_game_without_mods_dimension() -> None:
+    """未注册 mods 维度的作品: capabilities 空表, 调作品能力给登记提示。"""
+    game, _ = _mods()
+    game.spec = GameSpec(name="thXX", ecl=None, anm=None,
+                         hooks=GameHooks(), world=None)     # mods 缺省 None
+    mods = ModApi(game)
+    assert mods.capabilities == {}
+    assert not mods.is_capabilities_exist("set_cherry")
+    assert not hasattr(mods, "set_cherry")
+    with pytest.raises(AttributeError, match="未注册 mod 能力.*register_mods"):
+        mods.set_cherry(1)
+    # 通用核不受影响
+    mods.set_power(128)
+    assert game.power == 128
+
+
+# ---- th07 首批能力实效(樱点系/结界系) ----
+def test_set_cherry_range_check() -> None:
+    """set_cherry 域校验: 上限读引擎实况 cherryMax, 不写死魔法数。"""
+    game, mods = _mods()
+    cherry_max = game._impl.globals.cherry_max
+    mods.set_cherry(cherry_max)
+    assert game.cherry == cherry_max
+    with pytest.raises(ValueError, match="超出"):
+        mods.set_cherry(cherry_max + 1)
+    with pytest.raises(ValueError, match="超出"):
+        mods.set_cherry(-1)
+
+
+def test_set_cherry_max() -> None:
+    game, mods = _mods()
+    g = game._impl.globals
+    mods.set_cherry_max(g.cherry_start + 123456)
+    assert g.cherry_max == g.cherry_start + 123456
+    with pytest.raises(ValueError, match="超出"):
+        mods.set_cherry_max(g.cherry_start - 1)
+
+
+def test_border_break() -> None:
+    """border_break: 有结界强制破裂(has_border→NONE), 无结界中文报错。"""
+    game, mods = _mods()
+    with pytest.raises(ValueError, match="没有结界可破"):
+        mods.border_break()
+    game._impl.border.ready_border()                       # 满樱信号 → READY
+    assert game._impl.border.has_border == BorderState.READY
+    mods.border_break()
+    assert game._impl.border.has_border == BorderState.NONE

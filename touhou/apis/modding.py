@@ -13,11 +13,21 @@
   (带缺失成员名的中文说明), 不静默失败;
 - 作品数值语义经注册表提供(满火力 = ``GameData.full_power``), 弹型模板号
   等参数含义由作品定义, 本模块只透传不做假设。
+
+分层纪律(防 ModApi 堆成 God Class):
+
+- **通用核**(本类的真方法, IDE/mypy 全支持)只收**全系列共有概念**
+  (无敌/火力/残机/Bomb/分数/自定义弹幕);
+- **作品专属机制**(th07 樱点/结界、未来 th08 时刻/人妖槽…)永远住
+  ``games/thXX/mods.py``, 经 ``@register_mods(name)``(touhou/registry.py)
+  登记提供者类, ``ModApi.__init__`` 实例化提供者并把其公开方法收割进
+  ``capabilities`` 能力表; 调用走 ``__getattr__`` 查表分发(只查表,
+  不穿透 impl 动态找成员), ``available()`` 列出全量能力清单。
 """
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Callable
 
 from ..engine.bullets import Aim, Burst
 from ..registry import GameData
@@ -30,6 +40,18 @@ __all__ = ["Aim", "Burst", "ModApi", "Vec2"]
 
 #: getattr 三参默认值的哨兵(区分"成员缺失"与"成员值为 None")
 _MISSING: Any = object()
+
+#: 通用核能力的一句话说明(available() 用; 手写映射, 与下方真方法一一对应)
+_CORE_CAPABILITIES: dict[str, str] = {
+    "god_mode": "无敌挂(= set_invulnerability_time(999), 须每帧调用)",
+    "set_invulnerability_time": "自机无敌计时直改(帧)",
+    "set_power": "火力直改(0..full_power, 上限取自作品数值表)",
+    "set_bombs": "Bomb 数直改(>=0)",
+    "set_lives": "残机数直改(>=0)",
+    "add_score": "真实分加算(直接入账, 不走作品计分规则)",
+    "fire": "发射一发自定义 Burst 弹幕",
+    "fire_ring": "便捷: 中心放一圈单层匀速环形弹幕",
+}
 
 
 class ModApi:
@@ -44,6 +66,13 @@ class ModApi:
     写操作绕过正常游戏规则(见模块 docstring); 观测仍走 Game 的只读属性。
     作品引擎需满足 ModdableEngine 协议(touhou/types.py): 不满足的成员
     调用时报 NotImplementedError(中文说明), 不静默失败。
+
+    能力分两层(分层纪律见模块 docstring):
+
+    - 通用核: 本类真方法(god_mode/set_power/fire_ring/...), IDE/mypy 全支持;
+    - 作品能力: ``capabilities`` 表(公开字段, 值是已绑定方法, 可直接调用),
+      由作品经 ``@register_mods(name)`` 登记的提供者类收割而来;
+      ``mods.set_cherry(...)`` 这类调用经 ``__getattr__`` 查表分发。
     """
 
     def __init__(self, game: Game) -> None:
@@ -54,6 +83,63 @@ class ModApi:
         # 满火力值取自作品数值表(GameData.full_power); 作品未登记数值表时
         # 回落 GameData 的自带默认值(注册表契约: 空 GameData() = 未提供)
         self.full_power: int = (data if data is not None else GameData()).full_power
+        # 作品专属能力表: 能力名 → 已绑定方法; 作品未注册 mods 维度时为空表
+        # (此时调作品能力报"未注册 mod 能力"的中文提示, 见 __getattr__)
+        self.capabilities: dict[str, Callable[..., Any]] = {}
+        provider_cls = game.spec.mods
+        if provider_cls is not None:
+            provider = provider_cls(game)
+            for name in dir(provider):
+                if name.startswith("_"):
+                    continue
+                member = getattr(provider, name)
+                if not callable(member):
+                    continue
+                # fail fast: 与通用核真方法/既有实例字段重名不许静默被核覆盖
+                if hasattr(ModApi, name) or name in self.__dict__:
+                    raise ValueError(
+                        f"作品 {game.spec.name!r} 的 mod 能力 {name!r} "
+                        f"与 ModApi 通用核成员重名(请给作品能力改名; "
+                        f"通用核成员见 available())")
+                self.capabilities[name] = member
+
+    # ---- 作品能力表分发(只查表, 不穿透 _impl 动态找成员) ----
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        """查 ``capabilities`` 表分发作品专属能力; 未知名抛 AttributeError。
+
+        必须是 AttributeError, hasattr/getattr 语义才正确; 报错信息列出
+        该作品已注册的能力名单(未注册 mods 维度的作品给登记提示)。
+        """
+        caps: dict[str, Callable[..., Any]] = self.__dict__.get("capabilities", {})
+        if name in caps:
+            return caps[name]
+        game = self.__dict__.get("game")
+        spec_name = game.spec.name if game is not None else "?"
+        spec_mods = game.spec.mods if game is not None else None
+        if spec_mods is None:
+            raise AttributeError(
+                f"ModApi 没有能力 {name!r}: 作品 {spec_name!r} 未注册 "
+                f"mod 能力(需要 @register_mods({spec_name!r}) 装饰能力"
+                f"提供者类, 见 touhou/registry.py)")
+        raise AttributeError(
+            f"ModApi 没有能力 {name!r}(作品 {spec_name!r} 已注册能力: "
+            f"{sorted(caps)}; 全量清单见 available())")
+
+    def is_capabilities_exist(self, name: str) -> bool:
+        """作品能力表是否含 ``name``(只查表, 通用核真方法不算)。"""
+        return name in self.capabilities
+
+    def available(self) -> dict[str, str]:
+        """全部可用能力清单: 能力名 → 一句话说明(通用核 + 作品能力表)。
+
+        作品能力的说明取方法 docstring 首行; 通用核用手写映射
+        (模块级 ``_CORE_CAPABILITIES``)。
+        """
+        out = dict(_CORE_CAPABILITIES)
+        for name, fn in self.capabilities.items():
+            doc = (getattr(fn, "__doc__", None) or "").strip()
+            out[name] = doc.splitlines()[0] if doc else "(无说明)"
+        return out
 
     # ---- 能力位探测(风格照 basic.py 的 getattr 回落, 但写入面缺失即报错) ----
     def _require_writable(self, obj: object, name: str, purpose: str) -> None:
