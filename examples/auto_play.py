@@ -12,8 +12,7 @@ from __future__ import annotations
 
 import random
 
-from touhou import Difficulty, GameEventKind, Input, TouhouWorld, Game
-
+from touhou import Difficulty, Input, TouhouWorld, Game
 
 def my_policy(game: Game) -> Input:
     """每帧输入策略(AI 的入口)。这里演示: 按住射击 + 蛇皮走位。"""
@@ -28,17 +27,8 @@ def my_policy(game: Game) -> Input:
 
 def main() -> None:
     tw = TouhouWorld(difficulty=Difficulty.NORMAL,
-                     lives=3, headless=True, seed=42)
-    stream = tw.run()
-    stream.policy = my_policy   # 接管输入
-    for ev in stream:
-        extra = f" {ev.name}" if ev.name else ""
-        print(f"[f{ev.frame:6d}] {ev.kind.value}{extra}")
-        if tw.game.frame >= 6000:   # 演示只跑 100 秒
-            break
-    g = tw.game
-    print(f"\n结算: score={g.score} lives={g.lives} "
-          f"graze={g.graze} phase={g.phase.value}")
+                     lives=3, headless=False, seed=42, auto_input=my_policy)
+    tw.run()
 
 
 if __name__ == "__main__":
