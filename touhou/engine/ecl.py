@@ -13,6 +13,9 @@
 本模块是作品无关层: 文件格式(EclFile/EclInstr/EclTimelineInstr)、状态结构
 (EclEnemyState/EclContext/EclContextArgs/EclWorld/Vec3)、宿主协议(EclHost)、
 时间轴执行器(EclTimelineRunner)、已知 opcode 命名常量(EclOpcode)。
+EclFile 双向: parse 解字节, serialize 写回(承诺 serialize(parse(data)) == data
+逐字节成立, 保留字段的取舍见 EclFile docstring)。按作品名解析格式的统一
+enc/dec 入口在 engine/ecl_codec.py(EclCodec, 经注册表 EclSpec.file_format)。
 VM 框架在 engine/ecl_base.py(EclMachineBase), TH07 的变量映射与 161 条
 opcode 实现在 games/th07/ecl_vm.py(EclMachineTh07 + EclVarId)。
 
@@ -226,6 +229,7 @@ class EclInstr(msgspec.Struct, frozen=True):
     time: int              # u32: 到点(context time == time)才执行
     id: int                # i16: EclOpcode 或 -1(终止)
     size: int              # i16: 整条字节数(含 12 字节头)
+    unused: int            # u8: 指令头保留字节(执行语义不用, 原样保留保 round-trip)
     skip_difficulty: int   # u8 位掩码: 当前难度位为 1 才执行(0xFF = 全难度)
     param_mask: int        # u16: bit i = 1 → args[i] 是变量 id 而非立即数
     args: tuple[int, ...]  # u32 字
@@ -273,16 +277,25 @@ class EclTimelineInstr(msgspec.Struct, frozen=True):
 
 
 class EclFile(msgspec.Struct):
-    """解析后的 .ecl: sub 指令流 + 时间轴。"""
+    """解析后的 .ecl: sub 指令流 + 时间轴。
+
+    round-trip 保留字段(执行语义不用, 只为 serialize 逐字节还原):
+    - ``EclInstr.unused``: 指令头保留字节(真实 ecldata 里有非零值);
+    - ``_timeline_offsets``: 头部 16 个时间轴偏移槽原值(首个空槽 = 文件长哨兵);
+    - ``_timeline_trailing``: 每条时间轴末尾的截短终止记录(``ff ff 04 00``,
+      无则空 bytes)。
+    """
 
     sub_count: int
     timeline_count: int
     subs: list[tuple[EclInstr, ...]]
     timelines: list[tuple[EclTimelineInstr, ...]]
     _instr_at: dict[int, EclInstr]
+    _timeline_offsets: tuple[int, ...]
+    _timeline_trailing: list[bytes]
 
     def __repr__(self) -> str:
-        # _instr_at 是全指令索引, 不进 repr (对照原 dataclass 的 field(repr=False))
+        # _instr_at 等索引/保留字段不进 repr (对照原 dataclass 的 field(repr=False))
         return (f"EclFile(sub_count={self.sub_count!r}, "
                 f"timeline_count={self.timeline_count!r}, subs={self.subs!r}, "
                 f"timelines={self.timelines!r})")
@@ -304,14 +317,14 @@ class EclFile(msgspec.Struct):
             while True:
                 if off + _INSTR_HEADER_SIZE > len(data):
                     raise EclParseError(f"sub {sub_id}: 指令越界 (off={off})")
-                time, op_id, size, _unused, skip, mask = _INSTR_HEADER.unpack_from(data, off)
+                time, op_id, size, unused, skip, mask = _INSTR_HEADER.unpack_from(data, off)
                 if size < _INSTR_HEADER_SIZE or (size - _INSTR_HEADER_SIZE) % 4 != 0:
                     raise EclParseError(f"sub {sub_id}: 非法 size={size} (off={off})")
                 if off + size > len(data):
                     raise EclParseError(f"sub {sub_id}: 指令截断 (off={off})")
                 n_args = (size - _INSTR_HEADER_SIZE) // 4
                 args = struct.unpack_from(f"<{n_args}I", data, off + _INSTR_HEADER_SIZE)
-                instr = EclInstr(off, time, op_id, size, skip, mask, args)
+                instr = EclInstr(off, time, op_id, size, unused, skip, mask, args)
                 instrs.append(instr)
                 instr_at[off] = instr
                 off += size
@@ -320,6 +333,7 @@ class EclFile(msgspec.Struct):
             subs.append(tuple(instrs))
 
         timelines: list[tuple[EclTimelineInstr, ...]] = []
+        trailing: list[bytes] = []
         for i in range(timeline_count):
             off = timeline_offsets[i]
             tl: list[EclTimelineInstr] = []
@@ -341,8 +355,61 @@ class EclFile(msgspec.Struct):
                 if time < 0:
                     break
             timelines.append(tuple(tl))
+            # 解析未消费的字节(截短终止记录)原样保留, 供 serialize 还原
+            nxt = timeline_offsets[i + 1] if i + 1 < timeline_count else len(data)
+            trailing.append(data[off:nxt])
 
-        return cls(sub_count, timeline_count, subs, timelines, instr_at)
+        return cls(sub_count, timeline_count, subs, timelines, instr_at,
+                   tuple(timeline_offsets), trailing)
+
+    def serialize(self) -> bytes:
+        """把解析结果写回 .ecl 二进制(parse 的逆运算)。
+
+        承诺: ``serialize(parse(data)) == data`` 逐字节成立(真实 th07.dat 的
+        ecldata1..8 全覆盖, 见 tests/test_ecl_codec.py)。各段写回各自记录的
+        绝对偏移, 不依赖排布连续性; 指令头 unused 字节、时间轴原始偏移槽、
+        截短终止记录都按 parse 保留的原样字段写回(见类 docstring)。
+        改动指令内容后再序列化(长度变化需重排偏移表)是后续工作。
+        """
+        header_size = 4 + 64 + 4 * self.sub_count
+        end = header_size
+        for sub in self.subs:
+            for ins in sub:
+                end = max(end, ins.offset + ins.size)
+        for i, tl in enumerate(self.timelines):
+            tail_start = self._timeline_offsets[i]
+            for tins in tl:
+                end = max(end, tins.offset + tins.size)
+                tail_start = tins.offset + tins.size
+            end = max(end, tail_start + len(self._timeline_trailing[i]))
+        buf = bytearray(end)
+
+        struct.pack_into("<hh", buf, 0, self.sub_count, self.timeline_count)
+        struct.pack_into("<16i", buf, 4, *self._timeline_offsets)
+        for sub_id, sub in enumerate(self.subs):
+            if not sub:
+                continue  # 空 sub 无偏移可还原(手工构造的边界情形)
+            struct.pack_into("<i", buf, 68 + 4 * sub_id, sub[0].offset)
+            for ins in sub:
+                _INSTR_HEADER.pack_into(buf, ins.offset, ins.time, ins.id,
+                                        ins.size, ins.unused,
+                                        ins.skip_difficulty, ins.param_mask)
+                if ins.args:
+                    struct.pack_into(f"<{len(ins.args)}I", buf,
+                                     ins.offset + _INSTR_HEADER_SIZE, *ins.args)
+        for i, tl in enumerate(self.timelines):
+            tail_start = self._timeline_offsets[i]
+            for tins in tl:
+                _TIMELINE_HEADER.pack_into(buf, tins.offset, tins.time,
+                                           tins.arg0, tins.opcode, tins.size)
+                if tins.args:
+                    struct.pack_into(f"<{len(tins.args)}I", buf,
+                                     tins.offset + _TIMELINE_HEADER.size,
+                                     *tins.args)
+                tail_start = tins.offset + tins.size
+            tail = self._timeline_trailing[i]
+            buf[tail_start:tail_start + len(tail)] = tail
+        return bytes(buf)
 
     def instr_at(self, offset: int) -> Optional[EclInstr]:
         return self._instr_at.get(offset)

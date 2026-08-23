@@ -62,7 +62,8 @@ __all__ = [
 class EclSpec:
     """一部作品的 ECL 虚拟机实现(指令集解释器 + 二进制文件格式)。"""
     machine: type       # EclMachine 类(指令集/解释器实现)
-    file_format: type   # EclFile 类(ecldata 二进制解析)
+    file_format: type   # EclFile 类(ecldata 二进制 parse/serialize;
+                        # 统一 enc/dec 入口 engine/ecl_codec.EclCodec 经此解析)
 
 
 @dataclass(frozen=True)
