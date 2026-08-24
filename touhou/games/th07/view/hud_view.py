@@ -70,8 +70,11 @@ _CHERRY_PLUS_COLOR = (192, 128, 176)
 # 原版樱点槽稳态左上角 (ascii.anm script 4 interrupt 1 终值, ANM_22 左上锚)
 _GAUGE_POS = (32, 464)
 
-# FPS 显示位置: 底部左区, 樱点槽(32..128)右侧 (原版在 (512,464), 见 render_fps)
-_FPS_POS = (136, 468)
+# FPS 显示位置: 底部左区下沿条上, 樱点数字右侧。樱点下行两组数字按
+# (78,475) 起 7px 步进, 最坏 7 位 + 7 位画到 ~182 (AsciiManager.cpp:1139-1223;
+# cherryMax 可超 6 位), 取 190 避开重叠 (原版在 (512,464), 见 render_fps;
+# BUGS.md 增量#1: 136 与 cherryMax 数字叠加)
+_FPS_POS = (190, 466)
 
 
 class HudView:

@@ -713,6 +713,14 @@ class PerfectCherryBloom:
         self.bomb.tick(self._bomb_ctx())
         if was_bomb_in_use and not self.bomb.is_in_use:
             log.debug("bomb 结束 (frame={}, 持续={}帧)", self.frame, self.bomb.timer)
+        # bomb 期间 playerState=INVULNERABLE: C++ 机体 *Calc 每帧无条件设
+        # (BombData.cpp:182/378/601/679/763/906), UpdateState 据这个状态逐帧
+        # 递减 invulnerabilityTimer, 归零才回 ALIVE (Player.cpp:1916-1933);
+        # 无敌时长 = duration+60 (如灵梦A 200/140, BombData.cpp:137-138),
+        # bomb 结束后剩余 ~60 帧继续倒数, 闪烁自然结束。少了这步, 首帧设的
+        # 无敌计时在 ALIVE 态冻结, 虚影永不消失 (BUGS.md 增量#2)。
+        if was_bomb_in_use and self.bomb.invulnerable:
+            self.player.state = PlayerState.INVULNERABLE
         if was_bomb_in_use:
             if self.bomb.drain_applied:
                 g.subtract_cherry_drain(self.bomb.drain_applied)
