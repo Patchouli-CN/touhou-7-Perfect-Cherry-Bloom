@@ -15,7 +15,18 @@
 3.按B的资源吸取没有了
 4.BGM的播放会突然停止，具体表现为，标题界面standby 2-3分钟，就停了，正常是循环播放
 5.道中/boss的出现时只会清空弹幕，资源吸取没有，进入符卡也是一样，只清弹，清弹变成的星点不自动吸取
-6.我符卡奖励和普通bonus奖励哪去了？
+6.我符卡奖励和普通bonus奖励哪去了？ ✅ 已修复
+- 根因：捕获分/过关 bonus 的"分数"其实在入账，但 ① 符卡结束/boss 击坠的清弹累计分
+  （BulletManager::DespawnBullets 的 2000 起 +20/弹、8000 封顶，接 RemoveAllEnemies
+  2000 起 +30/敌）完全没算没入账；② "Spell Card Bonus!" 与 "BONUS %8d" 两条横幅
+  （Gui.cpp ShowSpellcardBonus:98 / ShowBonusScore:78）从未实现。
+- 修复：globals 增 bonus_score/spellcard_bonus 横幅状态（250/280 帧生命周期）；
+  world._despawn_bullets_bonus 按 BulletManager.cpp:486-553 逐弹弹字+累计分；
+  _apply_spellcard_end 与 _kill_reward（boss 击坠非符卡中，EnemyManager.cpp:1004-1011）
+  把清弹+清敌累计分 AddScore 并弹 BONUS 横幅；捕获时弹 Spell Card Bonus 横幅；
+  ecl_host.remove_all_enemies 补逐敌 CreatePopup1 弹字；popup_view 画两条横幅。
+- 回归测试：`tests/test_result_flow.py::test_spellcard_capture_bonus_score_and_banners`、
+  `tests/test_globals.py::test_bonus_banners_expire`
 7.~~boss和道中的弹幕明显不是原版弹幕~~ ✅ 引擎层已查证修复（实测复测后可删）
 - 查证：对照 th07/src/th07 全链路比对，发现 4 处真实偏差并修复：
   ① screenClearTime 机制缺失（清屏后 10 帧内新弹/激光应压制，BulletManager.cpp:480/553）

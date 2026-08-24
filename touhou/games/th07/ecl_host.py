@@ -56,7 +56,7 @@ from ...engine.ecl import (
 )
 from ...engine.ecl_base import EclMachineBase
 from ...engine.enemies import EclEnemy, EnemyHost
-from .items import STATE_ATTRACT, ItemType, ItemWorld
+from .items import POPUP_WHITE, POPUP_YELLOW, STATE_ATTRACT, ItemType, ItemWorld
 from ...engine.lasers import Laser, LaserState, LaserWorld
 from ...utils import Vec2, add_normalize_angle, angle_to
 
@@ -279,7 +279,11 @@ class GameEclHost(EclHost):
             self.on_spellcard_timeout(e.state)
 
     def remove_all_enemies(self, score_max: int, score_min: int) -> int:
-        """EnemyManager::RemoveAllEnemies: 跳过 boss; isProjectile 掉弹消点并累计分。"""
+        """EnemyManager::RemoveAllEnemies: 跳过 boss; isProjectile 掉弹消点并累计分。
+
+        逐敌弹字 CreatePopup1 (EnemyManager.cpp:1484-1490): 2000 起 +30,
+        score_max 封顶, 黄=满分; 敌历史轨迹的连带弹/弹字 (trailFlags 段)
+        同既有简化不生成。"""
         total = score_min
         popup = 2000
         for e in self.enemies.all():
@@ -291,6 +295,11 @@ class GameEclHost(EclHost):
                     # isProjectile 掉弹消点, 出生即吸附 (EnemyManager.cpp:1486 SpawnItem(…, 1))
                     self.items.spawn(e.pos, ItemType.POINT_BULLET, power=self.power,
                                      state=STATE_ATTRACT)
+                    g = getattr(self.world, "globals", None)
+                    if g is not None:
+                        g.add_popup(e.pos, popup,
+                                    POPUP_YELLOW if popup >= score_max
+                                    else POPUP_WHITE, kind=1)
                     total += popup
                     popup = min(popup + 30, score_max)
                 if not e.state.can_die and e.state.death_callback_sub >= 0:

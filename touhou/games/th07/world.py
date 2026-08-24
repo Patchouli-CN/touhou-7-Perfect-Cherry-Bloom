@@ -52,6 +52,8 @@ from ...schema.msg import MsgFile, MsgVm
 from .items import (
     FULL_POWER,
     OFFSCREEN_SUBRANK_PENALTY,
+    POPUP_WHITE,
+    POPUP_YELLOW,
     POWER_LEVELS,
     STATE_ATTRACT,
     GameContext,
@@ -1419,6 +1421,8 @@ class PerfectCherryBloom:
             self.globals.add_score(res["score"])  # capture+grazeBonus 已是代码值
             self.globals.spell_cards_captured += res["spell_cards_captured"]
             self.stats.add_spellcard()
+            # "Spell Card Bonus!" 横幅 (EclManager.cpp:782 → Gui.cpp:98)
+            self.globals.show_spellcard_bonus(res["score"])
             # catk: 捕获成功 successes++/highscore 取 max (EclManager.cpp EndSpellcard)。
             # 只接 ECL 路径(_catk_idx 由 begin 登记); 演示 Boss 不统计。
             if self._catk_idx is not None:
@@ -1426,22 +1430,42 @@ class PerfectCherryBloom:
                     self._catk_idx, self.character, res["score"] // 10)
         self._catk_idx = None
         if res["despawn_bullets"]:
-            for b in self.bullets.alive():
-                # DespawnBullets(8000,1): 弹转弹消点, 出生即吸附 (BulletManager.cpp:510)
-                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
-                                 state=STATE_ATTRACT)
-                b.dead = True
-            # DespawnBullets(8000,1) 连带激光 (BulletManager.cpp:524-550):
-            # 无 flags&4 豁免, 原点+沿线出弹消点
-            self.lasers.remove_all(spawn_items=True, skip_flag4=False,
-                                   spawn_at_pos=True,
-                                   spawn_item=self._spawn_point_bullet)
-        if res["remove_all_enemies"]:
+            # EclManager.cpp:770-776: 清弹/清敌累计分入账 + "BONUS" 横幅
+            removed = self._despawn_bullets_bonus()
+            if res["remove_all_enemies"]:
+                if self.ecl_host is not None:
+                    removed = self.ecl_host.remove_all_enemies(8000, removed)
+                else:
+                    self.host.clear()
+            if removed:
+                self.globals.add_score(removed)
+                self.globals.show_bonus_score(removed)
+        elif res["remove_all_enemies"]:
             if self.ecl_host is not None:
                 # C RemoveAllEnemies 跳过 boss(ECL  Boss 机体还要跑后续 sub)
                 self.globals.add_score(self.ecl_host.remove_all_enemies(8000, 0))
             else:
                 self.host.clear()
+
+    def _despawn_bullets_bonus(self) -> int:
+        """BulletManager::DespawnBullets(8000,1) (BulletManager.cpp:486-553):
+        弹转弹消点(出生即吸附) + 逐弹弹字(2000 起 +20, 8000 封顶, 黄=满分)
+        + 累计清弹分(代码值, 激光不计分)。返回清弹分(无弹=0)。"""
+        total = 0
+        value = 2000
+        for b in self.bullets.alive():
+            self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
+                             state=STATE_ATTRACT)
+            self.globals.add_popup(
+                b.pos, value, POPUP_YELLOW if value >= 8000 else POPUP_WHITE, kind=1)
+            total += value
+            value = min(value + 20, 8000)
+            b.dead = True
+        # 连带激光 (:524-550): 无 flags&4 豁免, 原点+沿线出弹消点
+        self.lasers.remove_all(spawn_items=True, skip_flag4=False,
+                               spawn_at_pos=True,
+                               spawn_item=self._spawn_point_bullet)
+        return total
 
     def _clear_field(self) -> None:
         if self.ecl_host is not None:
@@ -1480,18 +1504,14 @@ class PerfectCherryBloom:
                     self._rand_table_idx = (self._rand_table_idx + 1) % 32
                 self._rand_spawn_idx += 1
             if st.is_boss and not self._spellcard_active():
-                # boss 击坠且非符卡中: 清弹转道具 + 清场 (C 死亡分支 case 2)
-                for b in self.bullets.alive():
-                    # DespawnBullets(8000,1): 弹转弹消点, 出生即吸附 (BulletManager.cpp:510)
-                    self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
-                                     state=STATE_ATTRACT)
-                    b.dead = True
-                # DespawnBullets(8000,1) 连带激光 (BulletManager.cpp:524-550)
-                self.lasers.remove_all(spawn_items=True, skip_flag4=False,
-                                       spawn_at_pos=True,
-                                       spawn_item=self._spawn_point_bullet)
+                # boss 击坠且非符卡中: 清弹转道具 + 清场 + 累计分入账
+                # (EnemyManager.cpp:1004-1011 死亡分支 case 2 → ShowBonusScore)
+                removed = self._despawn_bullets_bonus()
                 if self.ecl_host is not None:
-                    g.add_score(self.ecl_host.remove_all_enemies(8000, 0))
+                    removed = self.ecl_host.remove_all_enemies(8000, removed)
+                if removed:
+                    g.add_score(removed)
+                    g.show_bonus_score(removed)
             return
         g.add_score(5000)  # 显示分 500/杀 → 代码值*10
         self.items.drop_random(e.pos, table=self._drop_table,

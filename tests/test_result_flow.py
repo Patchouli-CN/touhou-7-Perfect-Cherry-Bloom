@@ -227,3 +227,39 @@ def test_catk_recorded_on_real_ecl_spellcard() -> None:
     g.boss.life = 0
     g._apply_spellcard_end(g.boss.end_spellcard())
     assert sum(e["attempts"][6] for e in g.store.catk) == idx_before
+
+
+def test_spellcard_capture_bonus_score_and_banners() -> None:
+    """符卡捕获: 捕获分入账 + "Spell Card Bonus!" 横幅; 清弹累计分(2000 起
+    +20)入账 + "BONUS" 横幅 + 逐弹弹字 (BUGS.md#6, EclManager.cpp:770-783,
+    BulletManager.cpp:486-523)。"""
+    from touhou.engine.ecl import EclEnemyState
+    g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
+                           score_store=ScoreStore(spellcard_count=141))
+    _tick_until_alive(g)
+    st = EclEnemyState()
+    st.boss_id = 0
+    st.is_boss = True
+    st.pos.set(192.0, 120.0, 0.0)
+    st.life = st.max_life = 500
+    st.timer_callback_threshold = 1800
+    g._ecl_on_begin_spellcard(st, 0, 5, "测试符卡")
+    # 压 3 颗静止弹在屏上(远离自机)
+    g.bullets.fire(Burst(Vec2(96.0, 60.0), math.pi / 2, Aim.SPREAD_ABSOLUTE,
+                         3, 1, 0.0, 0.0, 0.0))
+    assert len(list(g.bullets.alive())) >= 3
+    score_before = g.globals.score
+    g.boss.life = 0
+    res = g.boss.end_spellcard()
+    assert res["captured"]
+    g._apply_spellcard_end(res)
+    # 捕获分入账 + "Spell Card Bonus!" 横幅 (EclManager.cpp:780-783)
+    assert g.globals.spellcard_bonus == res["score"]
+    # 清弹逐弹弹字(2000 起 +20/弹; 场上原有弹数不定, 至少含前三档)
+    popups = [p.value for p in g.globals.popups]
+    assert 2000 in popups and 2020 in popups and 2040 in popups
+    # "BONUS" 横幅 = 清弹+清敌累计(场上 ECL 敌或有, 下界为清弹段)
+    assert g.globals.bonus_score >= 2000 + 2020 + 2040
+    assert g.globals.score - score_before >= res["score"] // 10 + 6060 // 10
+    # 弹已转弹消点道具(标记 dead, 次帧清扫; 出生即吸附)
+    assert all(b.dead for b in g.bullets.alive())

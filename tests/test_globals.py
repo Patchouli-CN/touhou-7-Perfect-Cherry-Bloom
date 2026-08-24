@@ -250,3 +250,20 @@ def test_high_score_syncs_during_chase_not_just_at_end() -> None:
             seen = True
             assert g.high_score == g.gui_score
     assert seen
+
+
+def test_bonus_banners_expire() -> None:
+    """BONUS 横幅 250 帧 / Spell Card Bonus 横幅 280 帧 (BUGS.md#6,
+    Gui.cpp:1323/1351)。"""
+    g = ZunGlobals()
+    g.show_bonus_score(12345)
+    g.show_spellcard_bonus(67890)
+    for _ in range(249):
+        g.step_popups()
+    assert g.bonus_score == 12345 and g.spellcard_bonus == 67890
+    g.step_popups()
+    assert g.bonus_score == 0
+    assert g.spellcard_bonus == 67890
+    for _ in range(30):
+        g.step_popups()
+    assert g.spellcard_bonus == 0

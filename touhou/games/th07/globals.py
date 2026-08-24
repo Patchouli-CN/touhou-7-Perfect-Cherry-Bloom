@@ -45,6 +45,12 @@ POPUP2_CAP = 3
 POPUP_LIFETIME = 60
 # 状态横幅显示帧数 (Gui.cpp:1343)
 STATUS_POPUP_LIFETIME = 180
+# 符卡捕获奖励横幅显示帧数 (Gui.cpp:1351)
+SPELLCARD_BONUS_LIFETIME = 280
+# 清场奖励横幅显示帧数 (Gui.cpp:1323)
+BONUS_SCORE_LIFETIME = 250
+# 清场奖励横幅滑入帧数 (Gui.cpp:1311-1319, view 用)
+BONUS_SCORE_SLIDE_FRAMES = 30
 
 
 class ScorePopup(msgspec.Struct):
@@ -99,6 +105,11 @@ class ZunGlobals(GlobalsBase):
     status_popup: int = 0        # GUI_DISPLAY_*; 0=隐藏
     status_popup_arg: int = 0    # fmtArg (Border Bonus 的数值等)
     status_popup_timer: int = 0
+    # 奖励横幅 (Gui bonusScore/spellCardBonus; 0=隐藏, 值为代码值口径 fmtArg)
+    bonus_score: int = 0            # "BONUS %8d" (清弹/清场累计分)
+    bonus_score_timer: int = 0
+    spellcard_bonus: int = 0        # "Spell Card Bonus!" +N (捕获分)
+    spellcard_bonus_timer: int = 0
 
     # ---- 最高分跟随 ----
     def tick_high_score(self) -> None:
@@ -132,6 +143,16 @@ class ZunGlobals(GlobalsBase):
         self.status_popup_arg = arg
         self.status_popup_timer = 0
 
+    def show_bonus_score(self, score: int) -> None:
+        """Gui::ShowBonusScore (Gui.cpp:78-83): "BONUS %8d" 清场奖励横幅。"""
+        self.bonus_score = score
+        self.bonus_score_timer = 0
+
+    def show_spellcard_bonus(self, score: int) -> None:
+        """Gui::ShowSpellcardBonus (Gui.cpp:98-103): "Spell Card Bonus!" 横幅。"""
+        self.spellcard_bonus = score
+        self.spellcard_bonus_timer = 0
+
     def step_popups(self) -> None:
         """每帧: 弹字上浮 0.5px + 寿命 60 帧 (AsciiManager.cpp:55-60);
         状态横幅计时, 180 帧隐藏 (Gui.cpp:1329-1347)。"""
@@ -146,6 +167,14 @@ class ZunGlobals(GlobalsBase):
             self.status_popup_timer += 1
             if self.status_popup_timer >= STATUS_POPUP_LIFETIME:
                 self.status_popup = 0
+        if self.bonus_score != 0:
+            self.bonus_score_timer += 1
+            if self.bonus_score_timer >= BONUS_SCORE_LIFETIME:  # Gui.cpp:1323
+                self.bonus_score = 0
+        if self.spellcard_bonus != 0:
+            self.spellcard_bonus_timer += 1
+            if self.spellcard_bonus_timer >= SPELLCARD_BONUS_LIFETIME:  # Gui.cpp:1351
+                self.spellcard_bonus = 0
 
     # ---- 樱点 (§0.3) ----
     def add_cherry(self, x: int) -> None:

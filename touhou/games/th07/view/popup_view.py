@@ -26,6 +26,7 @@ from pathlib import Path
 import pygame
 
 from ..globals import (
+    BONUS_SCORE_SLIDE_FRAMES,
     STATUS_BORDER,
     STATUS_BORDER_BONUS,
     STATUS_CHERRY_MAX,
@@ -135,11 +136,56 @@ class PopupView:
                 surf.blit(img, (int(x), int(_STATUS_Y)))
             x += step
 
+    # ---- 清场奖励横幅 (Gui bonusScore 段, Gui.cpp:270-275 + :1309-1328) ----
+    def _render_bonus_score(self, surf: pygame.Surface, game) -> None:
+        """"BONUS %8d": 前 30 帧从 x=416 滑入到 104, y=48, 白字 16px。"""
+        g = game.globals
+        if not getattr(g, "bonus_score", 0):
+            return
+        t = g.bonus_score_timer
+        if t < BONUS_SCORE_SLIDE_FRAMES:
+            x = 416.0 - t * 312.0 / BONUS_SCORE_SLIDE_FRAMES  # Gui.cpp:1311-1319
+        else:
+            x = 104.0
+        for ch in f"BONUS {g.bonus_score:8d}":
+            if ch == " ":
+                x += 14.0
+                continue
+            img = self._glyph(ord(ch) - 1, (255, 255, 255))
+            if img is not None:
+                surf.blit(img, (int(x), 48))
+            x += 14.0
+
+    # ---- 符卡捕获奖励横幅 (Gui spellCardBonus 段, Gui.cpp:318-335) ----
+    def _render_spellcard_bonus(self, surf: pygame.Surface, game) -> None:
+        """"Spell Card Bonus!"(红) + "+%d"(2 倍粉字), 居中, 无滑入。"""
+        g = game.globals
+        if not getattr(g, "spellcard_bonus", 0):
+            return
+        title = "Spell Card Bonus!"
+        x = (384.0 - len(title) * 16.0) / 2.0 + 32.0  # Gui.cpp:321
+        for ch in title:
+            img = self._glyph(ord(ch) - 1, (255, 0, 0))  # 0xffff0000
+            if img is not None:
+                surf.blit(img, (int(x), 80))
+            x += 14.0
+        num = f"+{g.spellcard_bonus}"                    # Gui.cpp:327 "+%d"
+        x = (384.0 - len(num) * 32.0) / 2.0 + 32.0       # :328-330 (2 倍宽)
+        for ch in num:
+            img = self._glyph(ord(ch) - 1, (255, 128, 128))  # 0xffff8080
+            if img is not None:
+                img = pygame.transform.scale(
+                    img, (img.get_width() * 2, img.get_height() * 2))
+                surf.blit(img, (int(x), 96))
+            x += 32.0
+
     # ---- 对外 ----
     def render(self, surf: pygame.Surface, game) -> None:
         """画得分弹字 + 状态横幅(640x480 窗口面; 樱点槽之后调用)。"""
         self._render_popups(surf, game)
         self._render_status_popup(surf, game)
+        self._render_bonus_score(surf, game)
+        self._render_spellcard_bonus(surf, game)
 
 
 __all__ = ["PopupView"]
