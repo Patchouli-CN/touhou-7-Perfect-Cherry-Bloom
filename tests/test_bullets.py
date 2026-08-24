@@ -415,3 +415,79 @@ def test_bullet_hitbox_materialized_from_world() -> None:
 def test_bullet_default_hitbox() -> None:
     # 直接构造(不经 fire)给与世界字段默认一致的 3.5
     assert Bullet(Vec2(0, 0), 0.0, 1.0).hitbox == 3.5
+
+
+# ======================================================================
+# screenClearTime (BulletManager.cpp:289-292 / :480 / :1205-1207)
+# 清弹后 10 帧窗口内: 无 0x1000 moreFlag 的新弹出生即 DESPAWN (不入场)
+# ======================================================================
+def test_screen_clear_time_suppresses_new_bullets() -> None:
+    w = BulletWorld()
+    w.screen_clear_time = 10
+    n = w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 8, 1, 2.0, 2.0, 0.0))
+    assert n == 0 and len(w) == 0
+    # 带 0x1000 moreFlag 的弹不受窗口压制 (C: moreFlags & 0x1000 豁免)
+    n = w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 8, 1, 2.0, 2.0, 0.0,
+                     flags=0x1000))
+    assert n == 8 and len(w) == 8
+    # 窗口每帧递减, 10 帧后恢复正常生成
+    for _ in range(10):
+        w.step()
+    assert w.screen_clear_time == 0
+    n = w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 4, 1, 2.0, 2.0, 0.0))
+    assert n == 4
+
+
+def test_screen_clear_time_rng_still_consumed() -> None:
+    """窗口内被压制的弹仍按原样消耗 RNG (C 是出生后置 DESPAWN, 随机数已抽)。"""
+    w = BulletWorld()
+    w.screen_clear_time = 10
+    g0 = w.rng.gen
+    w.fire(Burst(P, 1.0, Aim.ANGLE_RANDOM, 4, 1, 2.0, 2.0, 0.5))
+    used = w.rng.gen - g0
+    w2 = BulletWorld()
+    g1 = w2.rng.gen
+    w2.fire(Burst(P, 1.0, Aim.ANGLE_RANDOM, 4, 1, 2.0, 2.0, 0.5))
+    assert used == w2.rng.gen - g1 == 4 * 2  # unit()=u32=2×u16, 每颗一抽
+
+
+# ======================================================================
+# 出界宽限衰减 (BulletManager.cpp:957-975)
+# 宽限位 (0xdc0) 在屏外跑完清零后, outOfBoundsTime 逐帧递减而非立即销毁
+# ======================================================================
+def test_offscreen_grace_residual_countdown() -> None:
+    cmd = BulletCommand(CmdFlag.DIR_CHANGE, speed=0.0, angle=-1000.0,
+                        duration=8, loop=1)
+    w = BulletWorld()
+    w.fire(Burst(Vec2(192, 20), -math.pi / 2, Aim.RING_ABSOLUTE, 1, 1,
+                 8.0, 8.0, 0.0, sprite=0, commands=(cmd,)))
+    b = w.alive()[0]
+    for _ in range(9):
+        w.step()  # 第 9 帧: 转向命令在屏外跑完, ex_flags 清零 (残余 oob=5)
+    assert not (b.ex_flags & CmdFlag.DIR_CHANGE)
+    assert b.out_of_bounds_time == 4  # 清零帧: 5 -> 4 (旧实现这帧直接销毁)
+    assert not b.dead and len(w) == 1
+    # 残余 outOfBoundsTime 逐帧递减: 再活 4 帧, 归零后的下一帧才销毁
+    for _ in range(4):
+        w.step()
+    assert len(w) == 1 and b.out_of_bounds_time == 0
+    w.step()
+    assert len(w) == 0
+
+
+# ======================================================================
+# TARGET_VEL 激活时烘入 effectiveFramerateMultiplier
+# (BulletManager.cpp:347-349 激活烘 mult; :703-704 每帧再乘当前 mult)
+# ======================================================================
+def test_target_vel_bakes_time_scale_at_activation() -> None:
+    cmd = BulletCommand(CmdFlag.TARGET_VEL, speed=2.0, angle=0.0, duration=10)
+    w = BulletWorld()
+    w.time_scale = 0.25  # 妖梦减速中
+    w.fire(Burst(P, math.pi / 2, Aim.RING_ABSOLUTE, 1, 1, 1.0, 1.0, 0.0,
+                 commands=(cmd,)))
+    b = w.alive()[0]
+    # 出生 vel = 1.0*0.25 向下; 激活时 vec3 = 2.0*0.25 = 0.5 向 +x
+    assert b.vel.distance(Vec2(0.0, 0.25)) < 1e-9
+    w.step()  # 更新器: vel += vec3 * 0.25 → +x 0.125 (双重缩放, 照抄 C)
+    assert abs(b.vel.x - 0.125) < 1e-9
+    assert abs(b.vel.y - 0.25) < 1e-9

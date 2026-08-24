@@ -277,6 +277,11 @@ class BulletWorld(msgspec.Struct):
     # g_Supervisor.effectiveFramerateMultiplier 的弹幕侧 (ExIns 10/11 妖梦减速):
     # C++ 在"每次算 velocity"时乘上它 —— 出生速度/命令更新器的 dt, 位移本身不二次缩放
     time_scale: float = 1.0
+    # BulletManager::screenClearTime (BulletManager.cpp:480/553 置 10, :1205-1207
+    # 每帧递减): 清弹后的窗口期内, 不带 0x1000 moreFlag 的新弹出生即
+    # BULLET_DESPAWN (:289-292, 不更新/不吃判定), 新激光直接不生成 (:627-630)。
+    # 由作品侧清弹路径 (ecl_host.remove_all_bullets 等) 置 10。
+    screen_clear_time: int = 0
 
     # ---- 生成 ----
     def fire(self, burst: Burst) -> int:
@@ -287,6 +292,10 @@ class BulletWorld(msgspec.Struct):
         for ring in range(burst.rings):
             for arm in range(burst.arms):
                 angle, speed = burst.angle_speed(arm, ring, self.rng)
+                # BulletManager.cpp:289-292: screenClearTime 窗口内且无 0x1000
+                # moreFlag 的弹出生即 DESPAWN (RNG 已照原样消耗, 弹体不入场)
+                if self.screen_clear_time != 0 and not (burst.flags & 0x1000):
+                    continue
                 b = Bullet(burst.path, angle, speed, sprite=burst.sprite, size=size,
                            sprite_offset=burst.sprite_offset,
                            hitbox=self.bullet_radius)
@@ -305,7 +314,7 @@ class BulletWorld(msgspec.Struct):
                     b.spawn_state = st
                     b.spawn_frames = frames
                     b.pos = b.pos - b.vel * 4.0
-                b.run_commands()  # SpawnSingleBullet 末尾立即跑一次
+                b.run_commands(self.time_scale)  # SpawnSingleBullet 末尾立即跑一次
                 self._bullets.append(b)
                 count += 1
         return count
@@ -339,7 +348,7 @@ class BulletWorld(msgspec.Struct):
                 if b.spawn_frames > 0:
                     continue
                 b.spawn_state = 0  # switch_break: state=NORMAL, 当帧落入正常分支
-            b.run_commands()
+            b.run_commands(self.time_scale)
             b.step_commands(self.player_pos, self.time_scale)
             if b.spawn_delay != 0:
                 b.spawn_delay -= 1
@@ -351,11 +360,18 @@ class BulletWorld(msgspec.Struct):
                         b.out_of_bounds_time += 1
                         if b.out_of_bounds_time >= OFFSCREEN_GRACE_FRAMES:
                             b.dead = True
-                    else:
+                    elif b.out_of_bounds_time == 0:
                         b.dead = True
+                    else:
+                        # BulletManager.cpp:968-974: 宽限位已清但 outOfBoundsTime
+                        # 还有剩(转向/反弹在屏外跑完)时, 逐帧递减而非立即销毁
+                        b.out_of_bounds_time -= 1
                 else:
                     b.out_of_bounds_time = 0
         self._bullets = [b for b in self._bullets if not b.dead]
+        # BulletManager.cpp:1205-1207: screenClearTime 每帧递减
+        if self.screen_clear_time != 0:
+            self.screen_clear_time -= 1
 
     def hits_player(self) -> bool:
         r = self.player_radius + self.bullet_radius

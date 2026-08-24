@@ -450,3 +450,54 @@ def test_remove_all_bullets_clears_lasers() -> None:
     host.remove_all_bullets(False)
     assert normal2.state == LaserState.DESPAWNING
     assert len(host.items.alive()) == host2_items
+
+
+# ---- screenClearTime (BulletManager.cpp:480 / :289-292 / :627-630) ----
+
+def test_remove_all_bullets_sets_screen_clear_time() -> None:
+    """RemoveAllBullets 末尾 screenClearTime=10: 窗口内新弹被压制,
+    0x1000 moreFlag 豁免; 窗口随 BulletWorld.step 递减。"""
+    m, host, world = _setup([_instr(9999, OP.UNIMP)])
+    _fire(host, (100, 100), count=4)
+    host.remove_all_bullets(True)
+    assert all(b.dead for b in host.bullets.alive())  # 标记 DESPAWN, 下帧清理
+    assert host.bullets.screen_clear_time == 10
+    # 窗口内: 普通弹出生即 DESPAWN (不入场)
+    _fire(host, (100, 100), count=4)
+    assert len(host.bullets) == 4  # 只有之前被清的 4 颗, 新弹未入场
+    # 0x1000 moreFlag 豁免
+    host.bullets.fire(Burst(Vec2(100, 100), 0.0, Aim.RING_ABSOLUTE, 2, 1,
+                            2.0, 2.0, 0.0, flags=0x1000))
+    assert len(host.bullets) == 6
+    for _ in range(10):
+        host.bullets.step()  # 顺带清掉 dead 弹 + 窗口递减到 0
+    assert host.bullets.screen_clear_time == 0
+    _fire(host, (100, 100), count=3)
+    assert len(host.bullets) == 2 + 3
+
+
+def test_screen_clear_time_blocks_laser_spawn() -> None:
+    """SpawnLaserPattern: screenClearTime 窗口内, 无 flag 4 的激光不生成
+    (BulletManager.cpp:627-630)。"""
+    from touhou.engine.ecl import EnemyLaserShooter
+    m, host, world = _setup([_instr(9999, OP.UNIMP)])
+    host.bullets.screen_clear_time = 5
+    props = EnemyLaserShooter(pos=Vec3(100.0, 100.0, 0.0), flags=0)
+    assert host.spawn_laser_pattern(props) is None
+    assert len(host.lasers.lasers) == 0
+    props4 = EnemyLaserShooter(pos=Vec3(100.0, 100.0, 0.0), flags=4)
+    assert host.spawn_laser_pattern(props4) is not None
+    assert len(host.lasers.lasers) == 1
+
+
+def test_command_queue_truncates_at_first_empty_slot() -> None:
+    """C RunCommands 在第一个 type==0 槽停止 (BulletManager.cpp:318-320):
+    稀疏槽位(0 空 1 有)后面的命令不激活 —— 按截断处理。"""
+    from touhou.engine.ecl import BulletCommandData, EnemyBulletShooter
+    m, host, world = _setup([_instr(9999, OP.UNIMP)])
+    props = EnemyBulletShooter(pos=Vec3(100.0, 100.0, 0.0), count1=1, count2=1,
+                               speed1=2.0, aim_mode=3)
+    props.commands[1] = BulletCommandData(type=int(CmdFlag.BURST))
+    host.spawn_bullet_pattern(props)
+    b = host.bullets.alive()[0]
+    assert len(b.commands) == 0  # 槽 0 为空 → 槽 1 的 BURST 不进入队列

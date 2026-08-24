@@ -136,10 +136,13 @@ class BulletState:
         if slot < len(self.commands):
             self.commands[slot] = BulletCommand(CmdFlag(0))
 
-    def run_commands(self) -> None:
+    def run_commands(self, dt: float = 1.0) -> None:
         """从队列激活下一条命令 —— 对照 Bullet::RunCommands (0x00424290)。
 
         每次调用最多激活一条; flag==0 的命令要等 exFlags 清空(上一条跑完)。
+        dt = effectiveFramerateMultiplier: C++ 在激活 TARGET_VEL 时把
+        它烘进状态矢量 (BulletManager.cpp:347-349), 之后每帧更新器再乘一次
+        当前的 mult (:703-704) —— 妖梦减速中激活会双重缩放, 照抄。
         """
         while self.cur_cmd_idx < len(self.commands):
             cmd = self.commands[self.cur_cmd_idx]
@@ -162,7 +165,8 @@ class BulletState:
                 st.angle = cmd.angle if cmd.angle > -990.0 else self.angle
                 st.timer = 0
                 st.duration = cmd.duration
-                st.vel = Vec2.from_angle(st.angle, st.speed)
+                # BulletManager.cpp:347-349: 激活时烘入 effectiveFramerateMultiplier
+                st.vel = Vec2.from_angle(st.angle, st.speed * dt)
             elif t == CmdFlag.TARGET_ANGLE:
                 self.ex_flags |= CmdFlag.TARGET_ANGLE
                 st = self.states[_SLOT_TARGET_ANGLE]
@@ -304,7 +308,7 @@ def step_bullet(bs: BulletState, player_pos: Vec2, dt: float = 1.0) -> None:
     RunCommands → exFlags 更新器 → spawnDelay 递减 → pos += velocity。
     (出界/碰撞判定由 BulletWorld / player 层负责。)
     """
-    bs.run_commands()
+    bs.run_commands(dt)
     bs.step_commands(player_pos, dt)
     if bs.spawn_delay != 0:
         bs.spawn_delay -= 1

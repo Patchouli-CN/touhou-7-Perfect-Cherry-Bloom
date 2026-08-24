@@ -56,7 +56,7 @@ from ...engine.ecl import (
 )
 from ...engine.ecl_base import EclMachineBase
 from ...engine.enemies import EclEnemy, EnemyHost
-from .items import ItemType, ItemWorld
+from .items import STATE_ATTRACT, ItemType, ItemWorld
 from ...engine.lasers import Laser, LaserState, LaserWorld
 from ...utils import Vec2, add_normalize_angle, angle_to
 
@@ -154,7 +154,9 @@ class GameEclHost(EclHost):
         cmds = []
         for c in props.commands:
             if not c.type:
-                continue
+                # C 的 RunCommands 在第一个 type==0 槽停止评估 (BulletManager.cpp:318-320),
+                # 故按截断而非过滤处理(稀疏槽位后面的命令不激活)
+                break
             try:
                 t = CmdFlag(c.type)
             except ValueError:
@@ -174,6 +176,10 @@ class GameEclHost(EclHost):
     # ---- 激光(句柄 = Laser 对象) ----
     def spawn_laser_pattern(self, props: EnemyLaserShooter):
         if len(self.lasers.lasers) >= _MAX_LASERS:
+            return None
+        # BulletManager.cpp:627-630: screenClearTime 窗口内, 不带 flag 4 的
+        # 激光不生成 (C 返回槽 0 假句柄, 后续激光操作落空; 这里返回 None 等价)
+        if self.bullets.screen_clear_time != 0 and not (props.flags & 4):
             return None
         pos = Vec2(props.pos.x, props.pos.y)
         angle = props.angle1
@@ -282,7 +288,9 @@ class GameEclHost(EclHost):
             e.life = 0
             if isinstance(e, EclEnemy):
                 if e.state.is_projectile:
-                    self.items.spawn(e.pos, ItemType.POINT_BULLET, power=self.power)
+                    # isProjectile 掉弹消点, 出生即吸附 (EnemyManager.cpp:1486 SpawnItem(…, 1))
+                    self.items.spawn(e.pos, ItemType.POINT_BULLET, power=self.power,
+                                     state=STATE_ATTRACT)
                     total += popup
                     popup = min(popup + 30, score_max)
                 if not e.state.can_die and e.state.death_callback_sub >= 0:
@@ -300,29 +308,37 @@ class GameEclHost(EclHost):
         self.items.spawn(Vec2(pos.x, pos.y), t, power=self.power)
 
     def remove_all_bullets(self, spawn_items: bool) -> None:
-        """BulletManager::RemoveAllBullets: spawn_items 时弹转弹消点道具;
+        """BulletManager::RemoveAllBullets: spawn_items 时弹转弹消点道具,
+        出生即吸附 (BulletManager.cpp:423-434, SpawnItem(…, param_1=1));
         连带激光 (BulletManager.cpp:439-471): flags&4 豁免(param 0/1 均 !=10),
-        其余进 DESPAWNING, spawn_items 时沿线每 32px 出弹消点。"""
+        其余进 DESPAWNING, spawn_items 时沿线每 32px 出弹消点。
+        末尾置 screenClearTime=10 (:480): 窗口内新弹/新激光被压制。"""
         for b in self.bullets.alive():
             if spawn_items:
-                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power)
+                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
+                                 state=STATE_ATTRACT)
             b.dead = True
         self.lasers.remove_all(
             spawn_items=spawn_items, skip_flag4=True,
             spawn_item=self._spawn_point_bullet if spawn_items else None)
+        self.bullets.screen_clear_time = 10  # BulletManager.cpp:480
 
     def _spawn_point_bullet(self, pos: Vec2) -> None:
-        """弹消点道具 (C RemoveAllBullets/DespawnBullets 的 this->itemType)。"""
-        self.items.spawn(pos, ItemType.POINT_BULLET, power=self.power)
+        """弹消点道具 (C RemoveAllBullets/DespawnBullets 的 this->itemType);
+        出生即吸附 (BulletManager.cpp:468/546 的 SpawnItem(…, 1))。"""
+        self.items.spawn(pos, ItemType.POINT_BULLET, power=self.power,
+                         state=STATE_ATTRACT)
 
     def remove_bullets_in_radius(self, pos: Vec3, radius: float) -> None:
-        """BulletManager::RemoveBulletsInRadius: 半径内弹转弹消点道具。"""
+        """BulletManager::RemoveBulletsInRadius: 半径内弹转弹消点道具,
+        出生即吸附 (BulletManager.cpp:581 SpawnItem(…, 1))。"""
         r2 = radius * radius
         for b in self.bullets.alive():
             dx = b.pos.x - pos.x
             dy = b.pos.y - pos.y
             if dx * dx + dy * dy <= r2:
-                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power)
+                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
+                                 state=STATE_ATTRACT)
                 b.dead = True
 
     # ---- Boss/符卡(事件透出, 记账在 impl/boss.py) ----
