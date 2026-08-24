@@ -49,6 +49,7 @@ from .screens import (
     practice_max_stage,
 )
 from ....engine.view.sound_player import SoundPlayer
+from ....engine.view.sprite_bank import SpriteBank
 from ....paths import DEFAULT_SCORE_PATH, resolve_data_path
 
 # 标题画面 BGM (MainMenu.cpp:230/2685: LoadAudio(8,"bgm/th07_01.mid"))
