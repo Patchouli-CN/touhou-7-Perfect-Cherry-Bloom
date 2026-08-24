@@ -169,14 +169,16 @@ class HudView:
     # ---- 数值行(Gui.cpp:1516-1661) ----
     def _render_stats(self, surf: pygame.Surface, game) -> None:
         g = game.globals
-        # HiScore: 逻辑层 globals 无 highScore, 从 score_store 取(透出, 报告注明)
-        high = 0
-        store = getattr(game, "store", None)
-        if store is not None:
-            try:
-                high = store.high_score(game.difficulty, game.character)
-            except (AttributeError, TypeError):
-                high = 0
+        # HiScore: globals.highScore 随显示分实时同步 (GameManager.cpp:265-268);
+        # 开局值由 world 从 score_store 载入 (GameManager.cpp:453-455)
+        high = getattr(g, "high_score", 0)
+        if not high:
+            store = getattr(game, "store", None)
+            if store is not None:
+                try:
+                    high = store.high_score(game.difficulty, game.character)
+                except (AttributeError, TypeError):
+                    high = 0
         self._draw_text(surf, _VALUE_X, 48, f"{high:08d}")
         self._draw_text(surf, _VALUE_X, 64, f"{g.gui_score:08d}")
         # retries 后缀(Gui.cpp:1553)

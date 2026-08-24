@@ -200,6 +200,11 @@ class PerfectCherryBloom:
         self.frame = 0
         self.globals = ZunGlobals()
         self.globals.initialize_rank(difficulty)
+        # highScore 开局从 score.dat 载入 (GameManager.cpp:453-455 AddedCallback),
+        # 之后每帧随 guiScore 同步 (tick_high_score, BUGS.md#15)
+        self.globals.high_score = self.store.high_score(difficulty, character)
+        self.globals.high_score_num_continues = self.store.high_score_continues(
+            difficulty, character)
         # cherryMax/初始樱点按难度 (GameManager::AddedCallback 新开局分支 switch):
         # Easy/Normal +200000, Hard +250000, Lunatic +300000, Extra/Phantasm +400000
         # 且 Extra 预填 cherry=cherryStart+200000 / Phantasm +300000
@@ -823,6 +828,8 @@ class PerfectCherryBloom:
         g.step_popups()
         # guiScore 每帧向真实分追赶 (GameManager::OnUpdate)
         g.tick_gui_score()
+        # highScore 跟随显示分, 破纪录即同步 (GameManager.cpp:265-268, BUGS.md#15)
+        g.tick_high_score()
         milestone = g.gui_score // 10_000_000
         if milestone > self._score_milestone:
             self._score_milestone = milestone

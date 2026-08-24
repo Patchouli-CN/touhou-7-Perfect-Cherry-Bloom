@@ -211,3 +211,42 @@ def test_cherry_max_shows_status_popup() -> None:
     g.status_popup = 0
     g.add_cherry_plus(100)  # 已满且本次无变化 → 不重弹 (oldCherry != cherry 条件)
     assert g.status_popup == 0
+
+
+# ---- highScore 跟随 (BUGS.md#15, GameManager.cpp:265-268) ----
+def test_high_score_follows_gui_score() -> None:
+    """显示分破纪录时 highScore 实时同步, 并记当时续关数。"""
+    g = ZunGlobals(high_score=100000, high_score_num_continues=1)
+    g.add_score(2_000_000)  # score = 200000
+    g.num_retries = 2
+    for _ in range(120):
+        g.tick_gui_score()
+        g.tick_high_score()
+    assert g.gui_score == 200000
+    assert g.high_score == 200000
+    assert g.high_score_num_continues == 2
+
+
+def test_high_score_not_lowered_below_record() -> None:
+    """未破纪录时 highScore 保持原值。"""
+    g = ZunGlobals(high_score=500000)
+    g.add_score(1_000_000)  # score = 100000 < high_score
+    for _ in range(120):
+        g.tick_gui_score()
+        g.tick_high_score()
+    assert g.high_score == 500000
+    assert g.high_score_num_continues == 0
+
+
+def test_high_score_syncs_during_chase_not_just_at_end() -> None:
+    """追赶途中 guiScore 一过线 highScore 就跟(BUGS.md#15 的实时语义)。"""
+    g = ZunGlobals(high_score=100000)
+    g.score = 150000
+    seen = False
+    for _ in range(120):
+        g.tick_gui_score()
+        g.tick_high_score()
+        if g.gui_score > 100000:
+            seen = True
+            assert g.high_score == g.gui_score
+    assert seen

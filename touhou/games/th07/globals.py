@@ -81,6 +81,10 @@ class ZunGlobals(GlobalsBase):
     max_rank: int = 32
     subrank: int = 0
 
+    # ---- 最高分跟随(GameManager globals.highScore) ----
+    high_score: int = 0                # HUD HISCORE; 开局从 score.dat 载入
+    high_score_num_continues: int = 0  # 破纪录当时的续关数
+
     # ---- 计数(th07 专属) ----
     graze_in_stage: int = 0
     graze_in_total: int = 0
@@ -95,6 +99,15 @@ class ZunGlobals(GlobalsBase):
     status_popup: int = 0        # GUI_DISPLAY_*; 0=隐藏
     status_popup_arg: int = 0    # fmtArg (Border Bonus 的数值等)
     status_popup_timer: int = 0
+
+    # ---- 最高分跟随 ----
+    def tick_high_score(self) -> None:
+        """highScore 跟随显示分 (GameManager::OnUpdate 尾段,
+        GameManager.cpp:265-268): guiScore 超过 highScore 即同步,
+        并记录当时的续关数。"""
+        if self.high_score < self.gui_score:
+            self.high_score = self.gui_score
+            self.high_score_num_continues = self.num_retries
 
     def initialize_rank(self, difficulty: int) -> None:
         """按难度初始化 rank (GameManager::InitializeRank / g_RankArray)。"""

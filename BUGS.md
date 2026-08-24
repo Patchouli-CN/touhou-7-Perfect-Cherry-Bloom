@@ -13,7 +13,7 @@
 
 2.暂停不会暂停BGM，而且没有还原
 3.按B的资源吸取没有了
-4.BGM的播放会突然停止
+4.BGM的播放会突然停止，具体表现为，标题界面standby 2-3分钟，就停了，正常是循环播放
 5.道中/boss的出现时只会清空弹幕，资源吸取没有，进入符卡也是一样，只清弹，清弹变成的星点不自动吸取
 6.我符卡奖励和普通bonus奖励哪去了？
 7.~~boss和道中的弹幕明显不是原版弹幕~~ ✅ 引擎层已查证修复（实测复测后可删）
@@ -31,7 +31,15 @@
 12.full power mode能消弹，但是不是并不是“仅限于消弹”，我多余P点变成的樱点和full power mode的提示呢
 13.森罗结界的那个樱花圈材质没了
 14.retry和quit to title的二次确认没了（而且原版这里并不能保存rep）
-15.score和hiscore的问题（自己玩玩就知道啥意思了）
+15.score和hiscore的问题，具体表现为score破记录的时候，hiscore不同步 ✅ 已修复
+- 根因：逻辑层 globals 没有 highScore 概念，HUD 每帧直查 score_store 的榜上旧纪录，
+  本局破纪录时 HISCORE 数字不会跟着涨。
+- 修复：原版 GameManager 开局从 score.dat 载入 highScore（GameManager.cpp:453-455），
+  之后每帧让 highScore 跟随显示分 guiScore（:265-268）。ZunGlobals 增
+  high_score/high_score_num_continues 字段与 tick_high_score()，world 开局从
+  store 载入（ScoreStore 增 high_score_continues），每帧 tick_gui_score 后同步；
+  hud_view 改读 globals.high_score（缺省回落 store 直查）。
+- 回归测试：`tests/test_globals.py::test_high_score_follows_gui_score` 等 3 例
 16.收点的得点量数字消失了（就是显示的那个一〇〇〇〇〇什么的）
 17.死了不能在score ranking界面保存rep
 18. and more（正在收集）

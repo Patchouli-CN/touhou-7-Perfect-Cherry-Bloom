@@ -122,6 +122,11 @@ class ScoreStore:
         top = entries[0]["score"] if entries else 0
         return top if top > 100000 else 100000
 
+    def high_score_continues(self, difficulty: int, character: int) -> int:
+        """GetHighScore 附带 (GameManager.cpp:455): 榜首记录的续关数, 空榜 0。"""
+        entries = self.highscores.get(self._key(difficulty, character), [])
+        return int(entries[0].get("numRetries", 0)) if entries else 0
+
     # ---- LSNM(上次输入的名字, ResultScreen.cpp lsnmHeader) ----
     @property
     def last_name(self) -> str:
