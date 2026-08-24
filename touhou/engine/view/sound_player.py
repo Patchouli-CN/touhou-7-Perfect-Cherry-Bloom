@@ -1,6 +1,7 @@
 """ SE/BGM 播放层 —— pygame.mixer 包装, 消费 impl 透出的音效/BGM 事件。
 
-- 无声卡/headless 容错: mixer 未初始化则整体静音(ensure_loaded 不炸);
+- 无声卡/headless 容错: mixer 未初始化或 dummy 声卡(SDL_AUDIODRIVER=dummy,
+  其 music 原生调用会间歇死锁)则整体静音(ensure_loaded 不炸);
 - wav 运行时从 th07.dat 解到内存(io.BytesIO + pygame.mixer.Sound),
   仓库不留二进制资源;
 - 引擎侧已完成同帧同音去重/5 槽上限(schema/sound.SoundQueue,
@@ -22,6 +23,7 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 
 import pygame
@@ -67,6 +69,10 @@ class SoundPlayer:
         if self._loaded:
             return
         self._loaded = True
+        # dummy 声卡(headless/CI/测试, SDL_AUDIODRIVER=dummy): mixer 能 init
+        # 成功, 但 mixer.music 原生调用(pause 等)会间歇死锁 —— 视同无声卡静音
+        if os.environ.get("SDL_AUDIODRIVER") == "dummy":
+            return
         if not pygame.mixer.get_init():
             return  # 无声卡/headless: 静音
         try:

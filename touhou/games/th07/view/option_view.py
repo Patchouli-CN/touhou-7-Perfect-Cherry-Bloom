@@ -226,7 +226,7 @@ class OptionView:
 
         半透明遮罩 + 面板 + Pause 贴图(entry1 sprite 82) + 文字菜单项。
         confirm = (待确认项名, Yes/No 光标下标): 二次确认态(AsciiManager.cpp
-        PauseMenu case 5-8) —— 主菜单项压暗, 底部画 "Item?" + Yes/No。
+        PauseMenu case 5-8) —— 主菜单项整组不画, 面板中部画 "Item?" + Yes/No。
         """
         self.ensure_loaded()
         veil = pygame.Surface((TITLE_W, TITLE_H), pygame.SRCALPHA)
@@ -243,16 +243,20 @@ class OptionView:
         else:
             self._text(surf, "PAUSE", TITLE_W // 2, py + 48, lit=True,
                        big=True, center=True)
-        for i, name in enumerate(PAUSE_ITEMS):
-            # 确认态下主菜单项全部压暗(原版确认子菜单盖掉主菜单)
-            lit = i == cursor and confirm is None
-            self._text(surf, name, TITLE_W // 2, py + 96 + i * 32,
-                       lit=lit, center=True)
         if confirm is not None:
+            # 二次确认态: 主菜单项整组不画(原版确认子菜单直接盖掉主菜单,
+            # AsciiManager.cpp PauseMenu case 5-8), 面板中部改画
+            # "Retry?" / "Quit to Title?" + Yes/No (sprite[5]=Yes [6]=No)。
+            # 提示语与 Yes/No 分两行居中, 避免长提示语和选项同行重叠。
             action, confirm_cursor = confirm
-            # "Retry?" / "Quit to Title?" + Yes/No (sprite[5]=Yes [6]=No)
-            self._text(surf, f"{action}?", TITLE_W // 2 - 60, py + 96 + 4 * 32,
-                       lit=True)
+            self._text(surf, f"{action}?", TITLE_W // 2, py + 96 + 2 * 32,
+                       lit=True, center=True)
             for j, yn in enumerate(PAUSE_CONFIRM_ITEMS):
-                self._text(surf, yn, TITLE_W // 2 + 40 + j * 64,
-                           py + 96 + 4 * 32, lit=j == confirm_cursor)
+                self._text(surf, yn, TITLE_W // 2 - 48 + j * 96,
+                           py + 96 + 3 * 32, lit=j == confirm_cursor,
+                           center=True)
+        else:
+            for i, name in enumerate(PAUSE_ITEMS):
+                lit = i == cursor
+                self._text(surf, name, TITLE_W // 2, py + 96 + i * 32,
+                           lit=lit, center=True)
