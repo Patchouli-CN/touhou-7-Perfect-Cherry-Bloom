@@ -32,11 +32,13 @@ sprite_view 的动态降载 EMA 在重负载关卡自动回落)。
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import pygame
 
 from ...logger import logger as log
-from ...schema.anm import AnmFile, parse_scripts
+from ...schema.anm import AnmFile, parse_cached, parse_scripts
 from ...schema.stage import Stage
 from ..render.d3dx_render import GAME_H, GAME_W, D3DXLikeRender
 from .anm_vm import AnmVm, ScriptRef, SpriteTex, chain_offsets, reset_and_run
@@ -167,6 +169,7 @@ class StageScene:
     def load(cls, archive, stage_no: int,
              render_scale: float = 0.45) -> "StageScene | None":
         """从 GameArchive 加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。"""
+        t0 = time.perf_counter()
         try:
             std_raw = None
             for key in (f"stage{stage_no}.std", f"data/stage{stage_no}.std"):
@@ -200,7 +203,7 @@ class StageScene:
                 if name == names[0]:
                     return None
                 break
-            anm = AnmFile.parse(raw)
+            anm = parse_cached(raw)  # 进程级缓存 (BUGS.md 增量#3)
             per_entry_scripts = parse_scripts(raw)
             for entry, escr, off in zip(anm.entries, per_entry_scripts,
                                         chain_offsets(anm, per_entry_scripts)):
@@ -212,7 +215,11 @@ class StageScene:
                 for sid, instrs in escr.items():
                     scripts[base + off + sid] = ScriptRef(instrs, base + off)
             base += 0x10
-        return cls(stage, scripts, sprites, render_scale)
+        scene = cls(stage, scripts, sprites, render_scale)
+        ms = (time.perf_counter() - t0) * 1000
+        if ms >= 30.0:
+            log.debug("stage{} 3D 背景装配耗时 {:.1f}ms", stage_no, ms)
+        return scene
 
     def _make_sprite_cb(self, vm: AnmVm):
         def cb(gid: int) -> None:

@@ -206,6 +206,9 @@ class GameApp:
         self._prev_bomb_pressed = False  # bomb 键沿检测(日志用)
         self._prev_shot_held = False   # 射击键沿检测(日志用)
         self._finished = False
+        # ---- 菜单空转预热(BUGS.md 增量#3, 见 _warmup_step) ----
+        self._warmup: list[str] | None = None    # 待预载 anm 队列(None=未建)
+        self._warmup_bank = None                 # 预热用 SpriteBank(懒建)
 
     # ---- 键位映射(config.keymap → 后端输入映射) ----
     def _rebuild_keymap(self) -> None:
@@ -269,8 +272,39 @@ class GameApp:
             # WAV BGM 循环点回卷轮询: 与场景无关每帧跑(BUGS.md#4 —— 只在
             # 对局内轮询时, 标题/结算/音乐室的 WAV 曲播完一遍就停了)
             self._sound.poll_loop()
+            # 菜单空转预热: 每帧一项 (BUGS.md 增量#3)
+            if self._screen != Screen.PLAYING:
+                self._warmup_step()
             self._renderer.present()
         self._renderer.close()
+
+    # ---- 菜单空转预热 (BUGS.md 增量#3) ----
+    # 开局集中解压/解码的资源清单: 通用战斗/HUD 贴图 + 1 面关卡资源 +
+    # 三机体 player/face (开局选择未定, 全预载; 菜单停留期间摊到每帧一项)
+    _WARMUP_ANMS = (
+        "ascii.anm", "front.anm", "etama.anm",
+        "std1txt.anm", "stg1enm.anm", "stg1bg.anm", "eff01.anm",
+        "face_01_00.anm",
+        "player00.anm", "face_rm00.anm",
+        "player01.anm", "face_mr00.anm",
+        "player02.anm", "face_sk00.anm",
+    )
+
+    def _warmup_step(self) -> None:
+        """菜单场景每帧预载一项对局资源。
+
+        解压(GameArchive._DECOMP_CACHE)与解码(schema.anm.parse_cached)
+        都是进程级共享缓存, 预热后开局/对局内各视图命中即免费; 用户
+        快速开局时未预载完的项退回原懒加载路径, 无回归。队列耗尽后
+        每次调用仅一次空判断, 零开销。
+        """
+        if self._warmup is None:
+            self._warmup = list(self._WARMUP_ANMS)
+        if not self._warmup:
+            return
+        if self._warmup_bank is None:
+            self._warmup_bank = SpriteBank(self._data_path)
+        self._warmup_bank.has(self._warmup.pop(0))
 
     # ---- 标题主菜单(原版 8 项) ----
     def _run_title_menu(self, actions) -> None:

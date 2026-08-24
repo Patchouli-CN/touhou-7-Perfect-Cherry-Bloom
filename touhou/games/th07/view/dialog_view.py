@@ -24,7 +24,7 @@ from pathlib import Path
 import pygame
 
 from ....logger import logger as log
-from ....schema.anm import AnmFile
+from ....schema.anm import AnmFile, parse_cached
 from ....schema.archive import GameArchive
 from ....schema.msg import MsgOpcode, MsgVm, TEXT_COLORS_A
 
@@ -125,11 +125,12 @@ class DialogueView:
             arc = GameArchive.open(data_path)
             player_face = CHARACTER_FACE[min(character, 2)]
             raw = arc.load(player_face)
-            self._faces[0] = _FaceBook(AnmFile.parse(raw), raw)
+            # parse_cached: 换关重建/多视图共享同一解码 (BUGS.md 增量#3)
+            self._faces[0] = _FaceBook(parse_cached(raw), raw)
             stage_face = f"face_0{stage}_00.anm"
             if stage_face in arc:
                 raw = arc.load(stage_face)
-                self._faces[1] = _FaceBook(AnmFile.parse(raw), raw)
+                self._faces[1] = _FaceBook(parse_cached(raw), raw)
         except (KeyError, ValueError, OSError) as e:
             log.warning("对话立绘加载失败, 退化为无立绘: {}", e)
         # 预建对话框渐变纹理(宽 1, 逐行 alpha)

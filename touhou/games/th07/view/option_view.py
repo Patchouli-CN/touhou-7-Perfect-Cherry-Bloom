@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pygame
 
-from ....schema.anm import AnmFile
+from ....schema.anm import parse_cached
 from ....schema.archive import GameArchive
 from .screens import (KEYCONFIG_ITEMS, KEYCONFIG_LABELS, OPTION_ITEMS,
                       PAUSE_CONFIRM_ITEMS, PAUSE_ITEMS, OptionFlow)
@@ -98,7 +98,8 @@ class OptionView:
             return
         arc = GameArchive.open(self._data_path)
         self.background = pygame.image.load(io.BytesIO(arc.load("title00.jpg")))
-        anm = AnmFile.parse(arc.load("title01.anm"))
+        # parse_cached: 标题/选人/设置三视图共享同一解码 (BUGS.md 增量#3)
+        anm = parse_cached(arc.load("title01.anm"))
 
         def _surf(sprite_id: int) -> pygame.Surface:
             w, h, rgba = anm.sprite_image(sprite_id, entry=1)

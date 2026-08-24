@@ -63,8 +63,8 @@ from ....engine.bullets import SCREEN, bullet_active_sprite_idx
 from ....engine.view.anm_fx import AnmScriptBank, EffectLayer, TransformCache, Vm2d
 from ....engine.view.bg3d_view import StageScene
 from ....engine.view.sprite_bank import SpriteBank
-from .bomb_view import BombView
-from .spellcard_view import SpellcardBgView, SpellcardView
+from .bomb_view import _FACE_ANM, BombView
+from .spellcard_view import _SC_BG_VMS, SpellcardBgView, SpellcardView
 from .stage_title_view import StageTitleView
 
 GAME_W, GAME_H = int(SCREEN.x), int(SCREEN.y)   # 384x448 游戏区
@@ -185,6 +185,10 @@ class GameView:
         self._bg_cool = 0                      # 降载调整冷却(帧)
         self._bg_period = 1                    # bg3d 渲染周期(>1 = 隔帧)
         self._bg_cache: pygame.Surface | None = None  # 隔帧复用的上一帧背景
+        # ---- 过关转场预载(BUGS.md 增量#3, 见 _preload_next_stage) ----
+        self._preload_key: int | None = None       # 已建预载队列的下一关号
+        self._preload_queue: list[str] = []        # 待预载项(anm 名 / "bg3d")
+        self._bg3d_pre: tuple[int, StageScene | None] | None = None  # 预建场景
 
     # ---- 关卡资源(换关时重载, 对照 Stage.cpp 的 stgNenm/stgNbg 切换) ----
     def _ensure_stage(self, stage_no: int) -> None:
@@ -207,10 +211,16 @@ class GameView:
         self._bg_period = 1          # 降载状态随场景重建重置
         self._bg_ema_ms = None
         self._bg_cache = None
-        try:
-            self._bg3d = StageScene.load(self.bank._archive(), stage_no)
-        except Exception:
-            self._bg3d = None
+        # 优先换用结算面板期间预建的场景 (_preload_next_stage); 未预建同步加载
+        pre = self._bg3d_pre
+        self._bg3d_pre = None
+        if pre is not None and pre[0] == stage_no:
+            self._bg3d = pre[1]
+        else:
+            try:
+                self._bg3d = StageScene.load(self.bank._archive(), stage_no)
+            except Exception:
+                self._bg3d = None
         # 背景: stgNbg.anm entry0 最大 sprite 作平铺块(2D 近似 fallback)
         self._bg_tile = None
         bg_name = f"stg{stage_no}bg.anm"
@@ -220,6 +230,53 @@ class GameView:
             if sprites:
                 biggest = max(sprites.values(), key=lambda s: s.w * s.h)
                 self._bg_tile = self.bank.sprite(bg_name, biggest.id)
+        # 首用资源随关卡加载预载 (BUGS.md 增量#3): bomb cutin/符卡宣言立绘
+        # 与符卡背景 eff 此前首用时才解码 (实测首发 bomb 卡 ~1.2s/首次符卡
+        # ~0.4s)。进程级缓存命中时近乎免费, 未命中也只在关卡加载阶段付一次。
+        for name in self._stage_preload_names(stage_no, self.character):
+            self.bank.has(name)
+
+    @staticmethod
+    def _stage_preload_names(stage_no: int, character: int = 0) -> list[str]:
+        """本关游戏内首用资源的 anm 清单(预载用)。"""
+        names = [_FACE_ANM[character // 2],          # bomb cutin/符卡宣言自机立绘
+                 f"face_{stage_no:02d}_00.anm"]      # 符卡宣言/对话 boss 立绘
+        # 符卡背景 eff (BeginSpellcard 的 spellcardVms, EclManager.cpp:676-679)
+        names += [name for name, _, _ in _SC_BG_VMS.get(stage_no, ())]
+        return names
+
+    # ---- 过关转场预载 (BUGS.md 增量#3) ----
+    def _preload_next_stage(self, game) -> None:
+        """结算面板显示期间每帧预载一项下一关资源。
+
+        换关时 stgNenm/stgNbg/stdNtxt/3D 场景此前全部集中在转场帧同步解码
+        (实测单帧 ~3s 尖峰)。结算面板是静态画面, 单帧一项的加载不可感知;
+        到 _advance_stage 换关时 _ensure_stage 全部命中缓存。3D 场景整体
+        预建, _ensure_stage 直接换用。stage>=6 无"下一面"(结局/总结算), 不预载。
+        """
+        if getattr(game, "stage_results", None) is None:
+            self._preload_key = None
+            return
+        stage = getattr(game, "stage_no", 1)
+        if stage >= 6:
+            return
+        nxt = stage + 1
+        if self._preload_key != nxt:
+            self._preload_key = nxt
+            self._preload_queue = [
+                f"stg{nxt}enm.anm", f"std{nxt}txt.anm", f"stg{nxt}bg.anm",
+                *self._stage_preload_names(nxt, getattr(game, "character", 0)),
+                "bg3d"]
+        if not self._preload_queue:
+            return
+        item = self._preload_queue.pop(0)
+        if item == "bg3d":
+            try:
+                self._bg3d_pre = (nxt, StageScene.load(self.bank._archive(), nxt))
+            except Exception:
+                self._bg3d_pre = (nxt, None)
+        else:
+            self.bank.has(item)
 
     def _fonts(self) -> None:
         if self._font is None:
@@ -861,6 +918,7 @@ class GameView:
         self.character = getattr(game, "character", self.character)
         self._player_anm = f"player0{self.character // 2}.anm"
         self._ensure_stage(getattr(game, "stage_no", 1))
+        self._preload_next_stage(game)
         self._render_bg(surf, game)
         self._render_items(surf, game)
         self._render_enemies(surf, game)

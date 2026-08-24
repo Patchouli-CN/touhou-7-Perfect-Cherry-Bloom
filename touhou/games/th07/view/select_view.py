@@ -42,7 +42,7 @@ from pathlib import Path
 
 import pygame
 
-from ....schema.anm import AnmFile
+from ....schema.anm import parse_cached
 from ....schema.archive import GameArchive
 from .screens import PRACTICE_STAGE_ITEMS
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
@@ -90,7 +90,8 @@ class SelectView:
                 continue
         if raw is not None:
             self.background = pygame.image.load(io.BytesIO(raw))
-        anm = AnmFile.parse(arc.load("title01.anm"))
+        # parse_cached: 标题/选人/设置三视图共享同一解码 (BUGS.md 增量#3)
+        anm = parse_cached(arc.load("title01.anm"))
 
         def _surf(sprite_id: int, entry: int) -> pygame.Surface:
             w, h, rgba = anm.sprite_image(sprite_id, entry=entry)

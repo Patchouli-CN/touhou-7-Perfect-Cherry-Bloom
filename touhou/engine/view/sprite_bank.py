@@ -4,15 +4,23 @@
 Surface, 附带链式 entry 偏移表(LoadAnms: max(sprite id, script id)+1 累加)
 与旋转/翻转变换缓存。th07 的布局常量与 GameView(战斗画面渲染)在
 games/th07/view/sprite_view.py; 本模块不 import 任何作品包。
+
+AnmFile 解码走 schema.anm.parse_cached 的进程级缓存: 每个视图各持一个
+SpriteBank(各自开包), 同一 anm 的纹理解码全进程只做一次 (BUGS.md 增量#3)。
 """
 import struct
+import time
 from pathlib import Path
 
 import numpy as np
 import pygame
 
-from ...schema.anm import AnmFile
+from ...logger import logger as log
+from ...schema.anm import AnmFile, parse_cached
 from ...schema.archive import GameArchive
+
+# anm 加载超过该耗时打 DEBUG 日志(卡顿定位用, BUGS.md 增量#3)
+_SLOW_LOAD_MS = 30.0
 
 
 def _sprite_rgba(anm: AnmFile, sprite_id: int, entry: int
@@ -96,6 +104,7 @@ class SpriteBank:
     def _load(self, name: str) -> bool:
         if name in self._anms:
             return True
+        t0 = time.perf_counter()
         arc = self._archive()
         raw = None
         for key in (name, f"data/{name}"):
@@ -106,7 +115,7 @@ class SpriteBank:
                 continue
         if raw is None:
             return False
-        self._anms[name] = AnmFile.parse(raw)
+        self._anms[name] = parse_cached(raw)
         self._raws[name] = raw
         self._first[name] = _parse_first_sprites(raw)
         # 链式 entry 偏移(LoadAnms: max(sprite id, script id)+1 累加)
@@ -117,6 +126,9 @@ class SpriteBank:
             hi = max(hi, max(scripts.keys(), default=0))
             cur += hi + 1
         self._chain[name] = offs
+        ms = (time.perf_counter() - t0) * 1000
+        if ms >= _SLOW_LOAD_MS:
+            log.debug("anm 加载 {} 耗时 {:.1f}ms (含解码/开包)", name, ms)
         return True
 
     def has(self, name: str) -> bool:

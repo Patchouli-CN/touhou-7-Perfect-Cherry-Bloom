@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+import time
+
 import pygame
 
 from ....logger import logger as log
@@ -325,6 +327,7 @@ class PygameRenderer:
     # ---- 对局场景 ----
     def begin_game(self, game, *, character: int) -> None:
         """开局/重开: 按机体与当前关建本局渲染资源(失败降级, 不拖垮游戏)。"""
+        t0 = time.perf_counter()
         stage = getattr(game, "stage_no", 1)
         # 对话渲染器(角色立绘按 character//2, Boss 立绘按关卡)
         try:
@@ -354,6 +357,9 @@ class PygameRenderer:
         except Exception:
             log.exception("弹字渲染器初始化失败(降级为无弹字)")
             self._popup_view = None
+        ms = (time.perf_counter() - t0) * 1000
+        if ms >= 30.0:
+            log.debug("开局渲染资源装配耗时 {:.1f}ms (stage={})", ms, stage)
 
     def render_game(self, game) -> None:
         # 窗口布局 640x480: 游戏区 384x448 渲染后 blit 到 (32,16),
