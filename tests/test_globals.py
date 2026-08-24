@@ -10,9 +10,12 @@ from touhou.games.th07.globals import (  # noqa: E402
     CHERRY_PLUS_RANGE,
     GUI_SCORE_INCREMENT_MAX,
     SCORE_MAX,
+    STATUS_CHERRY_MAX,
+    STATUS_FULL_POWER,
     ZunGlobals,
 )
 from touhou.engine.rng import Rng  # noqa: E402
+from touhou.utils import Vec2  # noqa: E402
 
 
 # ---- rng: 与 Rng::GetRandomU16 (TH07 0x00431870) 递推一致 ----
@@ -161,3 +164,50 @@ def test_decrease_subrank_floors_at_min_rank() -> None:
     g2.initialize_rank(1)
     g2.decrease_subrank(150)  # subrank=-150 → rank 16→14, subrank=50
     assert g2.rank == 14 and g2.subrank == 50
+
+
+# ---- 得分弹字 / 状态横幅 (AsciiManager / Gui) ----
+
+def test_popup_rises_and_expires() -> None:
+    """弹字每帧上浮 0.5px, 寿命 60 帧 (AsciiManager.cpp:55-60)。"""
+    g = ZunGlobals()
+    g.add_popup(Vec2(100, 200), 50000, 0xFFFFFFFF)
+    g.step_popups()
+    p = g.popups[0]
+    assert p.pos.y == 199.5 and p.timer == 1
+    for _ in range(60):
+        g.step_popups()
+    assert g.popups == []  # timer > 60 消
+
+
+def test_popup2_ring_caps_at_three() -> None:
+    """CreatePopup2 仅 3 槽, 写满覆盖最旧 (AsciiManager.cpp:411-415)。"""
+    g = ZunGlobals()
+    for i in range(5):
+        g.add_popup(Vec2(0, 0), i, 0xFFFFFFFF, kind=2)
+    assert [p.value for p in g.popups] == [2, 3, 4]
+
+
+def test_status_popup_show_and_expire() -> None:
+    """状态横幅 180 帧隐藏 (Gui.cpp:1343-1347)。"""
+    g = ZunGlobals()
+    g.show_status_popup(0, STATUS_FULL_POWER)
+    assert g.status_popup == STATUS_FULL_POWER and g.status_popup_timer == 0
+    for _ in range(179):
+        g.step_popups()
+    assert g.status_popup == STATUS_FULL_POWER
+    g.step_popups()
+    assert g.status_popup == 0
+
+
+def test_cherry_max_shows_status_popup() -> None:
+    """樱点触达上限弹 "CherryPoint Max!" (GameManager.cpp:934-937/949-952)。"""
+    g = ZunGlobals(cherry=0, cherry_start=0, cherry_max=1000)
+    g.add_cherry(500)
+    assert g.status_popup == 0  # 未满不弹
+    g.add_cherry(500)
+    assert g.status_popup == STATUS_CHERRY_MAX
+    assert g.status_popup_arg == 1000  # cherry - cherryStart
+    g.status_popup = 0
+    g.add_cherry_plus(100)  # 已满且本次无变化 → 不重弹 (oldCherry != cherry 条件)
+    assert g.status_popup == 0

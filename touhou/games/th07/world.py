@@ -53,6 +53,7 @@ from .items import (
     FULL_POWER,
     OFFSCREEN_SUBRANK_PENALTY,
     POWER_LEVELS,
+    STATE_ATTRACT,
     GameContext,
     ItemType,
     ItemWorld,
@@ -71,7 +72,7 @@ from .bomb import (
     try_start_bomb,
 )
 from .boss import SPELLCARD_SCORE, Boss
-from .globals import ZunGlobals
+from .globals import STATUS_FULL_POWER, ZunGlobals
 from .results import RunStats, ScoreRecord, TopList, clear_percent, rating
 from ...engine.score_store import ScoreStore, make_highscore_record
 from ...schema.sound import SE, SoundQueue
@@ -470,10 +471,11 @@ class PerfectCherryBloom:
             poc_y=self.shot_data.poc_y,
             item_collect_speed=self.shot_data.item_collect_speed,
             item_collect_radius=self.shot_data.item_collect_radius,
+            spellcard_active=self._spellcard_active(),  # 符卡中满火力不清弹
         )
 
-    def _apply_collect(self, r) -> None:
-        """把道具收集结果应用到游戏状态(CollectResult → globals)。"""
+    def _apply_collect(self, r, pos: Vec2) -> None:
+        """把道具收集结果应用到游戏状态(CollectResult → globals/弹字/横幅)。"""
         g = self.globals
         power_before = self.power
         # r.score 是显示分, AddScore 入参为代码值(显示分*10)
@@ -500,11 +502,22 @@ class PerfectCherryBloom:
             g.point_items_collected_this_stage += r.point_items_collected
             g.point_items_collected_for_extend += r.point_items_collected
         if r.clear_bullets:
-            self.bullets.clear()
-            # 满火力清弹 RemoveAllBullets(1) 连带激光 (ItemManager.cpp:229/347/
-            # 383 → BulletManager.cpp:439-471): flags&4 豁免, 沿线出弹消点
+            # 满火力清弹 RemoveAllBullets(1) (ItemManager.cpp:229/347/383 →
+            # BulletManager.cpp:423-434): 弹转弹消点道具(出生即吸附, state=1);
+            # 连带激光 (BulletManager.cpp:440-479): flags&4 豁免, 沿线出弹消点
+            for b in self.bullets.alive():
+                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
+                                 state=STATE_ATTRACT)
+                b.dead = True
             self.lasers.remove_all(spawn_items=True, skip_flag4=True,
                                    spawn_item=self._spawn_point_bullet)
+        if r.reached_full_power:
+            # "Full Power Mode!" 横幅 (Gui::ShowStatusPopup(0, 1),
+            # ItemManager.cpp:231/349/384; 符卡中横幅照弹, 只是不清弹)
+            g.show_status_popup(0, STATUS_FULL_POWER)
+        # 收点得分弹字 (AsciiManager::CreatePopup1/2, 位置=道具收集点)
+        for value, color, kind in r.popups:
+            g.add_popup(pos, value, color, kind)
         # ---- 收集音效 (ItemManager.cpp OnUpdate 收集段) ----
         if r.extends:
             log.debug("奖残(点道具) (frame={}, 残机={})", self.frame, self.lives)
@@ -789,7 +802,7 @@ class PerfectCherryBloom:
         for item in list(self.items.alive()):
             if self.items.collect_pickup(item, ctx):
                 cr = self.items.collect(item, ctx)
-                self._apply_collect(cr)
+                self._apply_collect(cr, item.pos)
                 self.items.remove(item)
 
         # ---- 激光推进 + 玩家碰撞 ----
@@ -806,6 +819,8 @@ class PerfectCherryBloom:
         # ---- 玩家事件消费 (死亡结算/重生/擦弹/结界破/重生清弹) ----
         self._consume_player_events()
 
+        # 得分弹字/状态横幅推进 (AsciiManager::OnUpdate / Gui UpdateGui)
+        g.step_popups()
         # guiScore 每帧向真实分追赶 (GameManager::OnUpdate)
         g.tick_gui_score()
         milestone = g.gui_score // 10_000_000
@@ -1154,8 +1169,10 @@ class PerfectCherryBloom:
         return self.bomb.hits(pos, Vec2(full_size[0] / 2, full_size[1] / 2))
 
     def _spawn_point_bullet(self, pos: Vec2) -> None:
-        """弹消点道具 (C RemoveAllBullets/DespawnBullets 的 this->itemType)。"""
-        self.items.spawn(pos, ItemType.POINT_BULLET, power=self.power)
+        """弹消点道具 (C RemoveAllBullets/DespawnBullets 的 this->itemType);
+        出生即吸附 (BulletManager.cpp:427/468/510/546 的 SpawnItem(…, 1))。"""
+        self.items.spawn(pos, ItemType.POINT_BULLET, power=self.power,
+                         state=STATE_ATTRACT)
 
     def _apply_bomb_boxes(self) -> None:
         """炸弹盒生效: 清弹盒→弹转道具(CheckBombGraze), 伤害盒→敌人/Boss。
@@ -1173,7 +1190,9 @@ class PerfectCherryBloom:
             if b.spawn_state:
                 continue  # 出生态弹不吃炸弹盒 (C++ CheckBombGraze 只在判定路径里触发)
             if self.bomb.check_bomb_graze(b.pos, bsize):
-                self.items.spawn(b.pos, ItemType(self.bomb.item_type), power=self.power)
+                # CheckBombGraze 命中 → 弹转道具, 出生即吸附 (BulletManager.cpp:995/1010)
+                self.items.spawn(b.pos, ItemType(self.bomb.item_type),
+                                 power=self.power, state=STATE_ATTRACT)
                 b.dead = True
         for e in self.host.alive():
             dmg = self.bomb.damage_to(e.pos, Vec2(e.radius, e.radius))
@@ -1265,7 +1284,9 @@ class PerfectCherryBloom:
                 if b.spawn_state:
                     continue  # 出生态弹不吃清弹圆 (同上, CheckBombGraze 路径不到)
                 if box.hits(b.pos, size):
-                    self.items.spawn(b.pos, ItemType(box.item_type), power=self.power)
+                    # 同 CheckBombGraze 路径: 弹转小樱点, 出生即吸附 (BulletManager.cpp:995)
+                    self.items.spawn(b.pos, ItemType(box.item_type),
+                                     power=self.power, state=STATE_ATTRACT)
                     b.dead = True
             keep.append(box)
         self._border_clear_boxes = keep
@@ -1399,7 +1420,9 @@ class PerfectCherryBloom:
         self._catk_idx = None
         if res["despawn_bullets"]:
             for b in self.bullets.alive():
-                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power)
+                # DespawnBullets(8000,1): 弹转弹消点, 出生即吸附 (BulletManager.cpp:510)
+                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
+                                 state=STATE_ATTRACT)
                 b.dead = True
             # DespawnBullets(8000,1) 连带激光 (BulletManager.cpp:524-550):
             # 无 flags&4 豁免, 原点+沿线出弹消点
@@ -1452,7 +1475,9 @@ class PerfectCherryBloom:
             if st.is_boss and not self._spellcard_active():
                 # boss 击坠且非符卡中: 清弹转道具 + 清场 (C 死亡分支 case 2)
                 for b in self.bullets.alive():
-                    self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power)
+                    # DespawnBullets(8000,1): 弹转弹消点, 出生即吸附 (BulletManager.cpp:510)
+                    self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
+                                     state=STATE_ATTRACT)
                     b.dead = True
                 # DespawnBullets(8000,1) 连带激光 (BulletManager.cpp:524-550)
                 self.lasers.remove_all(spawn_items=True, skip_flag4=False,

@@ -87,8 +87,19 @@ class CollectResult(CollectResultBase):
     clear_bullets: bool = False
     point_items_collected: int = 0  # 计入残机累计的点道具数
     full_power: bool = False
+    reached_full_power: bool = False  # 本次收集触达满火力(Gui::ShowStatusPopup(0,1))
     subrank: int = 0
     power_overflow_next: int | None = None  # 满火力计分计数器新值(非空则需上层写回)
+    # 得分弹字 (AsciiManager::CreatePopup1/2): (显示数值(代码值口径, -1=PowerUp
+    # 字形), ARGB 颜色, 弹字槽(1=普通 720 环 / 2=弹消点 3 环)); 位置由上层补
+    popups: list[tuple[int, int, int]] = msgspec.field(default_factory=list)
+
+
+# 弹字颜色 (ItemManager.cpp CreatePopup1/2 实参, ARGB)
+POPUP_WHITE = 0xFFFFFFFF
+POPUP_YELLOW = 0xFFFFFF00        # POC 线上/结界收点满分
+POPUP_POWERUP = 0xFFFFC0A0       # 火力升档 PowerUp 字形
+POPUP_CHERRY_GAIN = 0xFFFF4040   # 樱点系加分(STAR 的 cherryPlus +100)
 
 
 class GameContext(ItemContextBase):
@@ -112,6 +123,7 @@ class GameContext(ItemContextBase):
     extends_from_point_items: int = 0
     point_items_collected_for_extend: int = 0
     poc_y: float = POC_Y
+    spellcard_active: bool = False  # 符卡中满火力不清弹 (ItemManager.cpp:227/345)
 
 
 class Item(ItemBase):
@@ -128,11 +140,16 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
     """th07 道具管理器(通用容器/运动机制在基类 ItemWorldBase)。"""
 
     # ---- 生成 ----
-    def spawn(self, at: Vec2, it: ItemType, power: float = 0.0) -> Item:
+    def spawn(self, at: Vec2, it: ItemType, power: float = 0.0,
+              state: int = STATE_FALL) -> Item:
         # 满火力时 POWER_SMALL/BIG 自动转 CHERRY (ItemManager::SpawnItem)
         if power >= FULL_POWER and it in (ItemType.POWER_SMALL, ItemType.POWER_BIG):
             it = ItemType.CHERRY
         item = Item(type=it, pos=at, start=Vec2(0, -2.2))
+        # C++ SpawnItem 第三参 state: 0=下落 1=吸附(清弹转道具/弹消点用它,
+        # 出生即向自机吸附, BulletManager.cpp:427/510/581 等); 2 生成动画
+        # 走 Item.spawn_to, 3→1/4→0 的映射本实现用不到
+        item.state = state
         self.items.append(item)
         return item
 
@@ -145,26 +162,34 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
 
     # ---- 吸附触发(th07: 满火力/Extra 的 POC 线 + 结界) ----
     def _status_change(self, item: ItemBase, ctx: GameContext) -> None:
-        """决定 item 是否进入吸附(非生成动画中)。"""
-        if item.state in (STATE_ATTRACT, STATE_SPAWN):
+        """决定 item 是否进入吸附 (ItemManager.cpp:150-168 OnUpdate 状态段)。
+
+        C++ 条件 `state==1 || ((满火力||Extra) && 玩家在 POC 线上) || 结界`
+        对"已吸附中"的道具同样每帧求值: 玩家重生中(playerState==1)连已吸附的
+        道具也被改回下落态 + (0,-0.5) 缓降(死亡爆道具重撒)。"""
+        if item.state == STATE_SPAWN:
             return
-        trigger = (
-            ((ctx.power >= FULL_POWER or ctx.difficulty >= 4)
-             and ctx.player_pos.y < ctx.poc_y)
-            or ctx.border_active
-        )
+        trigger = (item.state == STATE_ATTRACT
+                   or ((ctx.power >= FULL_POWER or ctx.difficulty >= 4)
+                       and ctx.player_pos.y < ctx.poc_y)
+                   or ctx.border_active)
         if not trigger:
             return
         if ctx.player_state == PLAYER_STATE_SPAWNING:
-            # 玩家重生中: 不吸附, 改 y=-0.5 缓降(死亡爆道具重撒)
             item.start = Vec2(0.0, -0.5)
+            item.state = STATE_FALL
             return
         item.state = STATE_ATTRACT
         if ctx.border_active:
             item.auto_collect = True  # 仅结界收集标满分(C++ 仅 hasBorder 时置位)
 
     def collect(self, item: Item, ctx: GameContext) -> CollectResult:
-        """结算一个被收集的道具。返回结果(由上层应用)。"""
+        """结算一个被收集的道具。返回结果(由上层应用)。
+
+        弹字 (ItemManager.cpp OnUpdate 收集段的 CreatePopup1/2) 以
+        ``r.popups`` 透出 (数值, ARGB, 槽位); 数值为代码值口径(与 C++ 同,
+        如 POC 线上收点弹 50000), -1 = PowerUp 特殊字形 (C++ digits[0]='\\n')。
+        """
         r = CollectResult()
         t = item.type
         if t == ItemType.POWER_SMALL:
@@ -175,23 +200,42 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                 r.power_overflow_next = n
                 # C++ 表仅 30 项, n=30 时越界读; 这里封顶末档(显示 1200)
                 idx = min(n, len(FULL_POWER_SCORE_BONUS) - 1)
-                r.score = FULL_POWER_SCORE_BONUS[idx] // 10
+                code = FULL_POWER_SCORE_BONUS[idx]
+                r.score = code // 10
                 r.full_power = True
+                # C++ :211 (表末 12000 < 12800, 恒白)
+                r.popups.append((code, POPUP_YELLOW if code >= 12800
+                                 else POPUP_WHITE, 1))
             else:
                 r.delta_power = 1
                 r.score = 1  # AddScore(10), 显示分 1
                 r.power_overflow_next = 0
                 if ctx.power + 1 >= FULL_POWER:
-                    r.clear_bullets = True
+                    r.reached_full_power = True
+                    # 符卡中不清弹 (ItemManager.cpp:227-230 !spellcardInfo.isActive)
+                    r.clear_bullets = not ctx.spellcard_active
                     self.despawn_all_items(skip=item)
+                # 火力升档弹 PowerUp 字形, 否则弹 10 (ItemManager.cpp:236-248)
+                if _power_level(min(ctx.power + 1, FULL_POWER)) != _power_level(ctx.power):
+                    r.popups.append((-1, POPUP_POWERUP, 1))
+                else:
+                    r.popups.append((10, POPUP_WHITE, 1))
         elif t == ItemType.POWER_BIG:
             if ctx.power < FULL_POWER:
                 r.delta_power = 8
                 r.score = 1  # AddScore(10)
                 if ctx.power + 8 >= FULL_POWER:
-                    r.clear_bullets = True
+                    r.reached_full_power = True
+                    # 符卡中不清弹 (ItemManager.cpp:345-348)
+                    r.clear_bullets = not ctx.spellcard_active
                     self.despawn_all_items(skip=item)
-            # 满火力后大 P 无分(C++ 仅弹窗)
+                # 升档判断 (ItemManager.cpp:354-366)
+                if _power_level(min(ctx.power + 8, FULL_POWER)) != _power_level(ctx.power):
+                    r.popups.append((-1, POPUP_POWERUP, 1))
+                else:
+                    r.popups.append((10, POPUP_WHITE, 1))
+            # 满火力后大 P 无分; C++ :330 的弹字用的是上一道具残留的 itemScore
+            # (ZUN bloat, 值无意义), 这里不弹
         elif t == ItemType.BOMB:
             if ctx.bombs < 8:
                 r.delta_bombs = 1
@@ -200,25 +244,33 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
             r.delta_lives = 1
         elif t == ItemType.FULL_POWER:
             if ctx.power < FULL_POWER:
-                r.clear_bullets = True
+                r.reached_full_power = True
+                r.clear_bullets = True  # F 道具无符卡豁免 (ItemManager.cpp:381-383)
                 self.despawn_all_items(skip=item)
+                r.popups.append((-1, POPUP_POWERUP, 1))  # :386
             r.delta_power = max(0.0, FULL_POWER - ctx.power)
             r.score = 100  # AddScore(1000)
+            r.popups.append((1000, POPUP_WHITE, 1))      # :392
         elif t == ItemType.POINT:
-            r.score = _point_score(item, ctx)
+            code, color = _point_score(item, ctx)
+            r.score = code // 10
+            r.popups.append((code, color, 1))            # :272
             r.point_items_collected = 1
             r.subrank = 10 if item.pos.y < 128.0 else 3  # C++ 硬编码 128.0(非 pocY)
             r.extends = _point_extends(ctx)
         elif t == ItemType.POINT_BULLET:
             if not ctx.bombing:
-                r.score = _graze_score(ctx.graze_total)
+                code = _graze_score(ctx.graze_total)
+                r.score = code // 10
                 r.delta_cherry_plus = 20
             else:
+                code = 100
                 r.score = 10  # 代码值 100
                 # C++ 按 bombInfo.isInUse 且以道具索引奇偶隔帧 +10 cherryPlus/+10 cherry;
                 # 此处简化为 bomb 中固定 cherryPlus/cherry 各 +10
                 r.delta_cherry_plus = 10
                 r.delta_cherry = 10
+            r.popups.append((code, POPUP_WHITE, 2))      # :408 CreatePopup2(…, -1)
         elif t == ItemType.CHERRY:
             if ctx.cherry_maxed:
                 # 满樱时按 POINT 计分(无樱差加成), ≤5000 显示 (ItemManager.cpp:428-436)
@@ -228,13 +280,21 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                     code = 50000 - int(item.pos.y - ctx.poc_y) * 100
                 code -= code % 10
                 r.score = code // 10
+                r.popups.append((code, POPUP_YELLOW if (
+                    item.pos.y < ctx.poc_y or item.auto_collect)
+                    else POPUP_WHITE, 1))                # :434
             r.delta_cherry_plus = 1000 + ctx.spell_cards_captured * 100
         elif t == ItemType.CHERRY_SMALL:
             r.delta_cherry_plus = 30
             r.delta_cherry = 70
         elif t == ItemType.STAR:
-            r.score = _graze_score(ctx.graze_total)
+            code = _graze_score(ctx.graze_total)
+            r.score = code // 10
             r.delta_cherry_plus = 100
+            if ctx.cherry_maxed:
+                r.popups.append((code, POPUP_WHITE, 1))      # :453
+            else:
+                r.popups.append((100, POPUP_CHERRY_GAIN, 1))  # :459
         return r
 
     # ---- 批量操作(th07 专属部分; remove/activate_all 在基类) ----
@@ -249,8 +309,16 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                 item.type = ItemType.CHERRY
 
 
-def _point_score(item: Item, ctx: GameContext) -> int:
-    """POINT 道具显示分 (ItemManager.cpp:253-273)。"""
+def _power_level(power: float) -> int:
+    """火力档位 (ItemManager.cpp 的 while ((i32)currentPower >= g_PowerLevels[j]) j++)。"""
+    n = 0
+    while n < len(POWER_LEVELS) and int(power) >= POWER_LEVELS[n]:
+        n += 1
+    return n
+
+
+def _point_score(item: Item, ctx: GameContext) -> tuple[int, int]:
+    """POINT 道具代码值分 + 弹字颜色 (ItemManager.cpp:253-273)。"""
     if item.pos.y < ctx.poc_y:
         code = 50000
     else:
@@ -264,7 +332,10 @@ def _point_score(item: Item, ctx: GameContext) -> int:
     elif gap > 50000:
         code += (gap - 50000) // 5  # 满樱且樱差>50000 追加 1/5
     code -= code % 10
-    return code // 10
+    # 弹字颜色 (:272): POC 线上/结界收点黄, 其余白
+    color = POPUP_YELLOW if (item.pos.y < ctx.poc_y or item.auto_collect) \
+        else POPUP_WHITE
+    return code, color
 
 
 def _point_extends(ctx: GameContext) -> int:
@@ -281,8 +352,8 @@ def _point_extends(ctx: GameContext) -> int:
 
 
 def _graze_score(graze_total: int) -> int:
-    """擦弹分(显示): 代码 graze/40*10+300, 下限代码值 10。"""
+    """擦弹分(代码值): graze/40*10+300, 下限 10。"""
     code = graze_total // 40 * 10 + 300
     if code <= 0:
         code = 10
-    return code // 10
+    return code

@@ -3,13 +3,17 @@
 ZunGlobals 继承引擎层通用计分基座(engine/globals_base.py 的 GlobalsBase:
 score/gui_score 追赶、残机/炸弹/火力/死亡/重试), 本模块只留 th07 专属:
 樱点四元组(cherry/cherryMax/cherryPlus/cherryStart)与 subrank/rank 动态难度、
-擦弹/符卡/点道具计数。
+擦弹/符卡/点道具计数, 以及 AsciiManager 的得分弹字 (CreatePopup1/2) 与
+Gui 状态横幅 (ShowStatusPopup) 的纯逻辑部分(计时/生命周期; 渲染在 view)。
 """
 
 from __future__ import annotations
 
+import msgspec
+
 from ...engine.globals_base import (  # noqa: F401 (SCORE_MAX/GUI_SCORE_INCREMENT_MAX 为兼容再导出)
     GUI_SCORE_INCREMENT_MAX, SCORE_MAX, GlobalsBase)
+from ...utils import Vec2
 
 # cherryMax 相对 cherryStart 的上限 (GameManager::IncreaseCherryMax)
 CHERRY_MAX_RANGE = 9999990
@@ -26,6 +30,36 @@ RANK_TABLE = [
     (16, 15, 16),  # Extra
     (16, 15, 16),  # Phantasm
 ]
+
+# 状态横幅种类 (Gui.hpp GUI_DISPLAY_*; 0=隐藏)
+STATUS_FULL_POWER = 1    # "Full Power Mode!"
+STATUS_BORDER = 2        # "Supernatural Border!!"
+STATUS_CHERRY_MAX = 3    # "CherryPoint Max!"
+STATUS_BORDER_BONUS = 4  # "Border Bonus %7d"
+
+# 弹字槽容量 (AsciiManager: popups[720] + popups[720..723], CreatePopup1/2 环形覆盖)
+POPUP1_CAP = 720
+POPUP2_CAP = 3
+
+# 弹字寿命 (AsciiManager.cpp:56-60: timer > 60 消)
+POPUP_LIFETIME = 60
+# 状态横幅显示帧数 (Gui.cpp:1343)
+STATUS_POPUP_LIFETIME = 180
+
+
+class ScorePopup(msgspec.Struct):
+    """一个得分弹字 (AsciiManagerPopup): 收点/清弹得分在道具位置跳出的数字。
+
+    ``value`` 为代码值口径(与 C++ 同, POC 线上收点弹 50000); -1 = PowerUp
+    特殊字形 (C++ CreatePopup1 value<0 → digits[0]='\\n')。
+    ``kind``: 1=普通弹字 (CreatePopup1, 720 环), 2=弹消点弹字 (CreatePopup2, 3 环)。
+    """
+
+    pos: Vec2 = msgspec.field(default_factory=Vec2.zero)
+    value: int = 0
+    color: int = 0xFFFFFFFF  # ARGB
+    timer: int = 0
+    kind: int = 1
 
 
 class ZunGlobals(GlobalsBase):
@@ -56,23 +90,72 @@ class ZunGlobals(GlobalsBase):
     extends_from_point_items: int = 0
     next_needed_point_items_for_extend: int = 50
 
+    # ---- 得分弹字 / 状态横幅(AsciiManager/Gui 的纯逻辑部分; 渲染在 view) ----
+    popups: list[ScorePopup] = msgspec.field(default_factory=list)
+    status_popup: int = 0        # GUI_DISPLAY_*; 0=隐藏
+    status_popup_arg: int = 0    # fmtArg (Border Bonus 的数值等)
+    status_popup_timer: int = 0
+
     def initialize_rank(self, difficulty: int) -> None:
         """按难度初始化 rank (GameManager::InitializeRank / g_RankArray)。"""
         self.rank, self.min_rank, self.max_rank = RANK_TABLE[difficulty]
         self.subrank = 0
 
+    # ---- 得分弹字 (AsciiManager::CreatePopup1/2 + OnUpdate) ----
+    def add_popup(self, pos: Vec2, value: int, color: int, kind: int = 1) -> None:
+        """登记一个得分弹字(位置为游戏区坐标; view 渲染时加窗口偏移)。
+
+        C++ 是定长环形缓冲区(720/3 槽, 写满回卷覆盖最旧); 这里等价为
+        超出容量时丢最旧的同槽弹字。"""
+        cap = POPUP1_CAP if kind == 1 else POPUP2_CAP
+        same = [p for p in self.popups if p.kind == kind]
+        while len(same) >= cap:
+            self.popups.remove(same.pop(0))
+        self.popups.append(ScorePopup(pos=pos, value=value, color=color, kind=kind))
+
+    def show_status_popup(self, arg: int, kind: int) -> None:
+        """Gui::ShowStatusPopup (Gui.cpp:88-95): 状态横幅出现并重置计时。"""
+        self.status_popup = kind
+        self.status_popup_arg = arg
+        self.status_popup_timer = 0
+
+    def step_popups(self) -> None:
+        """每帧: 弹字上浮 0.5px + 寿命 60 帧 (AsciiManager.cpp:55-60);
+        状态横幅计时, 180 帧隐藏 (Gui.cpp:1329-1347)。"""
+        keep: list[ScorePopup] = []
+        for p in self.popups:
+            p.pos = Vec2(p.pos.x, p.pos.y - 0.5)
+            p.timer += 1
+            if p.timer <= POPUP_LIFETIME:
+                keep.append(p)
+        self.popups = keep
+        if self.status_popup != 0:
+            self.status_popup_timer += 1
+            if self.status_popup_timer >= STATUS_POPUP_LIFETIME:
+                self.status_popup = 0
+
     # ---- 樱点 (§0.3) ----
     def add_cherry(self, x: int) -> None:
-        """cherry += x, 封顶 cherryMax (GameManager::AddCherry)。"""
+        """cherry += x, 封顶 cherryMax (GameManager::AddCherry)。
+
+        触达上限且本次有变化 → "CherryPoint Max!" 横幅
+        (GameManager.cpp:949-952, ShowStatusPopup(…, 3))。"""
+        old = self.cherry
         self.cherry = min(self.cherry + x, self.cherry_max)
+        if self.cherry >= self.cherry_max and old != self.cherry:
+            self.show_status_popup(self.cherry - self.cherry_start, STATUS_CHERRY_MAX)
 
     def add_cherry_plus(self, x: int) -> bool:
         """GameManager::AddCherryPlus: cherry 与 cherryPlus 同时累加。
 
         cherryPlus 封顶 cherryStart+50000; 返回本次是否触达该上限(=应开结界,
-        结界本身由玩家侧处理)。
+        结界本身由玩家侧处理)。cherry 触达上限 → "CherryPoint Max!" 横幅
+        (GameManager.cpp:934-937)。
         """
+        old = self.cherry
         self.cherry = min(self.cherry + x, self.cherry_max)
+        if self.cherry >= self.cherry_max and old != self.cherry:
+            self.show_status_popup(self.cherry - self.cherry_start, STATUS_CHERRY_MAX)
         if x > 0:
             self.cherry_plus = min(self.cherry_plus + x,
                                    self.cherry_start + CHERRY_PLUS_RANGE)

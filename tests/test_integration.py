@@ -18,7 +18,13 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.games.th07.world import PerfectCherryBloom  # noqa: E402
 from touhou.engine.bullets import Aim, Burst  # noqa: E402
-from touhou.games.th07.items import ItemType  # noqa: E402
+from touhou.games.th07.globals import STATUS_FULL_POWER  # noqa: E402
+from touhou.games.th07.items import (  # noqa: E402
+    FULL_POWER,
+    STATE_ATTRACT,
+    STATE_FALL,
+    ItemType,
+)
 from touhou.games.th07.player import PlayerState  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
 
@@ -397,3 +403,92 @@ def test_bomb_spellcard_scaling_pipeline() -> None:
         g.tick(keys=_FOCUS_STOP)
     assert g.boss.life == 600 - 9 - 45, \
         f"符卡 used_bomb 后 bomb 伤害应 9/帧, life={g.boss.life}"
+
+
+def test_bomb_vacuums_items() -> None:
+    """BUGS.md#3 按 B 吸取全屏道具: bomb 首帧 RemoveAllItems → 场上道具全转吸附
+    (BombData.cpp:144 等各 *Calc timer==0 → ItemManager::RemoveAllItems)。"""
+    g = _game()
+    _tick_until_alive(g)
+    _isolate(g)
+    dropped = [g.items.spawn(Vec2(60 + i * 60, 120), ItemType.POINT)
+               for i in range(4)]
+    assert all(it.state == STATE_FALL for it in dropped)  # 前置: 下落中
+    g.tick(keys=_STOP_KEYS, bomb=True)
+    assert g.bomb.is_in_use, "炸弹未触发"
+    assert all(it.state == STATE_ATTRACT for it in dropped), "按 B 未吸取场上道具"
+    # 吸附道具最终进袋(分数增长)
+    score0 = g.globals.score
+    for _ in range(240):
+        g.tick(keys=_STOP_KEYS)
+        if all(it not in g.items.alive() for it in dropped):
+            break
+    assert all(it not in g.items.alive() for it in dropped), "吸附道具未被收进"
+    assert g.globals.score > score0
+
+
+def test_bullet_clear_spawns_attracted_items() -> None:
+    """BUGS.md#5 道中/boss 出场与符卡开始的清弹: 弹转弹消点且出生即吸附
+    (EclManager.cpp:673 BeginSpellcard → BulletManager.cpp:423-434
+    RemoveAllBullets(1) → SpawnItem(…, state=1))。"""
+    g = _game()
+    _tick_until_alive(g)
+    _isolate(g)
+    assert g.ecl_host is not None
+    g.bullets.fire(_bullet_at(Vec2(192, 100)))
+    g.bullets.fire(_bullet_at(Vec2(150, 150)))
+    g.ecl_host.remove_all_bullets(True)  # = BeginSpellcard / ins80 的清弹
+    # 弹转道具立即发生(死弹在次帧 step 才清出列表, 见 BulletWorld.step 末尾)
+    items = g.items.alive()
+    assert len(items) == 2
+    assert all(it.type == ItemType.POINT_BULLET for it in items)
+    assert all(it.state == STATE_ATTRACT for it in items), "清弹星点未自动吸附"
+    g.tick(keys=_STOP_KEYS)
+    assert len(list(g.bullets.alive())) == 0, "清弹未生效"
+    # 星点自动飞进自机(不按键也收进)
+    plus0 = g.globals.cherry_plus
+    for _ in range(120):
+        g.tick(keys=_STOP_KEYS)
+        if not g.items.alive():
+            break
+    assert not g.items.alive(), "星点未被自动收进"
+    assert g.globals.cherry_plus > plus0  # 弹消点的 cherryPlus +20 入账
+
+
+def test_full_power_banner_and_power_to_cherry() -> None:
+    """BUGS.md#12 满火力: "Full Power Mode!" 横幅 (ItemManager.cpp:231
+    Gui::ShowStatusPopup(0, 1)) + 满火力后 P 道具转樱点 (ItemManager.cpp:40-45)。"""
+    g = _game()
+    g.tick()  # SPAWNING → INVULNERABLE(可收集)
+    g.power = FULL_POWER - 1
+    g.items.spawn(g.player.pos, ItemType.POWER_SMALL, power=g.power)
+    g.tick()
+    assert g.power == FULL_POWER
+    assert g.globals.status_popup == STATUS_FULL_POWER, "满火力横幅未弹出"
+    # 满火力后新掉落的 P 转 CHERRY(spawn 转换)
+    it = g.items.spawn(Vec2(100, 100), ItemType.POWER_BIG, power=g.power)
+    assert it.type == ItemType.CHERRY
+    # 横幅 180 帧后消失 (Gui.cpp:1343)
+    for _ in range(180):
+        g.tick(keys=_STOP_KEYS)
+    assert g.globals.status_popup == 0
+
+
+def test_point_item_collect_popup() -> None:
+    """BUGS.md#16 收点得点弹字 (ItemManager.cpp:272 → AsciiManager::CreatePopup1):
+    弹字登记在 globals.popups(渲染见 view/popup_view.py), 上浮 + 60 帧寿命。"""
+    g = _game()
+    g.tick()
+    pos = Vec2(g.player.pos.x, g.player.pos.y)
+    it = g.items.spawn(pos, ItemType.POINT)
+    it.start = Vec2.zero()  # 定住道具, 让收集点 = 出生点(出生初速 -2.2 会上移)
+    g.tick()
+    assert len(g.globals.popups) == 1
+    p = g.globals.popups[0]
+    assert p.kind == 1
+    assert p.value == 50000 - int(pos.y - g.shot_data.poc_y) * 100  # 自机位按 y 衰减
+    # 弹字位置 = 道具收集点(同帧道具下落渐变 +0.03、弹字上浮 -0.5 的零头内)
+    assert p.pos.x == pos.x and abs(p.pos.y - pos.y) < 1.0
+    # 弹字上浮 (AsciiManager.cpp:55)
+    g.tick(keys=_STOP_KEYS)
+    assert g.globals.popups and g.globals.popups[0].pos.y < pos.y

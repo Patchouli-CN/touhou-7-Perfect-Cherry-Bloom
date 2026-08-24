@@ -10,6 +10,10 @@ from touhou.games.th07.items import (  # noqa: E402
     FULL_POWER,
     FULL_POWER_SCORE_BONUS,
     PLAYER_STATE_SPAWNING,
+    POPUP_CHERRY_GAIN,
+    POPUP_POWERUP,
+    POPUP_WHITE,
+    POPUP_YELLOW,
     STATE_ATTRACT,
     STATE_FALL,
     STATE_SPAWN,
@@ -401,3 +405,120 @@ def test_spawn_converts_power_items_at_full_power() -> None:
 def test_drop_table_length_and_values() -> None:
     assert len(DROP_TABLE) == 32
     assert max(DROP_TABLE) <= 7
+
+
+# ---- 生成态(state 参数) / 吸附忠实化 ----
+
+def test_spawn_with_attract_state() -> None:
+    """清弹转道具出生即吸附 (BulletManager.cpp 各清弹路径的 SpawnItem(…, 1))。"""
+    w = ItemWorld()
+    it = w.spawn(Vec2(100, 100), ItemType.POINT_BULLET, state=STATE_ATTRACT)
+    assert it.state == STATE_ATTRACT
+    ctx = GameContext(player_pos=Vec2(100, 300))
+    w.step(ctx)
+    assert it.state == STATE_ATTRACT
+    assert it.pos.y > 100  # 向自机方向移动
+
+
+def test_attracted_item_deattracts_during_respawn() -> None:
+    """玩家重生中, 已吸附的道具也回下落态 + (0,-0.5) 缓降
+    (ItemManager.cpp:152-168: state==1 与吸附触发同一分支, playerState==1 时
+    state=0 + startPosition.y=-0.5)。"""
+    w = ItemWorld()
+    it = w.spawn(Vec2(100, 100), ItemType.POINT, state=STATE_ATTRACT)
+    ctx = GameContext(player_pos=Vec2(100, 300),
+                      player_state=PLAYER_STATE_SPAWNING)
+    w.step(ctx)
+    assert it.state == STATE_FALL
+    assert it.start.y in (-0.5, -0.5 + 0.03)  # 缓降(下落渐变 +0.03 前/后)
+
+
+# ---- 收点得分弹字 (ItemManager.cpp CreatePopup1/2) ----
+
+def test_point_collect_popups() -> None:
+    """收点弹字: POC 线上满分黄字, 线下衰减白字 (ItemManager.cpp:272)。"""
+    w = ItemWorld()
+    ctx = GameContext(poc_y=128.0)
+    r = w.collect(w.spawn(Vec2(100, 100), ItemType.POINT), ctx)
+    assert r.popups == [(50000, POPUP_YELLOW, 1)]
+    r2 = w.collect(w.spawn(Vec2(100, 228), ItemType.POINT), ctx)
+    assert r2.popups == [(40000, POPUP_WHITE, 1)]  # 100px 低于 POC → -10000
+
+
+def test_power_small_popups() -> None:
+    w = ItemWorld()
+    # 升档(7→8 跨 POWER_LEVELS[0]): PowerUp 字形 (ItemManager.cpp:242)
+    r = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_SMALL), GameContext(power=7))
+    assert r.popups == [(-1, POPUP_POWERUP, 1)]
+    # 未升档(10→11): 弹 10 (:247)
+    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_SMALL), GameContext(power=10))
+    assert r2.popups == [(10, POPUP_WHITE, 1)]
+    # 满火力: 弹查表代码值 (:211; 表末 12000 < 12800 恒白)
+    r3 = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_SMALL),
+                   GameContext(power=FULL_POWER, power_overflow_counter=9))
+    assert r3.popups == [(200, POPUP_WHITE, 1)]
+
+
+def test_power_big_popups() -> None:
+    w = ItemWorld()
+    # 升档(0→8): PowerUp 字形 (ItemManager.cpp:361)
+    r = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_BIG), GameContext(power=0))
+    assert r.popups == [(-1, POPUP_POWERUP, 1)]
+    # 满火力大 P: 无分无弹字 (C++ :330 弹的是上一道具残留的 itemScore,
+    # ZUN bloat, 值无意义, 不还原)
+    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_BIG),
+                   GameContext(power=FULL_POWER))
+    assert r2.popups == []
+
+
+def test_full_power_item_popups_and_reached_flag() -> None:
+    """F 道具: 触达满火力置 reached_full_power + PowerUp 字形 + 1000 弹字
+    (ItemManager.cpp:381-392)。"""
+    w = ItemWorld()
+    r = w.collect(w.spawn(Vec2(0, 0), ItemType.FULL_POWER), GameContext(power=100))
+    assert r.reached_full_power and r.clear_bullets
+    assert r.popups == [(-1, POPUP_POWERUP, 1), (1000, POPUP_WHITE, 1)]
+    # 已满火力: 无 PowerUp 字形/不清弹/不置 reached, 仍弹 1000 (:392)
+    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.FULL_POWER),
+                   GameContext(power=FULL_POWER))
+    assert not r2.reached_full_power and not r2.clear_bullets
+    assert r2.popups == [(1000, POPUP_WHITE, 1)]
+
+
+def test_full_power_clear_suppressed_during_spellcard() -> None:
+    """符卡中吃 P 触达满火力不清弹(横幅仍应弹, 由 reached_full_power 透出),
+    F 道具不受此限 (ItemManager.cpp:227-230/345-348 vs :381-383)。"""
+    w = ItemWorld()
+    ctx = GameContext(power=FULL_POWER - 1, spellcard_active=True)
+    r = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_SMALL), ctx)
+    assert r.reached_full_power and not r.clear_bullets
+    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.FULL_POWER),
+                   GameContext(power=100, spellcard_active=True))
+    assert r2.reached_full_power and r2.clear_bullets
+
+
+def test_point_bullet_popup_uses_ring2() -> None:
+    """弹消点弹字走 CreatePopup2(3 槽环), 白色 (ItemManager.cpp:408)。"""
+    w = ItemWorld()
+    r = w.collect(w.spawn(Vec2(0, 0), ItemType.POINT_BULLET), GameContext())
+    assert r.popups == [(300, POPUP_WHITE, 2)]  # graze 0 → 代码值 300
+
+
+def test_star_popups() -> None:
+    w = ItemWorld()
+    # 未满樱: cherryPlus +100 红字 (ItemManager.cpp:459)
+    r = w.collect(w.spawn(Vec2(0, 0), ItemType.STAR), GameContext())
+    assert r.popups == [(100, POPUP_CHERRY_GAIN, 1)]
+    # 满樱: 得分白字 (:453)
+    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.STAR),
+                   GameContext(cherry_maxed=True))
+    assert r2.popups == [(300, POPUP_WHITE, 1)]
+
+
+def test_cherry_maxed_popup() -> None:
+    """满樱 CHERRY 按点道具计分并弹字 (ItemManager.cpp:434)。"""
+    w = ItemWorld()
+    ctx = GameContext(cherry_maxed=True, poc_y=128.0)
+    r = w.collect(w.spawn(Vec2(100, 100), ItemType.CHERRY), ctx)
+    assert r.score == 5000
+    assert r.popups == [(50000, POPUP_YELLOW, 1)]
