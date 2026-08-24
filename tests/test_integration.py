@@ -95,6 +95,25 @@ def test_item_collect() -> None:
     assert g.power == p0 + 1
 
 
+def test_same_tick_point_items_extend_once() -> None:
+    """同帧收 2 个点道具过奖残阈值: 只奖 1 次, 分母推进到 125 而非 200。
+
+    C++ 逐道具结算并即时更新全局计数 (ItemManager.cpp:274-325); 移植的
+    ctx 是同帧快照, 不同步的话两个道具按同一旧基线各判一次奖残,
+    extends 由 1 变 2, HUD 分母 125 跳成 200 (BUGS.md 增量#3)。"""
+    g = _game()
+    g.tick()  # SPAWNING → INVULNERABLE
+    g.globals.point_items_collected_for_extend = 49  # 差 1 个到首个阈值 50
+    lives0 = g.lives
+    g.items.spawn(g.player.pos, ItemType.POINT)
+    g.items.spawn(g.player.pos, ItemType.POINT)
+    g.tick()
+    assert g.globals.point_items_collected_for_extend == 51
+    assert g.globals.extends_from_point_items == 1
+    assert g.lives == lives0 + 1
+    assert g.globals.next_needed_point_items_for_extend == 125
+
+
 def test_kill_drops_items() -> None:
     """自机弹击杀站桩敌人 → 掉道具 + 击杀分入账。"""
     g = _game()

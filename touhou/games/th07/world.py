@@ -822,6 +822,13 @@ class PerfectCherryBloom:
                 cr = self.items.collect(item, ctx)
                 self._apply_collect(cr, item.pos)
                 self.items.remove(item)
+                # C++ 每个点道具结算后全局计数即时生效 (ItemManager.cpp:274-275,
+                # 残机判定循环逐道具跑); ctx 是同帧快照不会自动跟进, 不同步的
+                # 话同帧多个点道具过阈值会按旧基线重复奖残, 分母由 125 跳成
+                # 200 (BUGS.md 增量#3) —— 收完一个就把残机两轨刷回 ctx
+                ctx.point_items_collected_for_extend = \
+                    g.point_items_collected_for_extend
+                ctx.extends_from_point_items = g.extends_from_point_items
 
         # ---- 激光推进 + 玩家碰撞 ----
         self.lasers.step()
