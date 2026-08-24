@@ -29,6 +29,7 @@ from .screens import (
     CHARACTERS,
     DIFFICULTIES,
     EXTRA_STAGES,
+    MAIN_DIFFICULTIES,
     PAUSE_ITEMS,
     PRACTICE_DIFFICULTIES,
     PRACTICE_STAGE_ITEMS,
@@ -118,6 +119,11 @@ class GameApp:
             if gd is not None and gd.characters else CHARACTERS
         self._difficulties = list(gd.difficulties) \
             if gd is not None and gd.difficulties else DIFFICULTIES
+        # 本篇 Start 难度(不含 Extra/Phantasm, BUGS.md#1: 光标在全名单上
+        # 回绕会选中不可见的 Extra/Phantasm → 出界; 渲染侧本就只画 4 项)
+        self._main_difficulties = (
+            self._difficulties[:gd.main_difficulty_count]
+            if gd is not None and gd.difficulties else MAIN_DIFFICULTIES)
         self._extra_stages = list(gd.extra_stages) \
             if gd is not None and gd.extra_stages else EXTRA_STAGES
         self._practice_difficulties = (
@@ -130,7 +136,7 @@ class GameApp:
         self._spellcard_count = (
             len(gd.spellcard_scores) if gd is not None and gd.spellcard_scores
             else _default_spellcard_count())
-        self._diff = MenuCursor(self._difficulties, index=1)
+        self._diff = MenuCursor(self._main_difficulties, index=1)
         self._char = MenuCursor(self._characters, index=0)
         self._extra_mode = False  # Extra Start 流: 选机体 → 选 Extra/Phantasm
         self._extra_stage = MenuCursor(self._extra_stages, index=0)

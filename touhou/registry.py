@@ -92,6 +92,8 @@ class GameData(msgspec.Struct, frozen=True):
     extra_stages: tuple[str, ...] = ()        # Extra Start 后的关卡名单
     stage_count: int = 6                      # 本篇面数(practice 选关上限)
     practice_difficulty_count: int = 4        # practice 可选难度数(原版 4)
+    main_difficulty_count: int = 4            # 本篇 Start 可选难度数(原版 4;
+                                              # Extra/Phantasm 是额外关卡, 不算难度)
     character_sht: dict[int, tuple[str, str]] = msgspec.field(
         default_factory=dict)                 # 机体 → (非 focus, focus) .sht 文件
     spellcard_scores: tuple[int, ...] = ()    # 符卡基础分值(代码值)

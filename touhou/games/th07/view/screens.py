@@ -53,7 +53,13 @@ EXTRA_STAGES = list(_gd.extra_stages) if _gd is not None and _gd.extra_stages \
     else list(_FALLBACK_EXTRA_STAGES)
 _TH07_PRACTICE_DIFF_COUNT = _gd.practice_difficulty_count \
     if _gd is not None else _FALLBACK_PRACTICE_DIFF_COUNT
+_TH07_MAIN_DIFF_COUNT = _gd.main_difficulty_count \
+    if _gd is not None else _FALLBACK_PRACTICE_DIFF_COUNT
 _TH07_STAGE_COUNT = _gd.stage_count if _gd is not None else _FALLBACK_STAGE_COUNT
+
+# 本篇 Start 的难度名单(不含 Extra/Phantasm —— 那是额外关卡, 走 Extra Start
+# 流程; 光标若在全名单上回绕会选中不可见的第 5/6 项, 即 BUGS.md#1 的出界 bug)
+MAIN_DIFFICULTIES = DIFFICULTIES[:_TH07_MAIN_DIFF_COUNT]
 
 # 暂停面板菜单项(游戏内 Esc; Save Replay 见 engine/replay.py)。
 # 纯菜单数据, 归纯逻辑层; 绘制在 option_view.render_pause。
@@ -322,7 +328,7 @@ def build_character_cursor() -> MenuCursor:
 
 
 def build_difficulty_cursor() -> MenuCursor:
-    return MenuCursor(DIFFICULTIES, index=1)  # 默认 Normal
+    return MenuCursor(MAIN_DIFFICULTIES, index=1)  # 默认 Normal; 本篇 4 难度
 
 
 def character_index(name: str) -> int:

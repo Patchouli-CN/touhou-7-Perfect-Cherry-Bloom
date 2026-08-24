@@ -64,6 +64,30 @@ def test_app_menu_navigation() -> None:
     assert app._screen == Screen.MAIN_MENU
 
 
+def test_main_difficulty_cursor_wraps_within_four() -> None:
+    """BUGS.md#1 回归: 本篇难度选择只含 4 项(Easy..Lunatic)。
+
+    光标曾在全名单(含 Extra/Phantasm)上回绕: 第 4 次 DOWN 选中不可见的
+    Extra(difficulty=4)出界。修复后回绕发生在 4 项内, 永远选不到额外关卡。
+    """
+    from touhou.games.th07.view import GameApp
+
+    app = GameApp(lambda difficulty, character:
+                  StubGame(difficulty=difficulty, character=character))
+    app._screen = Screen.DIFFICULTY
+    assert app._diff.current == "Normal"          # index 1
+    app._diff.move(1)
+    app._diff.move(1)
+    assert app._diff.current == "Lunatic"         # index 3 = 最后一项
+    app._diff.move(1)
+    assert app._diff.current == "Easy"            # 回绕到 0(旧 bug: 这里会是 Extra)
+    # 确认开局: 难度 int 永远落在 0..3, 到不了 4(Extra)/5(Phantasm)
+    app._screen = Screen.DIFFICULTY
+    app._on_menu(MenuAction.CONFIRM)              # 难度(Easy) → 角色
+    app._on_menu(MenuAction.CONFIRM)              # 角色(默认 ReimuA) → 开始
+    assert app._game.kw["difficulty"] == 0
+
+
 # ---------------------------------------------------------------------------
 # Extra Start 入口流(简化: 不设解锁条件, 选机体后可选 Extra/Phantasm)
 # ---------------------------------------------------------------------------
