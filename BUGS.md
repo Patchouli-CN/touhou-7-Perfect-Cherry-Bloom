@@ -1,8 +1,11 @@
 
-# BUG 报告【增量】
+# 新bug
 
-1. fps显示和cherry点数叠加了，见 ./bug_fps显示.png 【已修 touhou/games/th07/view/hud_view.py：FPS 从 (136,468) 挪到 (190,466)——樱点下行两组数字最坏（各 7 位）画到 ~182px，取 190 避开；y=466 小字号不越 480 下沿】
+1. 4面boss血条显示问题，具体表现为，血量程序里是再掉，但血条显示一直满血
+【已修 touhou/games/th07/world.py，C++ 血条每帧只取 bossId==0 敌人的 life/maxLife(EnemyManager.cpp:1066-1068)；4面三姐妹卫星机占槽1..6(life=999999，承伤转嫁槽0主体)，移植把 HUD 绑到最后一个 SET_BOSS 的卫星机 → 恒满。_tick_boss_ecl 显示血量改跟 ecl_world.bosses[0] 主体，槽0缺位回退旧绑定；回归测试 tests/test_stage_ecl.py::test_stage4_healthbar_tracks_boss_slot0】
 
-2. bomb释放完了后，灵梦一直处在虚影状态，直到下次撞弹（疑似bug，得看是刻意的游戏设计还是bug）【已修 touhou/games/th07/world.py：确认是 bug 非设计——C++ 机体 bombCalc 每帧无条件置 playerState=INVULNERABLE（BombData.cpp:182/378/601/…），UpdateState 据此逐帧递减 invulnerabilityTimer、归零回 ALIVE（Player.cpp:1916-1933）；逻辑层漏了这步导致首帧设的无敌计时在 ALIVE 态冻结。补上后 bomb 结束剩 ~60 帧（无敌=duration+60）倒数归零，闪烁按原版时序自然结束；决死B/结界破/撞弹复活无敌路径均已回归验证】
+2. 每次对话空隙可能闪出之前关卡的立绘，比如 爱丽丝关卡的时候，和爱丽丝对话，轮到主角说话的时候，爱丽丝测立绘变成第一关的boss
+【已修 touhou/games/th07/view/dialog_view.py，非说话方压暗立绘的模块级 _dim_cache 键 (side,face_idx,w,h) 不含关卡/角色维度，而全部脸图都是 126×510 → 跨关必撞，自机说话(对侧压暗)时闪出上一关暗化立绘。压暗缓存收进 _FaceBook 按书隔离(get_dim)；与 parse_cached 无关(其键为文件字节，安全)。回归测试 tests/test_dialog_view.py】
 
-3. 每次进入开局+进入下一面+符卡+bomb什么的都会卡一小下，体验不好 【已修 多处，定位与修法：打点实测（scratch_dbg/profile_stutter.py）主因是 LZSS 解压纯 Python 逐位实现仅 ~2MB/s（face_rm00 首发 bomb 时解压 946ms、ascii.anm 被 4 个 SpriteBank 实例各解压一次 ~230ms/次、换关帧集中解压 3.1s）——① schema/archive.py：LZSS 重写（去环形字典改输出流自复制+字面量 8 连批取，全 197 条目逐字节校验一致，~1.9x）+ GameArchive 解压结果进程级共享缓存；② schema/anm.py：fmt 2/3/5 纹理解码 numpy 向量化（逐位等价校验，~150ms→~7ms）+ parse_cached 进程级共享；③ 预载：关卡加载随载 bomb cutin/符卡立绘/eff（games/th07/view/sprite_view.py _ensure_stage）、结算面板静态期每帧一项预载下一关含 3D 场景预建（_preload_next_stage）、标题菜单空转每帧一项预热（games/th07/view/impl.py _warmup_step）；④ 慢加载 DEBUG 计时日志常驻（sprite_bank/bg3d_view/pygame_backend）。效果：首发 bomb 1228ms→30ms、首次符卡 ~400ms→15ms、换关 3121ms→结算面板摊帧吸收（无结算阶段的强制跳关兜底 1190ms）、开局 _start_game+首帧 4.4s→1.7s（菜单停留后趋近 0，SE 加载 ~1s 在启动时一次性）。残留：平稳期偶发 20-50ms 帧（bg3d 软光栅/出怪 burst/GC），与本次三处事件性卡顿无关，未动】
+3. th07的point点数偶发出现上限200，正常是125
+【已修 touhou/games/th07/world.py，分母=下次点道具奖残所需累计数(50/125/200/300…，ItemManager.cpp:289-315)；收集循环的 ctx 是同帧快照，同帧收≥2个点道具过阈值时按旧基线重复奖残，extends 1→2 分母 125 跳 200(还多送1残)。每收完一个道具把 point_items_collected_for_extend/extends_from_point_items 刷回 ctx；回归测试 tests/test_integration.py::test_same_tick_point_items_extend_once】
