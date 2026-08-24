@@ -47,8 +47,6 @@ _FONT_CANDIDATES = ("msgothic", "ms gothic", "msmincho", "meiryo",
                     "microsoft yahei", "simhei")
 _FONT_SIZE = 15
 
-_dim_cache: dict = {}
-
 
 def _load_font():
     """日文字体; 找不到返回 None(调用方画占位块)。"""
@@ -83,6 +81,10 @@ class _FaceBook:
 
     def __init__(self, anm: AnmFile, raw: bytes) -> None:
         self._faces: dict[int, pygame.Surface] = {}
+        # 压暗缓存按书隔离 (BUGS.md 增量#2): 此前是模块级 dict, 键
+        # (side, face_idx, w, h) 不含关卡/角色维度, 而所有脸图都是 126×510
+        # → 跨关必撞, 轮到自机说话(对侧压暗)时闪出上一关的暗化立绘
+        self._dim: dict[tuple[int, int, int], pygame.Surface] = {}
         # 走 nextOffset 链拿各 entry 的文件内基址(anm.py 未暴露)
         bases = []
         off = 0
@@ -111,6 +113,16 @@ class _FaceBook:
         if face_idx in self._faces:
             return self._faces[face_idx]
         return self._faces.get(0)  # 未知表情回落 0 号脸
+
+    def get_dim(self, face_idx: int, img: pygame.Surface) -> pygame.Surface:
+        """非说话方压暗版 (SWITCH interrupt 3=暗): 按书缓存, 键含尺寸。"""
+        key = (face_idx, img.get_width(), img.get_height())
+        dim = self._dim.get(key)
+        if dim is None:
+            dim = img.copy()
+            dim.fill((110, 110, 130), special_flags=pygame.BLEND_RGB_MULT)
+            self._dim[key] = dim
+        return dim
 
 
 class DialogueView:
@@ -194,15 +206,7 @@ class DialogueView:
         h = int(img.get_height() * PORTRAIT_SCALE)
         img = pygame.transform.scale(img, (w, h))
         if not speaking:
-            key = (side, face_idx, w, h)
-            dim = _dim_cache.get(key)
-            if dim is None:
-                dim = img.copy()
-                dim.fill((110, 110, 130), special_flags=pygame.BLEND_RGB_MULT)
-                if len(_dim_cache) > 64:
-                    _dim_cache.clear()
-                _dim_cache[key] = dim
-            img = dim
+            img = book.get_dim(face_idx, img)
         x = PORTRAIT_X[side] if side == 0 else PORTRAIT_X[side] - w
         y = PORTRAIT_BOTTOM - h
         # 立绘在屏幕系只露到对话框底(原版画全高, 底部被对话框盖住)
