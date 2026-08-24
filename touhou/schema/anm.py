@@ -18,7 +18,9 @@ entry 头(AnmRawEntry) / sprite 表(AnmRawSprite) / 内嵌纹理(ZunImageInfoEmb
 from __future__ import annotations
 
 import struct
+
 import msgspec
+import numpy as np
 
 from ..registry import register_anm
 
@@ -28,6 +30,21 @@ _BYTES_PER_PIXEL = {1: 4, 2: 2, 3: 2, 4: 3, 5: 2}
 _ENTRY_HEADER_SIZE = 64      # AnmRawEntry 到 spriteOffsets 之前
 _SPRITE_SIZE = 20            # AnmRawSprite: i32 id + f32 x,y,w,h
 _EMBEDDED_HEADER_SIZE = 16   # ZunImageInfoEmbedded 到 data 之前
+
+# 进程级解析缓存 (BUGS.md 增量#3): 同一 .anm 被多个视图/SpriteBank 实例
+# 各自重复解码(实测 ascii.anm 被 4 个实例各解一次, 单次 ~300ms)。raw bytes
+# 不可变直接做 key; AnmFile 解析后只读(全仓库无 entries/rgba 原地写),
+# 共享安全。游戏资产集合有限, 不淘汰。
+_PARSE_CACHE: dict[bytes, "AnmFile"] = {}
+
+
+def parse_cached(data: bytes) -> "AnmFile":
+    """AnmFile.parse 的进程级缓存版; 缓存未命中才真实解码。"""
+    out = _PARSE_CACHE.get(data)
+    if out is None:
+        out = AnmFile.parse(data)
+        _PARSE_CACHE[data] = out
+    return out
 
 
 class AnmSprite(msgspec.Struct, frozen=True):
@@ -61,7 +78,12 @@ class AnmEntry(msgspec.Struct):
 
 
 def _decode_texture(fmt: int, width: int, height: int, data: bytes) -> bytes:
-    """把 D3D 小端像素解码成 RGBA 字节串。"""
+    """把 D3D 小端像素解码成 RGBA 字节串。
+
+    fmt 2/3/5 用 numpy 向量化(与逐像素整数运算逐位等价) —— 纯 Python 逐
+    像素循环解码 1024x1024 纹理要 ~150ms, 是首用懒加载卡顿的主因之一
+    (BUGS.md 增量#3)。
+    """
     n = width * height
     if fmt == 1:  # A8R8G8B8, 文件内 B,G,R,A
         out = bytearray(n * 4)
@@ -70,34 +92,26 @@ def _decode_texture(fmt: int, width: int, height: int, data: bytes) -> bytes:
         out[2::4] = data[0::4]
         out[3::4] = data[3::4]
         return bytes(out)
+    if fmt in (2, 3, 5):
+        v = np.frombuffer(data, dtype="<u2", count=n).astype(np.uint32)
+        if fmt == 5:  # A4R4G4B4: b:4 g:4 r:4 a:4 (低位起)
+            r = ((v >> 8) & 0xF) * 17
+            g = ((v >> 4) & 0xF) * 17
+            b = (v & 0xF) * 17
+            a = ((v >> 12) & 0xF) * 17
+        elif fmt == 2:  # A1R5G5B5: b:5 g:5 r:5 a:1
+            r = ((v >> 10) & 0x1F) * 255 // 31
+            g = ((v >> 5) & 0x1F) * 255 // 31
+            b = (v & 0x1F) * 255 // 31
+            a = np.where(v & 0x8000, 255, 0)
+        else:  # fmt == 3, R5G6B5: b:5 g:6 r:5, 无 alpha
+            r = ((v >> 11) & 0x1F) * 255 // 31
+            g = ((v >> 5) & 0x3F) * 255 // 63
+            b = (v & 0x1F) * 255 // 31
+            a = np.full(n, 255, dtype=np.uint32)
+        return np.stack([r, g, b, a], axis=1).astype(np.uint8).tobytes()
     out = bytearray(n * 4)
-    if fmt == 5:  # A4R4G4B4: b:4 g:4 r:4 a:4 (低位起)
-        for i in range(n):
-            v = data[2 * i] | (data[2 * i + 1] << 8)
-            b = v & 0xF
-            g = (v >> 4) & 0xF
-            r = (v >> 8) & 0xF
-            a = (v >> 12) & 0xF
-            o = 4 * i
-            out[o] = r * 17
-            out[o + 1] = g * 17
-            out[o + 2] = b * 17
-            out[o + 3] = a * 17
-    elif fmt == 2:  # A1R5G5B5: b:5 g:5 r:5 a:1
-        for i in range(n):
-            v = data[2 * i] | (data[2 * i + 1] << 8)
-            out[4 * i] = ((v >> 10) & 0x1F) * 255 // 31
-            out[4 * i + 1] = ((v >> 5) & 0x1F) * 255 // 31
-            out[4 * i + 2] = (v & 0x1F) * 255 // 31
-            out[4 * i + 3] = 255 if v & 0x8000 else 0
-    elif fmt == 3:  # R5G6B5: b:5 g:6 r:5, 无 alpha
-        for i in range(n):
-            v = data[2 * i] | (data[2 * i + 1] << 8)
-            out[4 * i] = ((v >> 11) & 0x1F) * 255 // 31
-            out[4 * i + 1] = ((v >> 5) & 0x3F) * 255 // 63
-            out[4 * i + 2] = (v & 0x1F) * 255 // 31
-            out[4 * i + 3] = 255
-    elif fmt == 4:  # R8G8B8, 文件内 B,G,R, 无 alpha
+    if fmt == 4:  # R8G8B8, 文件内 B,G,R, 无 alpha
         out[0::4] = data[2::3]
         out[1::4] = data[1::3]
         out[2::4] = data[0::3]
