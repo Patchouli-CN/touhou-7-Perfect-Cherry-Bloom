@@ -423,6 +423,12 @@ class PygameRenderer:
                 self._popup_view.render(frame, game)
             except Exception:
                 pass
+        # FPS 显示 (Supervisor.cpp:948-951; 左下 HUD, 见 hud_view.render_fps)
+        if self._hud_view is not None and self._clock is not None:
+            try:
+                self._hud_view.render_fps(frame, self._clock.get_fps())
+            except Exception:
+                pass
         self._blit_scaled(frame)
 
     def render_pause(self, game, cursor: int, *,

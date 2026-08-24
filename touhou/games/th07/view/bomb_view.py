@@ -145,10 +145,11 @@ class BombView:
         self._sakuya_hit: set[int] = set()    # 咲夜A 已换 1120 的刀
         self._squares_started = False         # 咲夜B 散 timer==30 方阵
         self._trails: dict[int, list[tuple[float, float]]] = {}
-        # ---- 无敌红环 (独立于 bomb, 无敌计时归零消失) ----
+        # ---- 无敌红环 (独立于 bomb, 自驱动倒计时归零消失) ----
         self._ring: Vm2d | None = None
         self._ring_s0 = (1.0, 1.0)
         self._ring_frames = 0
+        self._ring_left = 0
         # ---- 樱之结界 (独立于 bomb, 由 game.border 状态驱动) ----
         self._border_ring: Vm2d | None = None          # ACTIVE 中跟随自机的圈
         self._border_break: list[tuple[Vm2d, float, float]] = []  # 破裂扩散环
@@ -303,19 +304,28 @@ class BombView:
         vm.vm.angle_vel[2] *= -1.0              # angleVel.z *= -1
         if not vm.alive:
             self._ring = None
+        self._ring_left = self._ring_frames
 
     def _tick_ring(self, surf: pygame.Surface, game) -> None:
         """Player.cpp:1915-1930: 无敌中环跟随自机 (effect->pos1=positionCenter),
-        无敌计时归零即销 (inUseFlag=0); 脚本是循环的, 不会自然结束。"""
+        无敌计时归零即销 (inUseFlag=0); 脚本是循环的, 不会自然结束。
+
+        寿命/缩放由环自身倒计时驱动: C++ 在出生帧把 scaleInterp 定格为
+        invulnerabilityTimer 帧 (BombData.cpp:71-76), 且 bomb 期间
+        playerState=INVULNERABLE 每帧递减该计时, 归零即销 —— 等价于环从出生
+        起活 invulnerabilityTimer 帧。不能读 player.invulnerability_timer 的
+        现值: 逻辑层 ALIVE 时该计时不递减, 环会永不消失 (BUGS.md 增量#6);
+        且下一发 bomb 的无敌短于残留值时, 缩放插值被外推成满屏巨环
+        (BUGS.md 增量#4)。"""
         vm = self._ring
         if vm is None:
             return
-        remaining = game.player.invulnerability_timer
-        if remaining <= 0:
+        self._ring_left -= 1
+        if self._ring_left <= 0:
             self._ring = None
             return
         # scaleInterp: initial → 0.0625 历时 invulnerabilityTimer 帧
-        f = 1.0 - remaining / self._ring_frames
+        f = 1.0 - self._ring_left / self._ring_frames
         vm.vm.scale[0] = self._ring_s0[0] + (0.0625 - self._ring_s0[0]) * f
         vm.vm.scale[1] = self._ring_s0[1] + (0.0625 - self._ring_s0[1]) * f
         vm.execute()

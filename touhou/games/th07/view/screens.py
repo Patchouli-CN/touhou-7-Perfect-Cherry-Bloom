@@ -144,8 +144,9 @@ class TitleFlow(msgspec.Struct):
     """驱动标题主菜单的选择状态。emit 出选择结果。
 
     对照 MainMenu.cpp OnUpdatePreInput:
-    - Start → 选难度流; Extra Start → 选机体 → Extra/Phantasm(简化: 不做
-      通关解锁判定, 原版 Extra 需通关解锁、Phantasm 需 Extra 通关);
+    - Start → 选难度流; Extra Start → 选 Extra/Phantasm → 选机体(顺序与
+      本篇"先难度后选人"一致, BUGS.md 增量#1; 简化: 不做通关解锁判定,
+      原版 Extra 需通关解锁、Phantasm 需 Extra 通关);
     - Practice Start → practice 难度流(:384-399, g_GameManager.practice=1);
       Player Data → Result 画面(:430-433 case 4, curState=5 ResultScreen);
       Music Room → 音乐室(MusicRoom.cpp, :434-437 case 5);

@@ -1176,6 +1176,16 @@ class PerfectCherryBloom:
             self.boss.mark_bombed()  # 用弹 → 本张符卡不算捕获
         # 炸弹首帧无敌由机体 calc 设定 (BombData *Calc timer==0 分支)
         self.player.invuln = max(self.player.invuln, self.bomb.invulnerability_timer)
+        if self.player.state == PlayerState.DEAD:
+            # 决死B (deathbomb): 中弹后的死亡窗口 (respawnTimer 倒数, 灵梦15/
+            # 魔理沙8/咲夜6 帧 = .sht initialRespawnTimer) 内按 B → 消耗一枚
+            # bomb 代替丢残机。C++ 里 *Calc 每帧 playerState=INVULNERABLE
+            # (BombData.cpp:182/378/601/…), UpdateDeath 因此不再倒数结算
+            # (Player.cpp:1764-1779 只在 DEAD 时跑); 这里在玩家步进前翻状态,
+            # 本帧起死亡倒计时即停, 残机不扣。
+            self.player.state = PlayerState.INVULNERABLE
+            log.debug("决死B 成立 (frame={}, character={})", self.frame,
+                      self.character)
 
     def _bomb_box_hit(self, pos: Vec2, full_size: tuple[float, float]) -> bool:
         """bomb 伤害盒与敌人盒(center, 全宽/全高)是否相交 (collisionOut 语义,

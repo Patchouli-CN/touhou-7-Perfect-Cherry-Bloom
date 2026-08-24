@@ -140,7 +140,8 @@ class GameApp:
             else _default_spellcard_count())
         self._diff = MenuCursor(self._main_difficulties, index=1)
         self._char = MenuCursor(self._characters, index=0)
-        self._extra_mode = False  # Extra Start 流: 选机体 → 选 Extra/Phantasm
+        self._extra_mode = False  # Extra Start 流: 选 Extra/Phantasm → 选机体
+                                  # (BUGS.md 增量#1: 与本篇"先难度后选人"一致)
         self._extra_stage = MenuCursor(self._extra_stages, index=0)
         # Practice Start 流(MainMenu.cpp practice 分支): 难度(4 项) → 机体 → 选关
         self._practice_mode = False
@@ -452,8 +453,9 @@ class GameApp:
                 self._renderer.play_menu_se("ok")
                 log.trace("选定角色: {}", self._char.current)
                 if self._extra_mode:
-                    # Extra Start: 选完机体再选 Extra/Phantasm(原版不选难度)
-                    self._screen = Screen.EXTRA_LEVEL
+                    # Extra Start: 选完机体直接进关(Extra → 7, Phantasm → 8)
+                    self._start_game(extra_stage=7 + self._extra_stage.index)
+                    self._extra_mode = False
                 elif self._practice_mode:
                     self._enter_practice_stage_select()
                 else:
@@ -461,8 +463,8 @@ class GameApp:
             elif action == MenuAction.BACK:
                 self._renderer.play_menu_se("cancel")
                 if self._extra_mode:
-                    self._extra_mode = False
-                    self._screen = Screen.MAIN_MENU
+                    # Extra Start 流: 退回 Extra/Phantasm 选择页
+                    self._screen = Screen.EXTRA_LEVEL
                 else:  # 通常/practice 流: 退回难度页(MainMenu.cpp:1591-1598)
                     self._screen = Screen.DIFFICULTY
         elif self._screen == Screen.PRACTICE_STAGE:
@@ -539,12 +541,12 @@ class GameApp:
                 self._renderer.play_menu_se("select")
             elif action == MenuAction.CONFIRM:
                 self._renderer.play_menu_se("ok")
-                # Extra → stage 7, Phantasm → stage 8(简化: 不做解锁判定)
-                self._start_game(extra_stage=7 + self._extra_stage.index)
-                self._extra_mode = False
+                # 选定 Extra/Phantasm 后再选机体(与本篇难度→机体同序)
+                self._screen = Screen.CHARACTER
             elif action == MenuAction.BACK:
                 self._renderer.play_menu_se("cancel")
-                self._screen = Screen.CHARACTER
+                self._extra_mode = False
+                self._screen = Screen.MAIN_MENU
 
     def _handle_main_result(self, r: dict) -> None:
         act = r["action"]
@@ -556,10 +558,11 @@ class GameApp:
             self._renderer.play_menu_se("ok")
             self._screen = Screen.DIFFICULTY
         elif act == "extra_start":
-            # Extra Start: 原版需通关解锁, 本期不设解锁条件, 直接可进
+            # Extra Start: 原版需通关解锁, 本期不设解锁条件, 直接可进;
+            # 顺序与本篇一致 —— 先选 Extra/Phantasm(相当于难度)再选机体
             self._renderer.play_menu_se("ok")
             self._extra_mode = True
-            self._screen = Screen.CHARACTER
+            self._screen = Screen.EXTRA_LEVEL
         elif act == "option":
             # Option → 设置页(MainMenu.cpp:441 STATE_OPTIONS)
             self._renderer.play_menu_se("ok")

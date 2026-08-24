@@ -21,9 +21,9 @@ ascii.anm 樱点数字(script 3 无 ANM_22)与标题系立绘/名字为默认中
   y=48/64/96/112/144/160/176 (front.anm script 2-8 稳态;
   与各自数值同行, 右缘恰接数值列 496)。
 - 数值(ascii.anm 16x16 字形, 字符 c → sprite ord(c)-1, 步进 14):
-  HiScore (496,48) %.8d, Score (496,64) %.8d + numRetries (Gui.cpp:1545-1597);
+  HiScore (496,48) %.8d + highScoreNumContinues, Score (496,64) %.8d +
+  numRetries (Gui.cpp:1545-1597, 后缀同行 +112);
   Graze (496,160) %d, Point (496,176) %d/%d (Gui.cpp:1598-1610)。
-  原版 Score 后缀是 highScoreNumContinues, 逻辑层无此字段, 不画(报告注明)。
 - 残机/炸弹星: sprite10/11(16x16) 左上 (496+i*16, 96/112), 数量取
   int(livesRemaining)/int(bombsRemaining) (Gui.cpp:1516-1535)。
 - Power: 蓝白渐变条 (496,144)-(496+power,160) + 数字(power<128)或 "MAX"
@@ -70,6 +70,9 @@ _CHERRY_PLUS_COLOR = (192, 128, 176)
 # 原版樱点槽稳态左上角 (ascii.anm script 4 interrupt 1 终值, ANM_22 左上锚)
 _GAUGE_POS = (32, 464)
 
+# FPS 显示位置: 底部左区, 樱点槽(32..128)右侧 (原版在 (512,464), 见 render_fps)
+_FPS_POS = (136, 468)
+
 
 class HudView:
     """右栏 HUD + 樱点槽渲染器。资源懒加载(SpriteBank 首次取值才开包)。"""
@@ -80,6 +83,7 @@ class HudView:
         self._tint: dict[tuple[int, tuple[int, int, int]], pygame.Surface] = {}
         # 静态窗口框缓存: 每帧 ~150 次 tile blit 不变内容, 合成一次后整面 blit
         self._chrome: pygame.Surface | None = None
+        self._fps_font: pygame.font.Font | None = None
 
     # ---- 贴图工具 ----
     @staticmethod
@@ -180,6 +184,10 @@ class HudView:
                 except (AttributeError, TypeError):
                     high = 0
         self._draw_text(surf, _VALUE_X, 48, f"{high:08d}")
+        # HiScore 的续关数后缀 (Gui.cpp:1572-1576, highScoreNumContinues),
+        # 与 Score 行的 numRetries 后缀同位 —— 缺了它 HiScore 视觉上少一位
+        self._draw_text(surf, _VALUE_X + 112, 48,
+                        f"{g.high_score_num_continues % 10}")
         self._draw_text(surf, _VALUE_X, 64, f"{g.gui_score:08d}")
         # retries 后缀(Gui.cpp:1553)
         self._draw_text(surf, _VALUE_X + 112, 64, f"{g.num_retries % 10}")
@@ -296,6 +304,23 @@ class HudView:
     def render_overlay(self, surf: pygame.Surface, game) -> None:
         """画樱点槽(在游戏区 blit 之后调; 原版在弹点层, 盖在游戏场景上)。"""
         self._render_cherry(surf, game)
+
+    def render_fps(self, surf: pygame.Surface, fps: float) -> None:
+        """帧率显示 (Supervisor.cpp:877 按 "%.02ffps" 格式化, 原版画在窗口
+        底部 (512,464), Supervisor.cpp:948-951; 按用户要求移到左下 HUD 区,
+        樱点槽右侧 —— BUGS.md 增量#3)。ascii 贴字无 '.'/字母字形, 用小号字体。
+        fps 的统计/平滑在调用方(pygame Clock.get_fps, 每 ~0.5s 刷新同原版)。"""
+        if fps <= 0.0:
+            return
+        if self._fps_font is None:
+            if not pygame.font.get_init():
+                pygame.font.init()
+            try:
+                self._fps_font = pygame.font.Font(None, 16)
+            except pygame.error:
+                return
+        img = self._fps_font.render(f"{fps:.2f}fps", True, (255, 255, 255))
+        surf.blit(img, _FPS_POS)
 
 
 __all__ = ["HudView", "WIN_W", "WIN_H"]

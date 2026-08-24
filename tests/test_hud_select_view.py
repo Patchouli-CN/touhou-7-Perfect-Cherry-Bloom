@@ -24,6 +24,7 @@ class _StubGlobals:
     """hud_view 读取的 globals 字段(games/th07/globals.py ZunGlobals 同名)。"""
     gui_score = 151180
     num_retries = 0
+    high_score_num_continues = 0
     lives_remaining = 2.0
     bombs_remaining = 3.0
     current_power = 64.0

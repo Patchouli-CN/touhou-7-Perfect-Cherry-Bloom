@@ -103,6 +103,17 @@ _SAKUYA_TARGET_ANGLE_LO = -2.0943952
 _SAKUYA_TARGET_ANGLE_HI = -1.0471976
 
 
+def _target_in_bounds(pos: Vec2, full_size: tuple[float, float]) -> bool:
+    """GameManager::IsInBounds (GameManager.cpp:42-65): 盒心±半宽/半高落在
+    (0..384, 0..448) 内为 True。索敌只锁定版内敌人 (BUGS.md 增量#5):
+    C++ 靠 isInBounds/OOB despawn (EnemyManager.cpp:701-731) 让飞出版面的
+    敌人及时退场, 本移植未实现该 despawn, 飞出/未进版的敌人会一直被
+    "最靠下"准则选中, 追踪弹因此锁到版外杂鱼。"""
+    hw, hh = full_size[0] / 2.0, full_size[1] / 2.0
+    return not (hw + pos.x < 0.0 or pos.x - hw > 384.0
+                or hh + pos.y < 0.0 or pos.y - hh > 448.0)
+
+
 class Targeting(msgspec.Struct):
     """每帧的索敌状态 (Player.hpp 的 positionOfLastEnemyHit/sakuyaTargetPosition/
     targetingEnemy)。每帧由上层 reset (Player::UpdateUI 对应), 伤害扫描中
@@ -317,7 +328,9 @@ class EnemyHost:
         会改动既有测试钉住的数值语义, 故保持分路径(偏差由
         test_enemies.py::test_mixed_bullet_bomb_damage_split_settlement 钉住)。
         is_reimu_a 透传 settle_damage 的 ReimuA 机型修正 (EnemyManager.cpp:
-        815-835)。每个敌人(无论是否受伤)都参与索敌 (targeting.update)。
+        815-835)。每个敌人(无论是否受伤)都参与索敌 (targeting.update), 但
+        仅当它部分位于版面内 (IsInBounds, BUGS.md 增量#5 —— 追踪弹不再锁
+        未进版/已飞出版面的杂鱼; 版外敌人照常结算伤害)。
         hasNoCollision/invisibleOnBomb 跳过整个碰撞/伤害段 (C++:754);
         life<=0 && canDie 的击杀分支在该门槛之外 (C++:941), 体术撞掉的血
         (contact_hits 的 life-=10) 也在此结算。
@@ -349,7 +362,11 @@ class EnemyHost:
                     enemy_timer=e._tick, can_be_damaged=e.can_be_damaged,
                     graze_damage=graze_damage, is_reimu_a=is_reimu_a)
                 e.life -= r.damage
-                targeting.update(e.pos, player.pos, is_boss=e.is_boss, is_sakuya=is_sakuya)
+                # 索敌只锁定版内敌人 (BUGS.md 增量#5, 见 _target_in_bounds);
+                # 版外敌人照常受击结算, 只是不做追踪目标
+                if _target_in_bounds(e.pos, e.hitbox_full):
+                    targeting.update(e.pos, player.pos, is_boss=e.is_boss,
+                                     is_sakuya=is_sakuya)
                 results.append((e, r))
             if e.life <= 0 and e.can_die:
                 if e.kill():

@@ -89,7 +89,8 @@ def test_main_difficulty_cursor_wraps_within_four() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Extra Start 入口流(简化: 不设解锁条件, 选机体后可选 Extra/Phantasm)
+# Extra Start 入口流(简化: 不设解锁条件; 先选 Extra/Phantasm 再选机体,
+# 与本篇"先难度后选人"一致 —— BUGS.md 增量#1)
 # ---------------------------------------------------------------------------
 
 class StubExtraGame(StubGame):
@@ -103,17 +104,17 @@ class StubExtraGame(StubGame):
 
 
 def test_extra_start_flow() -> None:
-    """Extra Start → 选机体 → Extra → 以难度 4 进 stage 7。"""
+    """Extra Start → 选 Extra → 选机体 → 以难度 4 进 stage 7。"""
     from touhou.games.th07.view import GameApp
 
     app = GameApp(StubExtraGame)
     app._on_menu(MenuAction.DOWN)      # 主菜单: 开始游戏 → Extra Start
     app._on_menu(MenuAction.CONFIRM)
-    assert app._screen == Screen.CHARACTER     # Extra 不选难度, 直接选机体
+    assert app._screen == Screen.EXTRA_LEVEL   # 先选 Extra/Phantasm(相当于难度)
+    app._on_menu(MenuAction.CONFIRM)   # Extra
+    assert app._screen == Screen.CHARACTER
     app._on_menu(MenuAction.DOWN)      # ReimuA → ReimuB
     app._on_menu(MenuAction.CONFIRM)
-    assert app._screen == Screen.EXTRA_LEVEL
-    app._on_menu(MenuAction.CONFIRM)   # Extra
     assert app._screen == Screen.PLAYING
     assert app._game.kw["difficulty"] == 4
     assert app._game.kw["character"] == 1
@@ -121,19 +122,23 @@ def test_extra_start_flow() -> None:
 
 
 def test_phantasm_entry_flow() -> None:
-    """Extra Start → 选机体 → Phantasm → 以难度 5 进 stage 8; BACK 可回退。"""
+    """Extra Start → 选 Phantasm → 选机体 → 以难度 5 进 stage 8; BACK 可回退。"""
     from touhou.games.th07.view import GameApp
 
     app = GameApp(StubExtraGame)
     app._on_menu(MenuAction.DOWN)
     app._on_menu(MenuAction.CONFIRM)     # Extra Start
-    app._on_menu(MenuAction.CONFIRM)     # 机体(默认 ReimuA)
     assert app._screen == Screen.EXTRA_LEVEL
-    app._on_menu(MenuAction.BACK)        # 回退到选机体
-    assert app._screen == Screen.CHARACTER
-    app._on_menu(MenuAction.CONFIRM)
+    app._on_menu(MenuAction.BACK)        # 回退到主菜单
+    assert app._screen == Screen.MAIN_MENU
+    app._on_menu(MenuAction.CONFIRM)     # Extra Start(光标停在 Extra Start)
     app._on_menu(MenuAction.DOWN)        # Extra → Phantasm
     app._on_menu(MenuAction.CONFIRM)
+    assert app._screen == Screen.CHARACTER
+    app._on_menu(MenuAction.BACK)        # 回退到 Extra/Phantasm 选择页
+    assert app._screen == Screen.EXTRA_LEVEL
+    app._on_menu(MenuAction.CONFIRM)     # Phantasm
+    app._on_menu(MenuAction.CONFIRM)     # 机体(默认 ReimuA)
     assert app._screen == Screen.PLAYING
     assert app._game.kw["difficulty"] == 5
     assert app._game.entered == 8

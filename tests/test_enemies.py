@@ -265,3 +265,29 @@ def test_mixed_bullet_bomb_damage_split_settlement() -> None:
     # 现状合计 13, 与 C++ 合并口径 18 的偏差即本条测试钉住的语义
     assert bullet_part + bomb_part == 13
     assert int((21 + 25) / 2.5) == 18  # C++ 对照值(文档用, 非实现目标)
+
+
+def test_targeting_skips_out_of_bounds_enemies() -> None:
+    """索敌只锁定版内敌人 (BUGS.md 增量#5, GameManager::IsInBounds 口径):
+    飞出版底/未进版的敌人不再被 positionOfLastEnemyHit 的"最靠下"准则
+    选中 (追踪弹因此不会锁到版外杂鱼); 版外敌人照常结算伤害。"""
+    p = make_player()
+    host, inside = _host_with_enemy_at(Vec2(192.0, 200.0))
+    host.spawn(path=[Vec2(192.0, 600.0)], life=100, speed=0.0)  # 已飞出版底
+    targeting = Targeting()
+    results, _ = host.shoot_hits(p, targeting, is_focus=False, is_sakuya=False,
+                                 bomb_in_use=False, stage=1)
+    assert targeting.position_of_last_enemy_hit == inside.pos
+    assert len(results) == 2  # 版外敌人照常受击结算, 只是不做追踪目标
+
+
+def test_targeting_skips_enemy_not_yet_entered() -> None:
+    """版顶上方的入场中敌人 (y+半高<0) 同样不锁定: 只有它在场时索敌保持
+    无效值 (-999) (BUGS.md 增量#5)。"""
+    p = make_player()
+    host, _ = _host_with_enemy_at(Vec2(192.0, -100.0))
+    targeting = Targeting()
+    host.shoot_hits(p, targeting, is_focus=False, is_sakuya=False,
+                    bomb_in_use=False, stage=1)
+    assert targeting.position_of_last_enemy_hit == Vec2(-999.0, -999.0)
+    assert not targeting.targeting

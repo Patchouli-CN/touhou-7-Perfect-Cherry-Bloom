@@ -159,6 +159,32 @@ def test_bomb_drains_cherry_and_counts() -> None:
     assert g.lives == lives0
 
 
+def test_deathbomb_cancels_miss() -> None:
+    """决死B (BUGS.md 增量#7): 中弹后的死亡窗口 (respawnTimer 倒数,
+    灵梦 15 帧 = .sht initialRespawnTimer) 内按 B → 消耗一枚 bomb 代替
+    丢残机 (Player.cpp:1719-1755 触发; BombData *Calc 每帧
+    playerState=INVULNERABLE, UpdateDeath 因此不再倒数结算)。"""
+    g = _game()
+    _tick_until_alive(g)
+    lives0, deaths0, bombs0 = g.lives, g.globals.deaths, g.bombs
+    g.items.clear()
+    g.host.clear()
+    g.bullets.fire(_bullet_at(Vec2(g.player.pos.x, g.player.pos.y - 60)))
+    for _ in range(600):
+        g.tick(keys=_STOP_KEYS)  # 站桩让弹打中
+        if g.player.state == PlayerState.DEAD:
+            break
+    assert g.player.state == PlayerState.DEAD, "未被击中"
+    g.tick(bomb=True)  # 死亡窗口内按 B
+    assert g.bomb.is_in_use, "决死B 未触发 bomb"
+    assert g.player.state != PlayerState.DEAD, "决死B 未取消死亡状态"
+    for _ in range(600):
+        g.tick(keys=_STOP_KEYS)
+    assert g.lives == lives0, "决死B 不应丢残机"
+    assert g.globals.deaths == deaths0, "决死B 不应计入死亡数"
+    assert g.bombs == bombs0 - 1, "决死B 应消耗一枚 bomb"
+
+
 def test_death_settle_and_respawn() -> None:
     """死亡: 掉 P/樱罚/power 扣 16; 重生时扣残机并重置炸弹数。"""
     g = _game()
