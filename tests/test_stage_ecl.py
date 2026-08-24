@@ -127,6 +127,37 @@ def test_stage1_midboss_bridged() -> None:
 
 
 @NEEDS_DAT
+def test_stage4_healthbar_tracks_boss_slot0() -> None:
+    """4 面三姐妹: 血条数据源必须是 bossId==0 主体, 不是最后 SET_BOSS 的卫星机。
+
+    主体 sub42 SET_BOSS(0) 并 spawn 三姐妹卫星机(槽 1..3, SET_LIFE 999999,
+    承伤经 GET_BOSS_INT(LAST_DAMAGE) 转嫁主体); C++ 血条每帧只取 bossId==0
+    敌人的 life/maxLife (EnemyManager.cpp:1066-1068)。移植曾把 HUD 绑到最后
+    一个 SET_BOSS 的卫星机 → 血条恒满 (BUGS.md 增量#1)。"""
+    g = _game()
+    g.enter_stage(4)
+    for f in range(600):
+        if g.player.state == PlayerState.ALIVE:
+            break
+        g.tick(keys=_move_keys(f))
+    g.ecl_timelines = []
+    e = g.ecl_host.spawn_enemy(42, Vec3(192.0, 100.0, 0.0), life=-1, item_drop=0,
+                               score=1000, mirror=0, context_args=EclContextArgs())
+    assert e is not None
+    for f in range(30):
+        g.tick(keys=_move_keys(f))
+    st0 = g.ecl_world.bosses[0]
+    assert st0 is not None and st0.boss_id == 0
+    # 绑定落在卫星机(999999)上时, 血条也必须显示主体血量
+    assert g.boss is not None
+    assert g.boss.max_life == max(st0.max_life, 1)
+    assert g.boss.life == max(st0.life, 0)
+    st0.life -= 5000  # 模拟 ECL 伤害归集(主体掉血)
+    g.tick(keys=_move_keys(0))
+    assert g.boss.life == st0.life
+
+
+@NEEDS_DAT
 def test_stage1_letty_spellcard_bridge() -> None:
     """尾王(蕾蒂): 快进到 timeline1 的 5040, 验证真实 sub 的 begin_spellcard
     桥接(is_active/is_capturing 置位, 符卡名解密)。

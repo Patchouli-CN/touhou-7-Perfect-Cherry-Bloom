@@ -1418,8 +1418,17 @@ class PerfectCherryBloom:
         st = self._boss_ecl_state
         assert boss is not None and st is not None  # ECL boss 存活期才进此函数
         boss.pos = Vec2(st.pos.x, st.pos.y)
-        boss.life = max(st.life, 0)
-        boss.max_life = max(st.max_life, 1)
+        # C++ 血条每帧只取 bossId==0 敌人的 life/maxLife (EnemyManager.cpp:1066-1068),
+        # 与绑定的符卡记账对象无关。4 面三姐妹卫星机占槽 1..6(life=999999, 承伤经
+        # GET_BOSS_INT(LAST_DAMAGE) 转嫁槽 0 主体), 绑定若落在卫星机上血条恒满,
+        # 故显示血量始终跟槽 0 主体; 槽 0 缺位时回退绑定对象(旧行为)。
+        bar_st = st
+        if st.boss_id != 0 and self.ecl_world is not None:
+            main = self.ecl_world.bosses[0]
+            if main is not None and main.is_boss:
+                bar_st = main
+        boss.life = max(bar_st.life, 0)
+        boss.max_life = max(bar_st.max_life, 1)
         boss.invincibility_timer = st.invincibility_timer
         boss.is_survival_spellcard = bool(st.is_survival_spellcard)
         boss.tick()
