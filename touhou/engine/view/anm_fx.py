@@ -10,7 +10,8 @@
   战斗常用项): 击坠爆炸(0=0x2ab)、道具爆皮(7=0x2b6)、自机弹命中火花
   (5=0x2b4, Player.cpp:896)、玩家死亡大爆(12=0x2bb + 6=0x2b5×16,
   Player.cpp:1234-1235)、focus 判定点环(24=0x2c2 AttachToPlayer,
-  Player.cpp:1438)。粒子物理照抄 InitDeceleratingBurst(Fast)/UpdatePhysics;
+  Player.cpp:1438)、结界破裂樱点(29=0x2b2 Burst30Frames, Player.cpp:2181)。
+  粒子物理照抄 InitDeceleratingBurst(Fast)/UpdatePhysics/UpdateBurst30Frames;
   回收口径 = OnUpdate: ExecuteScript 结束(pc<0)即释放。
 
 近似项: 特效原为世界空间 3D quad, 这里按游戏平面 1:1 映射成屏幕 2D;
@@ -29,7 +30,7 @@ from ...schema.anm import parse_scripts
 from .anm_vm import AnmVm, ScriptRef, chain_offsets, reset_and_run
 
 # EffectManager.cpp g_EffectMapping 子集: effectId → (anm 全局 script id, 粒子物理)
-_FX_STATIC, _FX_BURST, _FX_BURST_FAST, _FX_ATTACH = 0, 1, 2, 3
+_FX_STATIC, _FX_BURST, _FX_BURST_FAST, _FX_ATTACH, _FX_BURST30 = 0, 1, 2, 3, 4
 EFFECT_TABLE: dict[int, tuple[int, int]] = {
     0: (0x2AB, _FX_STATIC),      # 击坠爆炸爆风环 (EnemyManager deathAnm1=0)
     1: (0x2AC, _FX_STATIC),
@@ -42,6 +43,7 @@ EFFECT_TABLE: dict[int, tuple[int, int]] = {
     8: (0x2B7, _FX_BURST_FAST),  # 擦弹 (Player.cpp:1197)
     12: (0x2BB, _FX_STATIC),     # 玩家死亡大爆风 (Player.cpp:1234)
     24: (0x2C2, _FX_ATTACH),     # focus 判定点环 AttachToPlayer (Player.cpp:1438)
+    29: (0x2B2, _FX_BURST30),    # 结界破裂樱点 ×32 (Player.cpp:2181)
 }
 
 
@@ -249,13 +251,15 @@ class Vm2d:
 class Effect:
     """一个特效粒子(EffectManager.hpp Effect 的 2D 子集)。"""
 
-    __slots__ = ("vm2d", "kind", "x", "y", "vx", "vy", "ax", "ay", "timer")
+    __slots__ = ("vm2d", "kind", "x", "y", "vx", "vy", "ax", "ay", "timer",
+                 "ex", "ey")
 
     def __init__(self, vm2d: Vm2d, kind: int, x: float, y: float) -> None:
         self.vm2d = vm2d
         self.kind = kind
         self.x, self.y = x, y
         self.vx = self.vy = self.ax = self.ay = 0.0
+        self.ex, self.ey = x, y       # emitterPosition (burst30 的发射原点)
         self.timer = 0
 
 
@@ -273,11 +277,14 @@ class EffectLayer:
         return len(self.effects)
 
     def spawn(self, effect_id: int, x: float, y: float, count: int = 1,
-              color: int = 0xFFFFFFFF) -> list[Effect]:
+              color: int = 0xFFFFFFFF,
+              direction: tuple[float, float] | None = None) -> list[Effect]:
         """SpawnParticles(effectId, pos, count, color) 子集。
 
         color = D3DCOLOR 0xAARRGGBB, 直接进 vm.color
-        (EffectManager.cpp:539/604/646)。
+        (EffectManager.cpp:539/604/646)。direction: burst30 的定向
+        (BreakBorder 均布 32 方向, Player.cpp:2178-2183 覆写
+        effect->direction; None 时按 InitRandomDir 随机)。
         """
         spec = EFFECT_TABLE.get(effect_id)
         if spec is None or self.sbank is None or not self.sbank.ok:
@@ -302,6 +309,13 @@ class EffectLayer:
                 e.vx = (self.rng.random() * 256.0 - 128.0) / 12.0
                 e.vy = (self.rng.random() * 256.0 - 128.0) / 12.0
                 e.ax, e.ay = -e.vx / 19.0, -e.vy / 19.0
+            elif kind == _FX_BURST30:
+                if direction is None:
+                    # InitRandomDir (EffectManager.cpp:189)
+                    ang = self.rng.random() * 2.0 * math.pi - math.pi
+                    e.vx, e.vy = math.cos(ang), math.sin(ang)
+                else:
+                    e.vx, e.vy = direction
             self.effects.append(e)
             out.append(e)
         return out
@@ -324,6 +338,12 @@ class EffectLayer:
             elif e.kind == _FX_ATTACH and player_pos is not None:
                 e.x, e.y = player_pos          # UpdateAttachToPlayer
             e.timer += 1
+            if e.kind == _FX_BURST30:
+                # UpdateBurst30Frames (EffectManager.cpp:232):
+                # pos = direction * (timer*256/30) + emitterPosition
+                d = e.timer * 256.0 / 30.0
+                e.x = e.ex + e.vx * d
+                e.y = e.ey + e.vy * d
             if e.vm2d.alive:
                 alive.append(e)
         self.effects = alive

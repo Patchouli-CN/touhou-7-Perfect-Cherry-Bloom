@@ -10,6 +10,8 @@ ANM_OFFSET/特效 gid 等 th07 数值, 以及默认渲染后端 PygameRenderer�
 - ``pygame_backend``: 默认渲染后端 PygameRenderer(import 本包即经
   ``@register_renderer("pygame")`` 登记到 registry)
 - ``sprite_view`` / ``hud_view``: 战斗画面(GameView)与右栏 HUD
+- ``popup_view``: 得分弹字与状态横幅(AsciiManager::DrawPopups / Gui 的
+  statusPopup 段; 逻辑侧在 games/th07/globals.py 的 popups/status_popup)
 - ``title_view`` / ``select_view`` / ``option_view`` / ``result_view`` /
   ``stage_results_view`` / ``stage_title_view`` / ``ending_view`` /
   ``dialog_view`` / ``continue_view`` / ``playerdata_view`` /

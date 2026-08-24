@@ -64,7 +64,7 @@ from ....engine.view.anm_fx import AnmScriptBank, EffectLayer, TransformCache, V
 from ....engine.view.bg3d_view import StageScene
 from ....engine.view.sprite_bank import SpriteBank
 from .bomb_view import BombView
-from .spellcard_view import SpellcardView
+from .spellcard_view import SpellcardBgView, SpellcardView
 from .stage_title_view import StageTitleView
 
 GAME_W, GAME_H = int(SCREEN.x), int(SCREEN.y)   # 384x448 游戏区
@@ -174,6 +174,7 @@ class GameView:
         self._spawn_fx_done: dict[tuple[int, int], int] = {}  # key → 本帧已 execute
         self._bomb_view = BombView(self.bank, self._tcache)  # bomb 视觉层
         self._spellcard_view = SpellcardView(self.bank, self._tcache)  # 符卡宣言
+        self._spellcard_bg = SpellcardBgView(self.bank, self._tcache)  # 符卡背景
         self._stage_title = StageTitleView(self.bank, self._tcache)  # 关卡标题
         self._bspr: dict[tuple[int, int], pygame.Surface | None] = {}
         # (弹型, sprite_offset) → etama sprite(纯函数, 全局缓存一次)
@@ -191,6 +192,7 @@ class GameView:
             return
         self._stage = stage_no
         self._stage_title.set_stage(stage_no)  # 关卡标题 (Gui.cpp:655 vms1)
+        self._spellcard_bg.set_stage(stage_no)  # 符卡背景 VM 脚本表按关切换
         # 换关时 game.host 整体重建(impl._advance_stage), 旧敌人不经过
         # on_enemy_gone → gone_events 随旧 ecl_host 丢弃; 残留的 _enemy_vis
         # 条目会在 id(EnemyState) 复用时让新敌人继承旧关卡的 VM/贴图, 必须清掉
@@ -251,20 +253,45 @@ class GameView:
 
     # ---- 背景(3D .std 场景优先, 失败退回 2D 平铺竖滚近似) ----
     def _render_bg(self, surf: pygame.Surface, game=None) -> None:
+        """背景相: 场景绘制 + 符卡背景 (Stage.cpp spellCardState)。
+
+        符卡 state 1 (宣言起 60 帧): 场景照画, 黑罩淡入; state 2: 3D/平铺
+        整体停画 (OnDrawHighPrio:574/OnDrawLowPrio:617 的守卫), 场景脚本
+        照常推进 (Stage::OnUpdate 与绘制无关), 画面只剩黑底+符卡背景 VM。
+        """
+        sc = self._spellcard_bg
+        sc_ticks = sc.ticks(game) if game is not None else None
+        if sc_ticks is None or sc_ticks <= sc.FADE_FRAMES:
+            self._render_bg_scene(surf, game)
+        elif self._bg3d is not None and not self._bg3d_broken:
+            try:
+                ecl_world = getattr(game, "ecl_world", None)
+                wait = getattr(ecl_world, "script_wait_time", 0) or 0
+                self._bg3d.tick(wait)   # 只推进不渲染 (state 2 停画)
+            except Exception:
+                self._bg3d_broken = True
+        if sc_ticks is not None:
+            # 黑罩淡入/黑底 + 符卡背景 VM (画在背景之上、战斗实体之下,
+            # draw chain: Stage low prio=4 < Enemy 5/Player 6-8/Bullet 10)
+            sc.render(surf, sc_ticks)
+
+    def _render_bg_scene(self, surf: pygame.Surface, game=None) -> None:
         if self._bg3d is not None and not self._bg3d_broken:
             try:
                 wait = 0
                 if game is not None:
                     ecl_world = getattr(game, "ecl_world", None)
                     wait = getattr(ecl_world, "script_wait_time", 0) or 0
-                # 重负载降载: 动态分辨率到底后仍超预算 → 隔帧渲染(复用上一帧;
-                # tick 照常推进, 相机/脚本不停, 只是画面 30fps 刷新)
+                # tick 每帧推进 (原版 Stage::OnUpdate 与绘制解耦, 相机/脚本
+                # 不停; 修复: 隔帧降载的旧实现连 tick 一起跳, 背景动画会
+                # 半速); 隔帧只复用上一帧的画面
+                self._bg3d.tick(wait)
+                # 重负载降载: 动态分辨率到底后仍超预算 → 隔帧渲染(复用上一帧)
                 if self._bg_period > 1 and self.frame % self._bg_period != 0 \
                         and self._bg_cache is not None:
                     surf.blit(self._bg_cache, (0, 0))
                     return
                 t0 = time.perf_counter()
-                self._bg3d.tick(wait)
                 if self._bg_cache is None:
                     self._bg_cache = pygame.Surface((GAME_W, GAME_H))
                 self._bg3d.render_into(self._bg_cache)
@@ -291,13 +318,15 @@ class GameView:
             self._bg_dark.fill((0, 0, 16, 80))
         surf.blit(self._bg_dark, (0, 0))
 
-    # bg3d 降载(纯视觉取舍, 不动逻辑): EMA 超 8ms 先降内部分辨率
-    # (0.35→0.25 封顶), 到底仍超再隔帧渲染; 低于 3.5ms 逐步恢复
+    # bg3d 降载(纯视觉取舍, 不动逻辑): EMA 超 12ms 先降内部分辨率
+    # (0.45→0.25 封顶), 到底仍超再隔帧渲染; 低于 6ms 逐步恢复
     # (先回帧率再升分辨率); 冷却防抖动。
-    _BG_EMA_HI = 8.0
-    _BG_EMA_LO = 3.5
+    # 预算口径: 背景糊的主因是低内部分辨率, 12ms 让轻载关卡保住 0.45
+    # (stage1 实测 ~11ms@0.35, 旧 8ms 预算会把它压到 0.25 地板)。
+    _BG_EMA_HI = 12.0
+    _BG_EMA_LO = 6.0
     _BG_SCALE_MIN = 0.25
-    _BG_SCALE_MAX = 0.35
+    _BG_SCALE_MAX = 0.45
 
     def _adapt_bg_resolution(self, dt_ms: float) -> None:
         ema = dt_ms if self._bg_ema_ms is None \

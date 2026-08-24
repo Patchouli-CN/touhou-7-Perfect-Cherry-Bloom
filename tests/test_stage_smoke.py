@@ -296,8 +296,12 @@ def test_stage7_extra_ran_early_spells():
 
 @NEEDS_DAT
 def test_stage8_phantasm_yukari_early_spells():
-    """8 面(Phantasm 紫)到第 2 张符卡(6504): ExIns 23/0 实弹触发。"""
-    _, r = run_stage(8, 7000)
+    """8 面(Phantasm 紫)到第 2 张符卡: ExIns 23/0 实弹触发。
+
+    帧数预算 7600: 符卡中满火力不再清弹(还原 ItemManager.cpp:227/345 的
+    !spellcardInfo.isActive 分支)后, 屏上弹更多 → 玩家死亡/掉火力更勤,
+    第 2 张符卡从 ~6504 推迟到 ~7118(行为按 C++ 权威, 锚点顺延)。"""
+    _, r = run_stage(8, 7600)
     assert len(r.spell_frames) >= 2
     assert all(idx in r.ex for idx in (0, 23))
     assert r.stalls == 0

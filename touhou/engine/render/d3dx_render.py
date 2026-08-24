@@ -35,7 +35,7 @@ blit 由调用侧完成)。
   barycentric 的缩放 blit 快路径; 近满屏大 quad 隔像素采样 + 2x2 块写回。
 - 帧缓冲以雾色打底: 原版 color==0 时每帧只清 zbuffer, 未覆盖像素保留
   上一帧(几乎总是同色天空); 黑底会漏接缝。内部缓冲按 render_scale
-  (默认 0.35)降采样光栅化(原版 POINT 采样+重雾, 降采样后观感接近;
+  (默认 0.45)降采样光栅化(原版 POINT 采样+重雾, 降采样后观感接近;
   性能取舍), 调用侧负责 smoothscale 放大回 384x448。
 
 数值约束(重构红线): 标量/向量化入口的逐元素表达式与 bg3d_view 原裸写
@@ -215,10 +215,10 @@ class D3DXLikeRender:
     sky_fog_*/world_origin/clear_color 字段, 然后 ``render(vm1, vm2)``
     产出内部缓冲 (int(GAME_H*render_scale), int(GAME_W*render_scale), 3)
     uint8 RGB。render_scale<1 是性能折中(原版 POINT 采样+雾本身较糊,
-    半分辨率平滑放大后观感接近)。
+    降采样平滑放大后观感接近)。
     """
 
-    def __init__(self, render_scale: float = 0.35) -> None:
+    def __init__(self, render_scale: float = 0.45) -> None:
         self.render_scale = render_scale
         self.buf_w = max(1, int(GAME_W * render_scale))
         self.buf_h = max(1, int(GAME_H * render_scale))
@@ -1044,10 +1044,24 @@ class D3DXLikeRender:
     def _blit_rect(self, fb: np.ndarray, p: np.ndarray, uv: np.ndarray,
                    spr: SpriteTex, color: Sequence[int], blend_mode: int,
                    cov: np.ndarray | None, filled: np.ndarray | None) -> None:
-        """屏幕轴对齐 quad 的最近邻缩放 blit(向量化切片, 无 barycentric)。"""
+        """屏幕轴对齐 quad 的最近邻缩放 blit(向量化切片, 无 barycentric)。
+
+        角点序固定为局部 (-hw,-hh)..(hw,hh), 经 rotation.z ≈ ±90°/180° 旋转
+        后屏幕序会翻转(p0 落到右下): 此时宽高为负, 早退会把整只 quad 丢掉
+        —— 旋转 quad 每转过 90° 奇数倍就丢一帧, 表现为整帧闪黑(实测
+        stage4/6 的旋转全屏 vm 各命中数次)。按屏幕 min/max 重排角点并同步
+        翻转 uv(u/v 轴向互换与原样画等效, 只是镜像; 原版 D3D 按顶点序光栅
+        化本就画出镜像), 只丢弃真正退化的 quad。
+        """
         H, W = fb.shape[:2]
         xa, ya = float(p[0, 0]), float(p[0, 1])
         xb, yb = float(p[3, 0]), float(p[3, 1])
+        ua, ub = float(uv[0, 0]), float(uv[3, 0])
+        va, vb = float(uv[0, 1]), float(uv[3, 1])
+        if xb < xa:                     # 旋转 ≈90°/270°: x 序翻转, u 同步翻转
+            xa, xb, ua, ub = xb, xa, ub, ua
+        if yb < ya:                     # 旋转 ≈180°: y 序翻转, v 同步翻转
+            ya, yb, va, vb = yb, ya, vb, va
         wdt = xb - xa
         hgt = yb - ya
         if wdt <= 0.0 or hgt <= 0.0:
@@ -1064,10 +1078,10 @@ class D3DXLikeRender:
         bw = dx1 - dx0
         bh = dy1 - dy0
         step = 2 if bw * bh > (H * W) // 4 and min(bw, bh) >= 8 else 1
-        us = uv[0, 0] + ((np.arange(dx0, dx1, dtype=np.float32)[::step] + 0.5 - xa)
-                         / wdt) * (uv[1, 0] - uv[0, 0])
-        vs = uv[0, 1] + ((np.arange(dy0, dy1, dtype=np.float32)[::step] + 0.5 - ya)
-                         / hgt) * (uv[2, 1] - uv[0, 1])
+        us = ua + ((np.arange(dx0, dx1, dtype=np.float32)[::step] + 0.5 - xa)
+                   / wdt) * (ub - ua)
+        vs = va + ((np.arange(dy0, dy1, dtype=np.float32)[::step] + 0.5 - ya)
+                   / hgt) * (vb - va)
         tu = (us * tw).astype(np.int32) % tw
         tv = (vs * th).astype(np.int32) % th
         src = tex[tv][:, tu].astype(np.float32)

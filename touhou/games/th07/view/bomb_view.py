@@ -26,6 +26,9 @@ anm VM 全部留在本模块 (C++ 里 subInfo->vms 由 *Calc 里 ExecuteAnmIdx �
   framebuffer), 脚本窗口坐标直接绘制; 底条为 ascii script 1
   (无 ANM_22 → 默认中心锚, AnmVmBase.Initialize), bg.pos=name.pos
   直画 (Gui.cpp:1724-1725), 与 spellcard_view 同口径。
+- 樱之结界 (Player.cpp 的 EffectManager 段, 见 _tick_border):
+  ActivateBorder 的樱花圈 (effect 28 = etama script 0x2db, :2117-2136)
+  与 BreakBorder 的扩散环+32 樱点粒子 (:2159-2183)。
 
 原版语义说明: 清弹盒/伤害盒在原版**没有任何视觉** (纯逻辑盒),
 bomb 结束后多活的盒 (如灵梦B 集中 210>190 的 20 帧) 也不该有画面,
@@ -40,7 +43,8 @@ import pygame
 
 from ....schema.anm import parse_scripts
 from ..bomb import (CHAR_MARISA_A, CHAR_MARISA_B, CHAR_REIMU_A,
-                                CHAR_REIMU_B, CHAR_SAKUYA_A, CHAR_SAKUYA_B)
+                                CHAR_REIMU_B, CHAR_SAKUYA_A, CHAR_SAKUYA_B,
+                                BorderState)
 from ....engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d
 from ....engine.view.anm_vm import AnmVm, ScriptRef, reset_and_run
 
@@ -61,6 +65,8 @@ _SCR_SAKUYA_A_HIT = 0x460    # 1120: 命中钉住后的刀 (BombData.cpp:1272/14
 _SCR_SAKUYA_B = 0x409        # 4 方阵
 _SCR_SAKUYA_B_FOCUS = 0x40D  # 2 时停领域
 _SCR_INVULN_RING = 0x2DA     # SpawnBombInvulnEffect → SpawnEffect(25)
+_SCR_BORDER_RING = 0x2DB     # 结界樱花圈 → SpawnEffect(28) (g_EffectMapping[28])
+_FX_BORDER_PETAL = 29        # 破裂樱点粒子 SpawnParticles(29) (Player.cpp:2181)
 
 # 符卡名 + cutin 立绘 sprite (ShowBombNamePortrait 调用点实参, 含原版 quirks:
 # 魔理沙A 散传 1187 / 魔理沙B 散传 1185, 为同一 face 文件内的姿势差分)
@@ -143,6 +149,11 @@ class BombView:
         self._ring: Vm2d | None = None
         self._ring_s0 = (1.0, 1.0)
         self._ring_frames = 0
+        # ---- 樱之结界 (独立于 bomb, 由 game.border 状态驱动) ----
+        self._border_ring: Vm2d | None = None          # ACTIVE 中跟随自机的圈
+        self._border_break: list[tuple[Vm2d, float, float]] = []  # 破裂扩散环
+        self._border_prev: tuple[int, int, int] = (0, 0, 0)
+        # (id(border), has_border, invulnerability_timer) 上帧快照, 边沿判定用
         # ---- cutin/横幅 (Gui 层, 由自身脚本收尾) ----
         self._cutin: list[Vm2d] = []          # portrait/decorL/decorR/bg
         self._name_vm: AnmVm | None = None    # text.anm 运动 VM (无贴图)
@@ -211,6 +222,7 @@ class BombView:
             self._draw_darken(surf, bomb.timer, bomb.duration)
             self._tick_run(surf, game, fx)
         self._tick_ring(surf, game)
+        self._tick_border(surf, game, fx)
 
     def render_gui(self, surf: pygame.Surface, font) -> None:
         """cutin/横幅相: Gui 层, 画在战斗画面最顶 (Gui::OnDraw 段)。"""
@@ -312,6 +324,108 @@ class BombView:
             return
         # 不计入 effect_draws: 环的生命由无敌计时管理 (原版语义, 可超出 bomb)
         vm.draw(surf, game.player.pos.x, game.player.pos.y)
+
+    # ==================================================================
+    # 樱之结界特效 (Player.cpp 的 EffectManager 段; 逻辑在 games/th07/bomb.py
+    # 的 Border, 本段只读 game.border 的既有字段做表现)
+    # ==================================================================
+    def _start_border_ring(self, border) -> Vm2d | None:
+        """Player::ActivateBorder (Player.cpp:2117-2136): SpawnEffect(28)。
+
+        脚本 (etama 链局部 0x2db): 256x256 樱花圈, alpha 30 帧淡到 160,
+        ANGVEL 慢转, WAIT intvar 帧后自灭; start 已执行一帧
+        (SetAnmIdxAndExecuteScript 语义), 之后照 C++ 逐字段覆写。
+        """
+        sb = self._sbank("etama.anm", _ANM_OFFSET_BULLETS)
+        if sb is None:
+            return None
+        vm = Vm2d(sb, self.tcache)
+        if not vm.start(_SCR_BORDER_RING):
+            return None
+        timer = max(1, int(border.invulnerability_timer))   # 激活帧定格 540
+        v = vm.vm
+        v.interp_start[4] = 0                # scaleInterp: 1.0 → 0.25, 全程线性
+        v.interp_end[4] = timer
+        v.ease[4] = 0
+        v.scale_interp_initial = [1.0, 1.0]
+        v.scale_interp_final = [0.25, 0.25]
+        v.int_vars1[0] = timer               # 脚本 WAIT 的寿命 (= 结界剩余帧)
+        v.angle_vel[2] *= -1.0               # angleVel.z *= -1 (:2135)
+        return vm
+
+    def _start_border_break(self, game, fx, x: float, y: float) -> None:
+        """Player::BreakBorder (Player.cpp:2159-2183): 扩散环 + 32 樱点粒子。
+
+        环复用 effect 28 脚本: scale 0.0625→1.3 / alpha →0 各 30 帧
+        (alpha 初值取 spawn 帧 vm.color.a ≈ 5, 近乎不可见 —— 原版即如此,
+        破裂的视觉主体是清弹圆与樱点粒子); 粒子 effect 29 (0x2b2)
+        Burst30Frames: direction 均布 32 方向, 30 帧飞 256px。
+        """
+        sb = self._sbank("etama.anm", _ANM_OFFSET_BULLETS)
+        if sb is not None:
+            vm = Vm2d(sb, self.tcache)
+            if vm.start(_SCR_BORDER_RING):
+                v = vm.vm
+                v.interp_start[4] = 0
+                v.interp_end[4] = 30
+                v.ease[4] = 0
+                v.scale_interp_initial = [0.0625, 0.0625]
+                v.scale_interp_final = [1.3, 1.3]
+                v.interp_start[2] = 0        # colorInterp alpha → 0 (ease 1)
+                v.interp_end[2] = 30
+                v.ease[2] = 1
+                v.color_interp_initial[3] = v.color[3]
+                v.color_interp_final[3] = 0
+                v.int_vars1[0] = 30
+                self._border_break.append((vm, x, y))
+        angle = -math.pi
+        for _ in range(32):
+            fx.spawn(_FX_BORDER_PETAL, x, y, 1,
+                     direction=(math.cos(angle), math.sin(angle)))
+            angle += 0.19634955
+
+    def _tick_border(self, surf: pygame.Surface, game, fx) -> None:
+        """结界圈生命周期: READY→ACTIVE 边沿起圈跟随自机 (:1948-1950
+        borderEffect->pos1=positionCenter), ACTIVE→NONE 边沿按自然破/主动破
+        分派; 破裂扩散环定格在破裂点 (UpdateNoOp, 不跟随)。
+        """
+        border = getattr(game, "border", None)
+        if border is None:
+            return
+        prev_id, prev_state, prev_timer = self._border_prev
+        cur_state = int(border.has_border)
+        if cur_state == BorderState.ACTIVE:
+            ring = self._border_ring
+            if ring is None:
+                ring = self._start_border_ring(border)
+                self._border_ring = ring
+            if ring is not None:
+                ring.execute()
+                if not ring.alive:
+                    self._border_ring = None
+                else:
+                    ring.draw(surf, game.player.pos.x, game.player.pos.y)
+        elif prev_state in (BorderState.ACTIVE, BorderState.READY) \
+                and prev_id == id(border):
+            # ACTIVE/READY→NONE: 自然破 (仅 ACTIVE 且计时耗尽, 上帧 timer<=1)
+            # 只撤圈 (BreakBorderNaturally :2029-2033 仅 inUseFlag=0);
+            # 主动破/中弹破/死亡破 (BreakBorder, READY 也走这里) → 扩散环+粒子。
+            # id 守卫: 换关/重开时逻辑层整体换新 Border 对象, 不算破裂
+            self._border_ring = None
+            if prev_state == BorderState.READY or prev_timer > 1:
+                self._start_border_break(game, fx, game.player.pos.x,
+                                         game.player.pos.y)
+        else:
+            self._border_ring = None
+        self._border_prev = (id(border), cur_state,
+                             int(border.invulnerability_timer))
+        alive = []
+        for vm, x, y in self._border_break:
+            vm.execute()
+            if vm.alive:
+                alive.append((vm, x, y))
+                vm.draw(surf, x, y)
+        self._border_break = alive
 
     # ---- 暗化 ----
     def _draw_darken(self, surf: pygame.Surface, timer: int,

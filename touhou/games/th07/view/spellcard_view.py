@@ -31,6 +31,9 @@
 - 绘制层: 本模块画在 640x480 窗口层 (Gui::OnDraw 原本就画全窗口
   framebuffer; 游戏区仅是其 (32,16) 子区域), 坐标直接用脚本窗口坐标,
   长符卡名滑入/滑出 (script 1797 退场到窗口 x=576) 不被游戏区右缘裁切。
+
+另含 SpellcardBgView: 符卡宣言后的背景变化 (Stage.cpp spellCardState),
+见类 docstring。
 """
 from __future__ import annotations
 
@@ -58,6 +61,127 @@ _FACE_ANM = ("face_rm00.anm", "face_mr00.anm", "face_sk00.anm")
 # 本模块画在 640x480 窗口层 (脚本坐标即窗口坐标, 不换算; 见模块 docstring)
 
 _NAME_COLOR = (255, 240, 240)   # DrawStringFormat 0xfff0f0 (Gui.cpp:390)
+
+# ---- 符卡背景 (Stage.cpp spellCardState + spellcardVms) ----
+# 宣言时 SetAnmIdxAndExecuteScript(&spellcardVms[i], i + spellcardVmsIdx + 732)
+# (EclManager.cpp:676-679); numSpellcardVms/spellcardVmsIdx 按关
+# (EffectManager.cpp AddedCallback :847-920 + Gui.cpp:781-792)。
+# eff 文件按 ANM_OFFSET_EFFECTS(0x2dc)/EFFECTS2(0x2dd)/EFFECTS3(0x2de) 装载
+# (EffectManager.cpp :854-916), 全局脚本 id = base + 文件内链式偏移 id。
+_SC_BG_VMS: dict[int, tuple[tuple[str, int, tuple[int, ...]], ...]] = {
+    # stage: ((eff 文件, 装载 base, 全局脚本 id 组), ...)
+    1: (("eff01.anm", 0x2DC, (0x2DC,)),),
+    2: (("eff02.anm", 0x2DC, (0x2DC,)),),
+    3: (("eff03.anm", 0x2DC, (0x2DC,)),),
+    4: (("eff04.anm", 0x2DC, (0x2DC,)), ("eff04b.anm", 0x2DD, (0x2DD,))),
+    5: (("eff05.anm", 0x2DC, (0x2DC, 0x2DD)),),
+    6: (("eff06.anm", 0x2DE, (0x2DE, 0x2DF)),),
+    7: (("eff07.anm", 0x2DD, (0x2DD, 0x2DE)),),
+    8: (("eff08.anm", 0x2DE, (0x2DE, 0x2DF)),),
+}
+_SC_BG_FADE = 60          # state 1 时长 (Stage.cpp:482 ticks==60 → state++)
+
+
+class SpellcardBgView:
+    """符卡宣言后的背景变化 (Stage.cpp spellCardState 状态机)。
+
+    原版时序 (EclManager::BeginSpellcard :674-679 置 state=1/ticks=0 并启动
+    spellcardVms, EndSpellcard :849 清 0; Stage::OnUpdate :480-491 ticks
+    到 60 → state=2, 期间每帧 ExecuteScript(spellcardVms)):
+    - state 1 (宣言起 60 帧): 3D 场景照画, 游戏区叠黑罩淡入
+      (OnDrawLowPrio :648-660 ScreenEffect::DrawSquare, alpha=ticks*255/60),
+      符卡背景 VM 同步淡入 (脚本自带 FADE 255,60);
+    - state 2 (60 帧后): 3D 场景/vm1/vm2 整体停画 (OnDrawHighPrio :574/
+      OnDrawLowPrio :617 的 spellCardState<=1 守卫; 场景脚本/相机照常推进),
+      只剩黑底 + 符卡背景 VM (OnDrawLowPrio :671-676)。
+    符卡背景 VM 画在战斗实体之下 (draw chain: Stage low prio=4 <
+    Enemy 5 / Player 6-8 / Effect 9 / Bullet 10), 即本类的调用点在游戏区
+    渲染的背景相。3D 停画由 GameView._render_bg 配合 (本类只负责黑罩/黑底
+    与 VM)。
+    """
+
+    FADE_FRAMES = _SC_BG_FADE   # state 1 时长 (GameView 据此切 3D 停画)
+
+    def __init__(self, bank, tcache: TransformCache) -> None:
+        self.bank = bank
+        self.tcache = tcache
+        self._sbanks: dict[tuple[str, int], AnmScriptBank] = {}
+        self._stage = 1
+        self._vms: list[Vm2d] = []
+        self._dark = pygame.Surface((1, 1))     # 尺寸惰性匹配游戏区
+        # ---- 测试断言用: 本帧背景 VM 绘制调用数 ----
+        self.bg_draws = 0
+
+    def set_stage(self, stage_no: int) -> None:
+        self._stage = stage_no
+        self._vms = []                  # 换关后下次宣言按新关脚本表重建
+
+    def _sbank(self, name: str, base: int) -> AnmScriptBank | None:
+        key = (name, base)
+        sb = self._sbanks.get(key)
+        if sb is None:
+            sb = AnmScriptBank(self.bank, name, base)
+            self._sbanks[key] = sb
+        return sb if sb.ok else None
+
+    # ---- 每帧: 符卡进行中 → 距宣言的帧数 (ticksSinceSpellcardStarted) ----
+    def ticks(self, game) -> int | None:
+        """None = 无符卡; 同时做 VM 边沿管理 (宣言启动/结束撤掉)。"""
+        probe = getattr(game, "spellcard_active", None)
+        active = bool(probe()) if callable(probe) else bool(probe)
+        boss = getattr(game, "boss", None)
+        if not active or boss is None:
+            self._vms = []              # EndSpellcard: state=0, VM 停画
+            return None
+        if not self._vms:
+            self._start()
+        return int(getattr(boss, "timer", 0))
+
+    def _start(self) -> None:
+        """BeginSpellcard 的 spellcardVms 启动 (EclManager.cpp:676-679)。"""
+        self._vms = []
+        for name, base, gids in _SC_BG_VMS.get(self._stage, ()):
+            sb = self._sbank(name, base)
+            if sb is None:
+                log.warning("符卡背景 anm {} 缺失, 该关符卡背景 VM 跳过", name)
+                continue
+            for gid in gids:
+                vm = Vm2d(sb, self.tcache)
+                if vm.start(gid):
+                    self._vms.append(vm)
+                else:
+                    log.warning("符卡背景脚本 {:#x} 在 {} 缺失, 跳过", gid, name)
+
+    # ---- 绘制 (游戏区 384x448, 背景相; 脚本坐标是窗口坐标, 换算 -32/-16) ----
+    def render(self, surf: pygame.Surface, ticks: int) -> None:
+        self.bg_draws = 0
+        if ticks <= _SC_BG_FADE:
+            # state 1: 黑罩淡入 (OnDrawLowPrio :652-658, alpha=ticks*255/60)
+            alpha = ticks * 255 // _SC_BG_FADE
+            if alpha > 0:
+                if self._dark.get_size() != surf.get_size():
+                    self._dark = pygame.Surface(surf.get_size())
+                self._dark.fill((0, 0, 0))
+                self._dark.set_alpha(alpha)
+                surf.blit(self._dark, (0, 0))
+        else:
+            # state 2: 3D 已停画; 原版不清 TARGET, 上帧黑罩 (alpha=255) 已盖满
+            surf.fill((0, 0, 0))
+        for vm in self._vms:
+            vm.execute()
+            if not vm.alive:
+                continue
+            x = vm.vm.pos[0] + vm.vm.offset[0] - 32.0
+            y = vm.vm.pos[1] + vm.vm.offset[1] - 16.0
+            # ANM_22 anchor=3 (eff01 等): pos 是 quad 左上, 平移成中心锚
+            # (AnmManager.cpp Draw 段; 与 SpellcardView._draw 同口径)
+            if vm.vm.anchor and vm.surf is not None:
+                if vm.vm.anchor & 1:
+                    x += vm.surf.get_width() * abs(vm.vm.scale[0]) / 2.0
+                if vm.vm.anchor & 2:
+                    y += vm.surf.get_height() * abs(vm.vm.scale[1]) / 2.0
+            vm.draw(surf, x, y)
+            self.bg_draws += 1
 
 
 def _load_text_scripts(bank) -> dict[int, list]:

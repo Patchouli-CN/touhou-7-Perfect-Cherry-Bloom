@@ -20,10 +20,12 @@
 
 用法: 每帧 tick(script_wait_time) 后 render() → 内部缓冲 uint8 RGB;
 render_into(surf) 负责放大到 384x448。render_scale<1 是性能折中(原版
-POINT 采样+雾本身较糊, 半分辨率平滑放大后观感接近)。
+POINT 采样+雾本身较糊, 降采样平滑放大后观感接近; 默认 0.45, 配合
+sprite_view 的动态降载 EMA 在重负载关卡自动回落)。
 
 与原版差距(本层; 渲染近似均已在 d3dx_render 标注):
-- 符卡变暗(spellCardState/color2 SmoothBlendColor)、EffectManager 特效未移植。
+- EffectManager 特效未移植; 符卡背景 (spellCardState 黑罩/3D 停画/符卡
+  背景 VM) 在 games/th07/view/spellcard_view.py 的 SpellcardBgView。
 - ECL script_wait_time 用边沿触发消费(引擎侧 EclWorld.script_wait_time 只写
   不清, 原版 g_Stage.scriptWaitTime 消费后清零; 这里记录上次值, 变化时才跳)。
 """
@@ -96,7 +98,7 @@ class StageScene:
 
     def __init__(self, stage: Stage, scripts: dict[int, ScriptRef],
                  sprites: dict[int, SpriteTex],
-                 render_scale: float = 0.35) -> None:
+                 render_scale: float = 0.45) -> None:
         self.stage = stage
         self._scripts = scripts
         self._sprites = sprites
@@ -163,7 +165,7 @@ class StageScene:
     # ---- 资源表 ----
     @classmethod
     def load(cls, archive, stage_no: int,
-             render_scale: float = 0.35) -> "StageScene | None":
+             render_scale: float = 0.45) -> "StageScene | None":
         """从 GameArchive 加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。"""
         try:
             std_raw = None

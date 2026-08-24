@@ -5,15 +5,33 @@ Surface, 附带链式 entry 偏移表(LoadAnms: max(sprite id, script id)+1 累�
 与旋转/翻转变换缓存。th07 的布局常量与 GameView(战斗画面渲染)在
 games/th07/view/sprite_view.py; 本模块不 import 任何作品包。
 """
-from __future__ import annotations
-
 import struct
 from pathlib import Path
 
+import numpy as np
 import pygame
 
 from ...schema.anm import AnmFile
 from ...schema.archive import GameArchive
+
+
+def _sprite_rgba(anm: AnmFile, sprite_id: int, entry: int
+                 ) -> tuple[int, int, bytes]:
+    """取 sprite 图像 (w, h, rgba); 区域超出纹理时按 WRAP 平铺。
+
+    D3D 采样默认 WRAP (AnmManager::DrawInner 的 uvEnd 可超 1.0; d3dx_render
+    软件光栅同样 %tw/%th 回绕): eff01 等的符卡背景 sprite 384x448 大于
+    纹理 256x256, 原版是平铺效果。AnmFile.sprite_image 只管界内裁切。
+    """
+    e = anm.entries[entry]
+    spr = e.sprites[sprite_id]
+    if spr.x + spr.w <= e.tex_width and spr.y + spr.h <= e.tex_height:
+        return anm.sprite_image(sprite_id, entry=entry)
+    tex = np.frombuffer(e.rgba, dtype=np.uint8).reshape(
+        e.tex_height, e.tex_width, 4)
+    ys = (spr.y + np.arange(spr.h)) % e.tex_height
+    xs = (spr.x + np.arange(spr.w)) % e.tex_width
+    return spr.w, spr.h, tex[ys][:, xs].tobytes()
 
 
 def _parse_first_sprites(data: bytes) -> list[dict[int, int]]:
@@ -121,7 +139,7 @@ class SpriteBank:
             anm = self._anms[name]
             if 0 <= entry < len(anm.entries) \
                     and sprite_id in anm.entries[entry].sprites:
-                w, h, rgba = anm.sprite_image(sprite_id, entry=entry)
+                w, h, rgba = _sprite_rgba(anm, sprite_id, entry)
                 surf = pygame.image.fromstring(rgba, (w, h), "RGBA")
                 try:
                     surf = surf.convert_alpha()  # 快速 blit 路径(需 display 初始化)
