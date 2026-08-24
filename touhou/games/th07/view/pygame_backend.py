@@ -22,6 +22,7 @@ from .hud_view import HudView
 from .musicroom_view import MusicRoomView
 from .option_view import OptionView
 from .playerdata_view import PlayerDataView
+from .popup_view import PopupView
 from .replay_view import ReplayView
 from .result_view import ResultScreen
 from .screens import MenuAction, Screen
@@ -107,6 +108,7 @@ class PygameRenderer:
         self._dialog_stage = 0
         self._game_view = None
         self._hud_view = None
+        self._popup_view = None
         # 输入映射(set_keymap 重建)
         self._action_codes: dict[str, list[int]] = {}
         self._menu_keys: dict[int, MenuAction] = {}
@@ -282,10 +284,33 @@ class PygameRenderer:
             lambda s: self._rp_view.render(s, flow, frame))
 
     def render_result(self, result: dict, frame: int, *,
-                      store, name_entry) -> None:
+                      store, name_entry, replay_save=None) -> None:
         surf = pygame.Surface((TITLE_W, TITLE_H))
         self._result_view.render(surf, result, frame,
                                  store=store, name_entry=name_entry)
+        if replay_save is not None:
+            # Save Replay 覆盖层(ResultScreen.cpp HandleReplaySaveKeyboard 简化)
+            try:
+                mode, cursor, msg = replay_save
+                box = pygame.Surface((360, 120), pygame.SRCALPHA)
+                box.fill((16, 16, 48, 230))
+                pygame.draw.rect(box, (200, 200, 220, 255), box.get_rect(), 1)
+                font = _load_font(24)
+                if mode == "ask":
+                    box.blit(font.render("Save Replay?", True, (255, 255, 255)),
+                             (120, 16))
+                    for j, yn in enumerate(("Yes", "No")):
+                        color = (255, 255, 255) if j == cursor else (140, 140, 150)
+                        box.blit(font.render(yn, True, color),
+                                 (110 + j * 110, 64))
+                else:  # "saved": 已存确认
+                    box.blit(font.render(f"Saved {msg}", True, (150, 255, 180)),
+                             (24, 32))
+                    box.blit(font.render("Z: OK", True, (200, 200, 220)),
+                             (150, 72))
+                surf.blit(box, ((TITLE_W - 360) // 2, (TITLE_H - 120) // 2))
+            except Exception:
+                pass  # 渲染失败不拖垮游戏循环
         self._blit_scaled(surf)
 
     def render_ending(self, ending, frame: int) -> EndingFrame:
@@ -323,6 +348,12 @@ class PygameRenderer:
         except Exception:
             log.exception("HUD 渲染器初始化失败(降级为无 HUD)")
             self._hud_view = None
+        # 得分弹字/状态横幅(ascii.anm 贴字, 同风格容错)
+        try:
+            self._popup_view = PopupView(self._data_path)
+        except Exception:
+            log.exception("弹字渲染器初始化失败(降级为无弹字)")
+            self._popup_view = None
 
     def render_game(self, game) -> None:
         # 窗口布局 640x480: 游戏区 384x448 渲染后 blit 到 (32,16),
@@ -386,15 +417,22 @@ class PygameRenderer:
                 self._hud_view.render_overlay(frame, game)
             except Exception:
                 pass
+        # 得分弹字 + 状态横幅 (AsciiManager::DrawPopups / Gui::OnDraw statusPopup)
+        if self._popup_view is not None:
+            try:
+                self._popup_view.render(frame, game)
+            except Exception:
+                pass
         self._blit_scaled(frame)
 
     def render_pause(self, game, cursor: int, *,
-                     hint: "str | None" = None) -> None:
+                     hint: "str | None" = None,
+                     confirm: "tuple[str, int] | None" = None) -> None:
         """暂停: 冻结画面(未 tick, 画面静止) + 半透明暂停面板 + 瞬态提示。"""
         self.render_game(game)
         overlay = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
         try:
-            self._option_view.render_pause(overlay, cursor)
+            self._option_view.render_pause(overlay, cursor, confirm=confirm)
         except Exception:
             pass  # 渲染失败不拖垮游戏循环
         if hint:

@@ -157,8 +157,13 @@ class Renderer(Protocol):
         ...
 
     def render_pause(self, game: "GameEngine", cursor: int, *,
-                     hint: str | None = None) -> None:
-        """暂停: 冻结画面(render_game 同图) + 半透明暂停面板 + 瞬态提示。"""
+                     hint: str | None = None,
+                     confirm: "tuple[str, int] | None" = None) -> None:
+        """暂停: 冻结画面(render_game 同图) + 半透明暂停面板 + 瞬态提示。
+
+        confirm: 二次确认态(Retry/Quit to Title, AsciiManager.cpp PauseMenu
+        case 5-8) = (待确认项名, Yes/No 光标下标); None = 主暂停菜单。
+        """
         ...
 
     def render_continue(self, game: "GameEngine", cursor: int,
@@ -169,7 +174,14 @@ class Renderer(Protocol):
     # ---- 结算 / 结局 ----
     def render_result(self, result: dict, frame: int, *,
                       store: "ScoreStore | None",
-                      name_entry: "NameEntryFlow | None") -> None: ...
+                      name_entry: "NameEntryFlow | None",
+                      replay_save: "tuple[str, int, str] | None" = None
+                      ) -> None:
+        """结算画面。replay_save: Save Replay 流程覆盖层
+        (ResultScreen.cpp HandleReplaySaveKeyboard) ——
+        ("ask", Yes/No 光标下标, "") 询问态 / ("saved", -1, 文件名) 已存确认;
+        None = 不显示。"""
+        ...
 
     def render_ending(self, ending: "EndingData", frame: int) -> EndingFrame:
         """渲染一帧结局画面, 返回播放状态与脚本内音乐事件。"""

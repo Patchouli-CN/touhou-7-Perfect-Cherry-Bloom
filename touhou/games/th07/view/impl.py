@@ -30,9 +30,11 @@ from .screens import (
     DIFFICULTIES,
     EXTRA_STAGES,
     MAIN_DIFFICULTIES,
+    PAUSE_CONFIRM_ITEMS,
     PAUSE_ITEMS,
     PRACTICE_DIFFICULTIES,
     PRACTICE_STAGE_ITEMS,
+    RESULT_SAVE_ITEMS,
     KeyConfigFlow,
     MenuAction,
     MenuCursor,
@@ -172,6 +174,12 @@ class GameApp:
         self._score_path = score_path
         self._result_saved = False
         self._name_entry: NameEntryFlow | None = None  # 入榜名字输入态
+        # 结算画面 Save Replay 流程(ResultScreen.cpp HandleReplaySaveKeyboard):
+        # None=未到此步; "ask"=Save Replay? Yes/No 询问中(state 11);
+        # "saved"=已存, 显示确认信息待按键退出(state 14 存完回 state 2 的简化)
+        self._result_save: str | None = None
+        self._result_save_cursor = MenuCursor(RESULT_SAVE_ITEMS, index=0)
+        self._result_save_msg = ""   # "saved" 态显示的录像文件名
         self._menu_frame = 0
         self._unimplemented_timer = 0
         self._game = None
@@ -182,8 +190,13 @@ class GameApp:
         self._sound.set_bgm_volume(self._config.bgm_volume / 100)
         self._sound.set_se_volume(self._config.se_volume / 100)
         self._bgm_stage = 0        # 已播关卡曲的关卡号(换关切曲用)
-        self._paused = False       # 游戏内暂停(Esc; 冻结 tick, BGM 继续)
+        self._paused = False       # 游戏内暂停(Esc; 冻结 tick, WAV BGM 暂停)
         self._pause_cursor = MenuCursor(PAUSE_ITEMS, index=0)
+        # Retry/Quit 二次确认态(AsciiManager.cpp PauseMenu case 5-8):
+        # None=主暂停菜单; "Retry"/"Quit to Title"=待确认的项。
+        # 原版确认子菜单只有 Yes/No(不能 Save Replay), 默认停 No。
+        self._pause_confirm: str | None = None
+        self._pause_confirm_cursor = MenuCursor(PAUSE_CONFIRM_ITEMS, index=1)
         # GameOver 续关菜单(AsciiManager.cpp RetryMenu): 默认选 Yes(C curState=1)
         self._continue_cursor = MenuCursor(["Yes", "No"], index=0)
         self._in_continue = False  # 续关菜单显示中(进入沿检测, 重置光标用)
@@ -252,6 +265,9 @@ class GameApp:
                 self._run_game(inp)
                 if self._finished:
                     running = False
+            # WAV BGM 循环点回卷轮询: 与场景无关每帧跑(BUGS.md#4 —— 只在
+            # 对局内轮询时, 标题/结算/音乐室的 WAV 曲播完一遍就停了)
+            self._sound.poll_loop()
             self._renderer.present()
         self._renderer.close()
 
@@ -731,7 +747,11 @@ class GameApp:
                 return
             self._paused = True
             self._pause_cursor.index = 0
+            self._pause_confirm = None
             log.trace("Esc 暂停键 (frame={})", getattr(self._game, "frame", "?"))
+            # BGM 暂停 (GameManager.cpp:141 PushCommand(AUDIO_PAUSE);
+            # 原版 6 面 BGM 延迟 300 帧前不推, 本作进关即播故无此门控)
+            self._sound.pause_music()
             self._play_se(SE.SOUND_37)  # se_pause (SoundPlayer.cpp 暂停音)
             # 开暂停的这帧把 Esc 映射的 BACK 滤掉, 否则同帧又触发 Resume 闪退
             menu_actions = tuple(a for a in menu_actions
@@ -898,9 +918,42 @@ class GameApp:
             return
         self._renderer.render_game(game)
 
-    # ---- 游戏内暂停(冻结 tick 与渲染推进, BGM 继续 —— 原版如此) ----
+    # ---- 游戏内暂停(冻结 tick 与渲染推进; WAV BGM 暂停, 原版 AUDIO_PAUSE) ----
+    def _resume_from_pause(self) -> None:
+        """退出暂停回游戏: 清确认态 + BGM 恢复
+        (AsciiManager.cpp:666 PushCommand(AUDIO_UNPAUSE))。"""
+        self._paused = False
+        self._pause_confirm = None
+        self._sound.unpause_music()
+
     def _run_pause(self, actions) -> None:
         for act in actions:
+            if self._pause_confirm is not None:
+                # 二次确认态(AsciiManager.cpp PauseMenu case 5-8):
+                # 只有 Yes/No(原版此处不能 Save Replay), 默认停 No
+                if act in (MenuAction.UP, MenuAction.DOWN):
+                    self._pause_confirm_cursor.move(
+                        1 if act == MenuAction.DOWN else -1)
+                    self._renderer.play_menu_se("select")
+                elif act == MenuAction.BACK:
+                    # 原版 Esc 在任意暂停菜单态直接关菜单回游戏(:448-460)
+                    self._renderer.play_menu_se("cancel")
+                    self._resume_from_pause()
+                elif act == MenuAction.CONFIRM:
+                    if self._pause_confirm_cursor.current == "Yes":
+                        pending = self._pause_confirm
+                        self._pause_confirm = None
+                        if pending == "Retry":
+                            self._renderer.play_menu_se("ok")
+                            self._retry_game()
+                        else:  # Quit to Title
+                            self._renderer.play_menu_se("cancel")
+                            self._quit_to_title()
+                            return  # 已切屏, 不再画暂停面板
+                    else:  # No → 回暂停主菜单(原版回 case 2/3)
+                        self._renderer.play_menu_se("cancel")
+                        self._pause_confirm = None
+                continue
             if act == MenuAction.UP:
                 self._pause_cursor.move(-1)
                 self._renderer.play_menu_se("select")
@@ -909,15 +962,17 @@ class GameApp:
                 self._renderer.play_menu_se("select")
             elif act == MenuAction.BACK:
                 self._renderer.play_menu_se("cancel")
-                self._paused = False
+                self._resume_from_pause()
             elif act == MenuAction.CONFIRM:
                 item = self._pause_cursor.current
                 if item == "Resume":
                     self._renderer.play_menu_se("ok")
-                    self._paused = False
+                    self._resume_from_pause()
                 elif item == "Retry":
+                    # 二次确认(AsciiManager.cpp case 3 → 7/8)
                     self._renderer.play_menu_se("ok")
-                    self._retry_game()
+                    self._pause_confirm = "Retry"
+                    self._pause_confirm_cursor.index = 1  # 默认 No
                 elif item == "Save Replay":
                     # 存本局到此刻的全部输入序列(简化: 随时可存, 存后继续玩)
                     self._renderer.play_menu_se("ok")
@@ -930,9 +985,10 @@ class GameApp:
                                  self._recorder.frames)
                     # 保持暂停, 让玩家看到 Saved 提示(再按 Resume/确认返回)
                 elif item == "Quit to Title":
-                    self._renderer.play_menu_se("cancel")
-                    self._quit_to_title()
-                    return  # 已切屏, 不再画暂停面板
+                    # 二次确认(AsciiManager.cpp case 2 → 5/6)
+                    self._renderer.play_menu_se("ok")
+                    self._pause_confirm = "Quit to Title"
+                    self._pause_confirm_cursor.index = 1  # 默认 No
         if self._screen != Screen.PLAYING:
             return  # Retry 重建中防御(正常仍在 PLAYING)
         # Save Replay 反馈提示(瞬态); 冻结画面 + 半透明面板由后端合成
@@ -940,8 +996,11 @@ class GameApp:
         if self._pause_hint_timer > 0:
             self._pause_hint_timer -= 1
             hint = self._pause_hint
+        confirm = None
+        if self._pause_confirm is not None:
+            confirm = (self._pause_confirm, self._pause_confirm_cursor.index)
         self._renderer.render_pause(self._game, self._pause_cursor.index,
-                                    hint=hint)
+                                    hint=hint, confirm=confirm)
 
     def _run_continue_menu(self, actions) -> None:
         """GameOver 续关菜单 (RetryMenu::OnUpdate case 1/2): Yes/No 选择。
@@ -954,6 +1013,8 @@ class GameApp:
         if not self._in_continue:
             self._in_continue = True
             self._continue_cursor.index = 0  # 默认 Yes (C curState=1)
+            # 续关菜单同样暂停 BGM (AsciiManager.cpp:852 RetryMenu AUDIO_PAUSE)
+            self._sound.pause_music()
             log.debug("续关菜单弹出 (frame={}, 剩余续关={})",
                      getattr(game, "frame", "?"),
                      getattr(game, "max_retries", 0)
@@ -967,6 +1028,8 @@ class GameApp:
                 self._in_continue = False
                 if self._continue_cursor.index == 0:
                     self._renderer.play_menu_se("ok")  # SOUND_SELECT 确定音
+                    # 续关恢复 BGM (AsciiManager.cpp:999 AUDIO_UNPAUSE)
+                    self._sound.unpause_music()
                     game.continue_play()
                     log.debug("续关 (numRetries={}, frame={})",
                              game.globals.num_retries,
@@ -983,6 +1046,11 @@ class GameApp:
 
     def _retry_game(self) -> None:
         """暂停菜单 Retry: 重开本关(同难度同机体同 stage 重建 game)。"""
+        self._paused = False
+        self._pause_confirm = None
+        # 原版不推 AUDIO_UNPAUSE(重开后关卡曲重播); 这里先解除暂停态,
+        # 否则同名关卡曲 play_music 早退会让 BGM 一直停在暂停态
+        self._sound.unpause_music()
         stage = getattr(self._game, "stage_no", 1)
         if self._practice_stage is not None:
             # Practice Retry: 重开同一练习面 + practice 难度页的难度
@@ -995,6 +1063,9 @@ class GameApp:
     def _quit_to_title(self) -> None:
         """暂停菜单 Quit to Title: 弃局回标题主菜单(标题曲由 _enter_main_menu 播)。"""
         self._paused = False
+        self._pause_confirm = None
+        # 原版不推 AUDIO_UNPAUSE(标题曲 PlayAudio 直接重播); 同步解除暂停态
+        self._sound.unpause_music()
         self._in_continue = False
         self._game = None
         self._recorder = None
@@ -1079,6 +1150,9 @@ class GameApp:
     def _enter_result(self) -> None:
         self._screen = Screen.RESULT
         self._result_saved = False
+        self._result_save = None
+        self._result_save_cursor.index = 0   # 原版默认 Yes (state 11 cursor=0)
+        self._result_save_msg = ""
         self._menu_frame = 0
         # 入榜 → 名字输入态(ResultScreen.cpp HandleResultKeyboard: LinkScoreEx
         # < 10 才进输入, 否则直接 state16); 初始名带 LSNM
@@ -1095,6 +1169,25 @@ class GameApp:
         # 结算画面 640x480, 切回标题尺寸
         self._renderer.resize(self._screen, self._scale)
 
+    def _can_save_result_replay(self, game) -> bool:
+        """结算画面能否存录像(ResultScreen.cpp:1364-1376):
+        续关过(numRetries != 0)不能存(interrupt 14 提示); 慢放/计时异常
+        也不能存(interrupt 19, 本作无此判定, 略)。无录制器/0 帧自然不能存。
+        """
+        if self._recorder is None or self._recorder.frames == 0:
+            return False
+        res = getattr(game, "result", None) or {}
+        return res.get("retries", 0) == 0
+
+    def _result_next_step(self, game) -> None:
+        """名字输入完/未入榜确认后的下一步: 可存录像 → Save Replay? 询问
+        (ResultScreen state 16→17→11); 不可存 → 直接收尾回标题。"""
+        if self._can_save_result_replay(game):
+            self._result_save = "ask"
+            self._result_save_cursor.index = 0
+        else:
+            self._save_result_and_exit(game)
+
     def _save_result_and_exit(self, game) -> None:
         """结算收尾: 保存 score.json(原子写, 只写一次) → 回标题主菜单。"""
         if not self._result_saved:
@@ -1105,16 +1198,56 @@ class GameApp:
             self._result_saved = True
         self._renderer.play_menu_se("ok")
         self._game = None
+        self._recorder = None   # 录像不留到下一局(原版出 ResultScreen 即弃)
         self._name_entry = None
+        self._result_save = None
         self._enter_main_menu()
 
     def _run_result(self, actions) -> None:
         self._menu_frame += 1
         game = self._game
+        replay_save = None
+        if self._result_save == "ask":
+            replay_save = ("ask", self._result_save_cursor.index, "")
+        elif self._result_save == "saved":
+            replay_save = ("saved", -1, self._result_save_msg)
         self._renderer.render_result(game.result, self._menu_frame,
                                      store=getattr(game, "store", None),
-                                     name_entry=self._name_entry)
+                                     name_entry=self._name_entry,
+                                     replay_save=replay_save)
         for act in actions:
+            if self._result_save is not None:
+                # Save Replay 流程(ResultScreen.cpp HandleReplaySaveKeyboard)
+                if self._result_save == "ask":
+                    # state 11: Yes/No 选择(原版左右切换, 上下也接受)
+                    if act in (MenuAction.LEFT, MenuAction.RIGHT,
+                               MenuAction.UP, MenuAction.DOWN):
+                        self._result_save_cursor.move(1)
+                        self._renderer.play_menu_se("select")
+                    elif act == MenuAction.CONFIRM:
+                        if self._result_save_cursor.current == "Yes":
+                            # state 13/14 选槽+命名 → SaveReplay 的简化:
+                            # 自动文件名直存, 存完显示确认信息
+                            self._renderer.play_menu_se("ok")
+                            path = self._recorder.save(
+                                replay_mod.new_replay_name(self._replay_dir))
+                            self._result_save_msg = (
+                                f"{path.name} ({self._recorder.frames}f)")
+                            log.debug("结算画面录像已保存: {} ({} 帧)", path,
+                                      self._recorder.frames)
+                            self._result_save = "saved"
+                        else:  # No → 不存, 收尾回标题(state 11 BACK → state 2)
+                            self._save_result_and_exit(game)
+                            break
+                    elif act == MenuAction.BACK:
+                        # 原版 BACK/MENU = 不存直接退出(SOUND_BACK_AND_RETURN)
+                        self._save_result_and_exit(game)
+                        break
+                else:  # "saved": 任意确认/返回 → 收尾回标题
+                    if act in (MenuAction.CONFIRM, MenuAction.BACK):
+                        self._save_result_and_exit(game)
+                        break
+                continue
             if self._name_entry is not None:
                 # 名字输入态: 上下换字/左右移字表光标, Z 写槽, X 删除;
                 # END(或输满 8 槽后在 END 上确认) → 定名 + 保存 + 回标题
@@ -1130,8 +1263,9 @@ class GameApp:
                                               res["rank"], name)
                     game.store.set_last_name(name)  # LSNM (:1321-1322)
                     res["name"] = name
-                    self._save_result_and_exit(game)
-                    break  # 已定名退出, 余下动作不再喂旧 game
+                    self._name_entry = None   # 名字输入态结束(→ state 16)
+                    self._result_next_step(game)  # → Save Replay? / 收尾
+                    break  # 已定名, 余下动作不再喂旧 game
                 elif kind == "move":
                     self._renderer.play_menu_se("select")  # SOUND_MOVE_MENU
                 elif kind == "input":
@@ -1139,6 +1273,6 @@ class GameApp:
                 elif kind == "delete":
                     self._renderer.play_menu_se("cancel")  # SOUND_BACK
             elif act == MenuAction.CONFIRM:
-                # 未入榜: 确认 → 保存 score.json → 回标题主菜单
-                self._save_result_and_exit(game)
+                # 未入榜: 确认 → Save Replay? 询问(可存时) / 保存回标题
+                self._result_next_step(game)
                 break

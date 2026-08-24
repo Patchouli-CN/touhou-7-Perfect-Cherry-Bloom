@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -406,3 +407,107 @@ def test_bgm_source_validation_and_current_bgm() -> None:
         sp.set_bgm_source("ogg")
     sp.set_bgm_source("midi")
     assert sp.bgm_source == "midi"
+
+
+# ---- BGM 暂停/恢复(AUDIO_PAUSE/AUDIO_UNPAUSE, SoundPlayer.cpp:846-868) ----
+
+def _enabled_player(wav: bool = True) -> SoundPlayer:
+    """启用态假播放器: wav=True 时伪装 thbgm 已解析(WAV 音源生效)。"""
+    sp = SoundPlayer(DAT)
+    sp._enabled = True
+    if wav:
+        sp._thbgm_tracks = {"th07_02.wav": object()}  # 只需非空
+    return sp
+
+
+def _fake_track():
+    """最小 ThbgmTrack 桩(_rewind_wav 只读 intro_seconds/loop_seconds)。"""
+    return SimpleNamespace(intro_seconds=1.0, loop_seconds=2.0)
+
+
+def test_pause_music_wav_only(monkeypatch) -> None:
+    """AUDIO_PAUSE 仅 WAV 音源响应(SoundPlayer.cpp:847 musicMode==MUSIC_WAV);
+    MIDI 模式不暂停。"""
+    import pygame
+
+    calls = []
+    monkeypatch.setattr(pygame.mixer.music, "pause", lambda: calls.append("pause"))
+    monkeypatch.setattr(pygame.mixer.music, "unpause",
+                        lambda: calls.append("unpause"))
+    sp = _enabled_player(wav=True)
+    sp.pause_music()
+    assert calls == ["pause"] and sp._music_paused
+    sp.pause_music()                       # 幂等: 不重复 pause
+    assert calls == ["pause"]
+    sp.unpause_music()
+    assert calls == ["pause", "unpause"] and not sp._music_paused
+    sp.unpause_music()                     # 幂等
+    assert calls == ["pause", "unpause"]
+    # MIDI 音源: 不暂停(原版如此)
+    sp2 = _enabled_player(wav=False)
+    sp2.pause_music()
+    assert calls == ["pause", "unpause"] and not sp2._music_paused
+
+
+def test_pause_music_skipped_when_disabled(monkeypatch) -> None:
+    """未启用(静音容错): pause/unpause 静默不炸。"""
+    import pygame
+
+    calls = []
+    monkeypatch.setattr(pygame.mixer.music, "pause", lambda: calls.append(1))
+    sp = SoundPlayer(DAT)                  # _enabled=False
+    sp.pause_music()
+    sp.unpause_music()
+    assert calls == []
+
+
+def test_poll_wav_loop_skips_while_paused(monkeypatch) -> None:
+    """暂停中 get_busy()=False(pygame 2.6 实测), 轮询须跳过,
+    否则误判"播完"回卷并解除暂停(BUGS.md#2 配套)。"""
+    import pygame
+
+    calls = []
+    monkeypatch.setattr(pygame.mixer.music, "get_busy", lambda: False)
+    monkeypatch.setattr(pygame.mixer.music, "play",
+                        lambda *a, **k: calls.append((a, k)))
+    sp = _enabled_player(wav=True)
+    sp._wav_bgm = _fake_track()
+    sp._music_paused = True
+    sp.poll_loop()
+    assert calls == []                     # 暂停中不回卷
+    sp._music_paused = False
+    sp.poll_loop()                         # 非暂停: get_busy()=False → 回卷
+    assert len(calls) == 1
+
+
+def test_poll_loop_public_guarded_by_enabled(monkeypatch) -> None:
+    """BUGS.md#4: poll_loop 是应用壳每帧(含标题/结算等场景)的 WAV 循环
+    轮询入口; 未启用时静默。"""
+    import pygame
+
+    calls = []
+    monkeypatch.setattr(pygame.mixer.music, "get_busy", lambda: False)
+    monkeypatch.setattr(pygame.mixer.music, "play",
+                        lambda *a, **k: calls.append(1))
+    sp = SoundPlayer(DAT)                  # 未启用
+    sp._wav_bgm = _fake_track()
+    sp.poll_loop()
+    assert calls == []
+    sp._enabled = True
+    sp.poll_loop()
+    assert calls == [1]
+
+
+def test_play_music_same_name_while_paused_unpauses(monkeypatch) -> None:
+    """暂停中 play_music(同名) = 恢复播放(防御: 正常由 unpause_music 负责;
+    否则 Retry 后同名关卡曲早退会让 BGM 停在暂停态)。"""
+    import pygame
+
+    calls = []
+    monkeypatch.setattr(pygame.mixer.music, "unpause",
+                        lambda: calls.append("unpause"))
+    sp = _enabled_player(wav=True)
+    sp._current_bgm = "th07_02.mid"
+    sp._music_paused = True
+    sp.play_music("th07_02.mid")
+    assert calls == ["unpause"] and not sp._music_paused

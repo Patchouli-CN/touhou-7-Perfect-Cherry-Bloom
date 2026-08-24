@@ -186,8 +186,13 @@ def test_result_screen_flow(tmp_path, monkeypatch) -> None:
     app._run_game(FrameInput())           # 首帧即出 result
     assert app._screen == Screen.RESULT
     assert app._name_entry is not None  # 入榜(rank=0) → 名字输入态
-    # 8 槽各确认('A') → 输满自动跳 END; 再确认 = 完成 → 保存 → 回主菜单
+    # 8 槽各确认('A') → 输满自动跳 END; 再确认 = 完成 → Save Replay? 询问
+    # (ResultScreen.cpp state 10 → 16/17 → 11, 可存录像时必过此步)
     app._run_result([MenuAction.CONFIRM] * 9)
+    assert app._screen == Screen.RESULT
+    assert app._result_save == "ask" and app._name_entry is None
+    # 询问态选 No → 保存 score.json → 回主菜单
+    app._run_result([MenuAction.RIGHT, MenuAction.CONFIRM])
     assert app._screen == Screen.MAIN_MENU
     assert app._game is None
     from touhou.engine.score_store import ScoreStore
@@ -251,7 +256,9 @@ def test_ending_screen_flow(tmp_path, monkeypatch) -> None:
     app._run_ending([MenuAction.CONFIRM])  # 看完 → 总结算
     assert app._screen == Screen.RESULT
     assert app._name_entry is not None  # 入榜 → 名字输入态
-    app._run_result([MenuAction.CONFIRM] * 9)  # 输满 8 槽 + END 完成
+    app._run_result([MenuAction.CONFIRM] * 9)  # 输满 8 槽 + END → Save Replay? 询问
+    assert app._screen == Screen.RESULT and app._result_save == "ask"
+    app._run_result([MenuAction.RIGHT, MenuAction.CONFIRM])  # No → 回主菜单
     assert app._screen == Screen.MAIN_MENU
 
 
@@ -400,11 +407,48 @@ def test_pause_retry_rebuilds_game(tmp_path, monkeypatch) -> None:
     app._run_game(FrameInput(esc=True))
     app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))  # → Retry
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
+    # 二次确认(AsciiManager.cpp PauseMenu case 7/8): 默认 No, 尚未重开
+    assert app._paused and app._pause_confirm == "Retry"
+    assert app._game is old
+    app._run_game(FrameInput(menu_actions=(MenuAction.UP,)))     # No → Yes
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     assert not app._paused
     assert app._screen == Screen.PLAYING
     assert app._game is not old                # 重开 = 新 game
     assert app._game.ticks == 0
     assert app._game.kw == old.kw              # 同难度同机体
+
+
+def test_pause_retry_confirm_defaults_to_no(tmp_path, monkeypatch) -> None:
+    """二次确认默认停 No(AsciiManager.cpp 进确认子菜单 curState=6/8):
+    直接确认 = 取消, 回暂停主菜单, 游戏不变。"""
+    app, scr, keys = _pause_app(tmp_path, monkeypatch)
+    app._run_game(FrameInput())
+    old = app._game
+    app._run_game(FrameInput(esc=True))
+    app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))  # → Retry
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
+    assert app._pause_confirm == "Retry"
+    assert app._pause_confirm_cursor.current == "No"   # 默认 No
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))  # No → 回主菜单
+    assert app._paused and app._pause_confirm is None
+    assert app._game is old
+    app._run_game(FrameInput(menu_actions=(MenuAction.BACK,)))     # 恢复
+    assert not app._paused
+
+
+def test_pause_confirm_esc_resumes_game(tmp_path, monkeypatch) -> None:
+    """确认态按 Esc/X = 直接关暂停菜单回游戏(AsciiManager.cpp:448-460)。"""
+    app, scr, keys = _pause_app(tmp_path, monkeypatch)
+    app._run_game(FrameInput())
+    old = app._game
+    app._run_game(FrameInput(esc=True))
+    app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))  # → Retry
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
+    assert app._pause_confirm == "Retry"
+    app._run_game(FrameInput(menu_actions=(MenuAction.BACK,)))
+    assert not app._paused and app._pause_confirm is None
+    assert app._game is old                    # 未重开
 
 
 def test_pause_quit_to_title(tmp_path, monkeypatch) -> None:
@@ -413,9 +457,56 @@ def test_pause_quit_to_title(tmp_path, monkeypatch) -> None:
     while app._pause_cursor.current != "Quit to Title":
         app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
+    # 二次确认(AsciiManager.cpp PauseMenu case 5/6): 仍在暂停未切屏
+    assert app._paused and app._pause_confirm == "Quit to Title"
+    assert app._screen == Screen.PLAYING
+    app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))   # No → Yes
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     assert app._screen == Screen.MAIN_MENU
     assert app._game is None
     assert not app._paused
+
+
+def test_pause_bgm_pause_and_unpause(tmp_path, monkeypatch) -> None:
+    """BUGS.md#2: Esc 暂停 → BGM 暂停(AUDIO_PAUSE, GameManager.cpp:141);
+    Resume → BGM 恢复(AUDIO_UNPAUSE, AsciiManager.cpp:666)。"""
+    app, scr, keys = _pause_app(tmp_path, monkeypatch)
+    calls = []
+
+    class _FakeSound:
+        sounds = {}
+        current_bgm = ""
+
+        def pause_music(self):  # noqa: D102
+            calls.append("pause")
+
+        def unpause_music(self):  # noqa: D102
+            calls.append("unpause")
+
+        def play_frame(self, *a):  # noqa: D102
+            pass
+
+        def play_music(self, *a):  # noqa: D102
+            pass
+
+        def ensure_loaded(self):  # noqa: D102
+            pass
+
+        def poll_loop(self):  # noqa: D102
+            pass
+
+    app._sound = _FakeSound()
+    app._run_game(FrameInput(esc=True))
+    assert app._paused and calls == ["pause"]
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))  # Resume
+    assert not app._paused and calls == ["pause", "unpause"]
+    # Retry(确认 Yes)路径同样解除 BGM 暂停态
+    app._run_game(FrameInput(esc=True))
+    app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
+    app._run_game(FrameInput(menu_actions=(MenuAction.UP,)))      # → Yes
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
+    assert calls == ["pause", "unpause", "pause", "unpause"]
 
 
 # ---------------------------------------------------------------------------
@@ -615,9 +706,11 @@ def test_result_name_entry_flow(tmp_path, monkeypatch) -> None:
     app._run_result([MenuAction.UP] + [MenuAction.RIGHT] * 9
                     + [MenuAction.CONFIRM])
     assert e.name == "ZUNYER  " and e.cursor == 3
-    # 去 END: 行尾(15) → 下 5 行(95) → 确认完成
+    # 去 END: 行尾(15) → 下 5 行(95) → 确认完成 → Save Replay? 询问
     app._run_result([MenuAction.RIGHT] * 2 + [MenuAction.DOWN] * 5
                     + [MenuAction.CONFIRM])
+    assert app._screen == Screen.RESULT and app._result_save == "ask"
+    app._run_result([MenuAction.RIGHT, MenuAction.CONFIRM])  # No → 保存回标题
     assert app._screen == Screen.MAIN_MENU and app._game is None
     from touhou.engine.score_store import ScoreStore
 
@@ -632,7 +725,9 @@ def test_result_name_entry_flow(tmp_path, monkeypatch) -> None:
     _play_to_result(app2, scr)
     e2 = app2._name_entry
     assert e2 is not None and e2.name == "ZUNYER  " and e2.selected == 95
-    app2._run_result([MenuAction.CONFIRM])  # END 直接完成
+    app2._run_result([MenuAction.CONFIRM])  # END 直接完成 → Save Replay? 询问
+    assert app2._result_save == "ask"
+    app2._run_result([MenuAction.RIGHT, MenuAction.CONFIRM])  # No → 回主菜单
     assert app2._screen == Screen.MAIN_MENU
     s2 = ScoreStore.load(tmp_path / "score.json")
     assert [r["name"] for r in s2.entries(1, 0)] == ["ZUNYER  "] * 2
@@ -640,7 +735,8 @@ def test_result_name_entry_flow(tmp_path, monkeypatch) -> None:
 
 
 def test_result_unranked_skips_name_entry(tmp_path, monkeypatch) -> None:
-    """未入榜(rank=-1) → 无名字输入态, 确认直接保存回标题(维持原行为)。"""
+    """未入榜(rank=-1) → 无名字输入态; 确认 → Save Replay? 询问(原版
+    未入榜也走 state 16→11), 选 No → 保存回标题。"""
     monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
     import pygame
 
@@ -655,9 +751,68 @@ def test_result_unranked_skips_name_entry(tmp_path, monkeypatch) -> None:
     assert app._game.result["rank"] == -1
     assert app._name_entry is None
     app._run_result([MenuAction.CONFIRM])
+    assert app._screen == Screen.RESULT and app._result_save == "ask"
+    app._run_result([MenuAction.RIGHT, MenuAction.CONFIRM])  # No → 回标题
     assert app._screen == Screen.MAIN_MENU and app._game is None
     from touhou.engine.score_store import ScoreStore
 
     s = ScoreStore.load(tmp_path / "score.json")
     assert len(s.entries(1, 0)) == 10  # 未入榜记录未加进去
     assert s.lsnm is None              # 未输名字不写 LSNM
+
+
+def test_result_save_replay_yes_saves_file(tmp_path, monkeypatch) -> None:
+    """BUGS.md#17: 结算界面 Save Replay? 选 Yes → 录像落盘 → 确认回标题
+    (ResultScreen.cpp state 11 → 13/14 → SaveReplay 的简化: 自动文件名)。"""
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    import pygame
+
+    pygame.init()
+    pygame.display.set_mode((640, 480))
+    from touhou.games.th07.view import GameApp
+
+    StubRankedGame.store = None
+    app = GameApp(StubUnrankedGame, score_path=tmp_path / "score.json",
+                  replay_dir=tmp_path / "replays")
+    scr = pygame.display.get_surface()
+    _play_to_result(app, scr)
+    assert app._recorder is not None and app._recorder.frames == 1
+    app._run_result([MenuAction.CONFIRM])      # → Save Replay? 询问
+    assert app._result_save == "ask"
+    assert app._result_save_cursor.current == "Yes"   # 原版默认 Yes(cursor=0)
+    app._run_result([MenuAction.CONFIRM])      # Yes → 存录像
+    assert app._result_save == "saved"
+    saved = list((tmp_path / "replays").glob("*.json"))
+    assert len(saved) == 1 and saved[0].name in app._result_save_msg
+    from touhou.engine import replay as replay_mod
+
+    assert len(replay_mod.load_replay(saved[0])["codes"]) == 1
+    app._run_result([MenuAction.CONFIRM])      # 确认 → 保存回标题
+    assert app._screen == Screen.MAIN_MENU and app._game is None
+    assert app._recorder is None               # 录像器不留到下一局
+
+
+def test_result_save_replay_skipped_when_continued(tmp_path, monkeypatch) -> None:
+    """续关过的局(retries != 0)结算不出 Save Replay 询问
+    (ResultScreen.cpp:1370-1376 numRetries != 0 → interrupt 14)。"""
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    import pygame
+
+    pygame.init()
+    pygame.display.set_mode((640, 480))
+    from touhou.games.th07.view import GameApp
+
+    class _ContinuedGame(StubUnrankedGame):
+        def tick(self, **kw):  # noqa: D102
+            super().tick(**kw)
+            self.result["retries"] = 1        # 续关过的局
+
+    StubRankedGame.store = None
+    app = GameApp(_ContinuedGame, score_path=tmp_path / "score.json",
+                  replay_dir=tmp_path / "replays")
+    scr = pygame.display.get_surface()
+    _play_to_result(app, scr)
+    app._run_result([MenuAction.CONFIRM])      # 直接收尾, 无询问
+    assert app._result_save is None
+    assert app._screen == Screen.MAIN_MENU
+    assert not list((tmp_path / "replays").glob("*.json"))

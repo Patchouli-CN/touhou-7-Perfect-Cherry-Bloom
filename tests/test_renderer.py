@@ -126,14 +126,14 @@ class StubRenderer:
     def render_game(self, game):
         self.calls.append(("game", getattr(game, "frame", None)))
 
-    def render_pause(self, game, cursor, *, hint=None):
-        self.calls.append(("pause", cursor, hint))
+    def render_pause(self, game, cursor, *, hint=None, confirm=None):
+        self.calls.append(("pause", cursor, hint, confirm))
 
     def render_continue(self, game, cursor, retries_left):
         self.calls.append(("continue", cursor, retries_left))
 
-    def render_result(self, result, frame, *, store, name_entry):
-        self.calls.append(("result", frame))
+    def render_result(self, result, frame, *, store, name_entry, replay_save=None):
+        self.calls.append(("result", frame, replay_save))
 
     def render_ending(self, ending, frame):
         self.calls.append(("ending", frame))
@@ -210,9 +210,13 @@ def test_stub_renderer_full_scene_flow(tmp_path) -> None:
     app._run_game(FrameInput())                  # 第 2 帧: 出 result → 结算
     assert app._screen == Screen.RESULT
     assert ("game", 1) in stub.calls             # render_game 拿到 game 对象
-    app._run_result((MenuAction.CONFIRM,))       # 未入榜: 确认 → 保存回标题
+    app._run_result((MenuAction.CONFIRM,))       # 未入榜: 确认 → Save Replay? 询问
+    assert app._screen == Screen.RESULT
+    assert app._result_save == "ask"
+    assert ("result", 1, None) in stub.calls     # render_result(帧号从 1 起)
+    # 询问态选 No → 保存回标题(原版 state 11 BACK → state 2)
+    app._run_result((MenuAction.RIGHT, MenuAction.CONFIRM))
     assert app._screen == Screen.MAIN_MENU
-    assert ("result", 1) in stub.calls           # render_result(帧号从 1 起)
 
 
 def test_stub_renderer_pause_and_continue_paths(tmp_path) -> None:

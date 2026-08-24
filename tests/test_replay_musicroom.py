@@ -313,6 +313,9 @@ def test_pause_save_replay_and_playback_flow(tmp_path, monkeypatch) -> None:
     while app._pause_cursor.current != "Quit to Title":
         app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
+    assert app._pause_confirm == "Quit to Title"     # 二次确认(BUGS.md#14)
+    app._run_game(FrameInput(menu_actions=(MenuAction.UP,)))      # No → Yes
+    app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     assert app._screen == Screen.MAIN_MENU
     _goto(app, "Replay")
     assert len(app._rp_flow.entries) == 1

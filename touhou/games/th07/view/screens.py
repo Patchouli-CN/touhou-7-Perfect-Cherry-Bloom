@@ -65,6 +65,15 @@ MAIN_DIFFICULTIES = DIFFICULTIES[:_TH07_MAIN_DIFF_COUNT]
 # 纯菜单数据, 归纯逻辑层; 绘制在 option_view.render_pause。
 PAUSE_ITEMS = ["Resume", "Retry", "Save Replay", "Quit to Title"]
 
+# Retry/Quit to Title 的二次确认项(AsciiManager.cpp PauseMenu case 5-8:
+# 确认子菜单 sprite[5]=Yes / sprite[6]=No, 进入时默认停在 No)。
+# 确认态下只有 Yes/No —— 原版此处没有也不能 Save Replay。
+PAUSE_CONFIRM_ITEMS = ["Yes", "No"]
+
+# 结算画面 "Save Replay?" 确认项(ResultScreen.cpp HandleReplaySaveKeyboard
+# state 11: cursor 0=Yes(默认) 1=No, MoveCursorHorizontally 左右切换)。
+RESULT_SAVE_ITEMS = ["Yes", "No"]
+
 
 def load_tracks(data_path=DEFAULT_DATA) -> list:
     """从 th07.dat 解 musiccmt.txt → Music Room 曲目表; 失败返回空表(容错)。"""

@@ -15,7 +15,9 @@ Key Config 贴图(30)当标题; 动作/键名用文字(原版是手柄按钮号�
 Esc/X 取消; Reset to Default 恢复默认(engine/config.py DEFAULT_KEYMAP)。
 
 暂停面板(游戏内 Esc): 半透明遮罩 + Pause 贴图(entry1 sprite 82)
-+ Resume/Retry/Quit to Title 文字项。暂停时 BGM 继续(原版如此)。
++ Resume/Retry/Quit to Title 文字项。Retry/Quit to Title 有二次确认
+(Yes/No, AsciiManager.cpp PauseMenu case 5-8)。暂停时 WAV BGM 暂停、
+MIDI 继续(AUDIO_PAUSE 仅 WAV 音源响应, SoundPlayer.cpp:846-855)。
 
 资源运行时从 th07.dat 解(GameArchive), 不落盘。
 """
@@ -30,7 +32,7 @@ import pygame
 from ....schema.anm import AnmFile
 from ....schema.archive import GameArchive
 from .screens import (KEYCONFIG_ITEMS, KEYCONFIG_LABELS, OPTION_ITEMS,
-                      PAUSE_ITEMS, OptionFlow)  # PAUSE_ITEMS 再导出(单一来源 screens)
+                      PAUSE_CONFIRM_ITEMS, PAUSE_ITEMS, OptionFlow)
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
 
 # 条目布局: x=条目贴图左上, y0=首项, dy=行距; 值列在右侧
@@ -73,7 +75,7 @@ _KC_HINT_TEXT = "Up/Down: Select   Z/Enter: Rebind   X/Esc: Cancel/Back"
 
 # 暂停面板(非原版贴图布局, 文字菜单; 菜单项 PAUSE_ITEMS 见 screens.py)
 _PAUSE_PANEL_W = 300
-_PAUSE_PANEL_H = 200
+_PAUSE_PANEL_H = 260   # 4 菜单项 + 二次确认行(Yes/No)
 
 
 class OptionView:
@@ -217,10 +219,13 @@ class OptionView:
             surf.blit(hint, hint.get_rect(center=(TITLE_W // 2, TITLE_H - 30)))
 
     # ---- 暂停面板 ----
-    def render_pause(self, surf: pygame.Surface, cursor: int) -> None:
+    def render_pause(self, surf: pygame.Surface, cursor: int, *,
+                     confirm: "tuple[str, int] | None" = None) -> None:
         """把暂停面板画到 640x480 的 SRCALPHA surf 上(叠加在游戏画面上)。
 
         半透明遮罩 + 面板 + Pause 贴图(entry1 sprite 82) + 文字菜单项。
+        confirm = (待确认项名, Yes/No 光标下标): 二次确认态(AsciiManager.cpp
+        PauseMenu case 5-8) —— 主菜单项压暗, 底部画 "Item?" + Yes/No。
         """
         self.ensure_loaded()
         veil = pygame.Surface((TITLE_W, TITLE_H), pygame.SRCALPHA)
@@ -238,5 +243,15 @@ class OptionView:
             self._text(surf, "PAUSE", TITLE_W // 2, py + 48, lit=True,
                        big=True, center=True)
         for i, name in enumerate(PAUSE_ITEMS):
+            # 确认态下主菜单项全部压暗(原版确认子菜单盖掉主菜单)
+            lit = i == cursor and confirm is None
             self._text(surf, name, TITLE_W // 2, py + 96 + i * 32,
-                       lit=i == cursor, center=True)
+                       lit=lit, center=True)
+        if confirm is not None:
+            action, confirm_cursor = confirm
+            # "Retry?" / "Quit to Title?" + Yes/No (sprite[5]=Yes [6]=No)
+            self._text(surf, f"{action}?", TITLE_W // 2 - 60, py + 96 + 4 * 32,
+                       lit=True)
+            for j, yn in enumerate(PAUSE_CONFIRM_ITEMS):
+                self._text(surf, yn, TITLE_W // 2 + 40 + j * 64,
+                           py + 96 + 4 * 32, lit=j == confirm_cursor)

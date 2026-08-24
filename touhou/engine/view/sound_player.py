@@ -10,7 +10,13 @@
   WAV(thbgm.dat, 原版默认) 优先, 缺失/失败自动回退 MIDI(.mid);
   WAV 循环 = intro 播一遍 + loop 段无限循环(CWaveFile::ResetFile,
   dsutil.cpp:1071-1112), 用 mixer.music.get_pos() 逐帧轮询、到段尾
-  play(start=循环点) 回卷 —— 有 ≤1 帧的接缝, 见 _poll_wav_loop 注释。
+  play(start=循环点) 回卷 —— 有 ≤1 帧的接缝, 见 _poll_wav_loop 注释;
+  轮询由应用壳每帧调用 poll_loop()(不限于对局场景, 否则标题/结算等
+  画面 WAV 曲播完一遍就停, BUGS.md#4);
+- BGM 暂停/恢复(AUDIO_PAUSE/AUDIO_UNPAUSE, SoundPlayer.cpp:846-868):
+  原版仅 WAV 音源暂停(MIDI 走 mci 不暂停), pause_music/unpause_music
+  同此门控; pygame 2.6 实测暂停时 get_busy()=False, 轮询须跳过暂停态,
+  否则误判"播完"回卷并解除暂停。
 """
 
 from __future__ import annotations
@@ -53,6 +59,7 @@ class SoundPlayer:
         self._thbgm_path: Path | None = None
         self._wav_bgm: ThbgmTrack | None = None  # 当前 WAV 曲(循环轮询用)
         self._wav_pass_ms = 0.0           # 本播段长度 ms(首遍=全曲, 之后=循环段)
+        self._music_paused = False        # BGM 暂停态(AUDIO_PAUSE)
 
     # ---- 资源 ----
     def ensure_loaded(self) -> None:
@@ -102,6 +109,15 @@ class SoundPlayer:
             self._thbgm_path = thbgm_path
 
     # ---- 每帧 ----
+    def poll_loop(self) -> None:
+        """WAV 循环点回卷轮询(应用壳每帧调用, 与场景无关)。
+
+        只在 play_frame(对局内)轮询会让标题/结算/音乐室等场景的 WAV 曲
+        播完一遍就停(BUGS.md#4); 提到应用壳主循环逐帧调用。
+        """
+        if self._enabled:
+            self._poll_wav_loop()
+
     def play_frame(self, sounds: list[int], bgm_events: list[tuple],
                    bgm_paths: tuple[str, ...] = ()) -> None:
         """消费 impl 的一帧事件: frame_sounds 逐个播, bgm_events 切歌/淡出。"""
@@ -165,12 +181,40 @@ class SoundPlayer:
 
     def play_music(self, name: str) -> None:
         """播 BGM (循环); WAV(thbgm.dat) 优先, 失败回退 .mid; 失败仅记日志。"""
-        if not self._enabled or name == self._current_bgm:
+        if not self._enabled:
+            return
+        if name == self._current_bgm:
+            # 暂停中再点同名曲 = 恢复播放(防御: 正常由 unpause_music 负责)
+            self.unpause_music()
             return
         if self.bgm_source == "wav" and self._play_wav(name):
             self._current_bgm = name
             return
         self._play_midi(name)
+
+    # ---- BGM 暂停/恢复(AUDIO_PAUSE/AUDIO_UNPAUSE, SoundPlayer.cpp:846-868) ----
+    def pause_music(self) -> None:
+        """暂停 BGM。原版仅 WAV 音源响应 AUDIO_PAUSE
+        (cfg.musicMode == MUSIC_WAV 才 Pause, MIDI 继续), 同此门控。"""
+        if not self._enabled or self._music_paused:
+            return
+        if self.bgm_source != "wav":
+            return  # MIDI 模式原版不暂停 (SoundPlayer.cpp:847)
+        try:
+            pygame.mixer.music.pause()
+        except pygame.error:
+            pass
+        self._music_paused = True
+
+    def unpause_music(self) -> None:
+        """恢复 BGM (AUDIO_UNPAUSE, SoundPlayer.cpp:861-868)。"""
+        if not self._enabled or not self._music_paused:
+            return
+        self._music_paused = False
+        try:
+            pygame.mixer.music.unpause()
+        except pygame.error:
+            pass
 
     def _play_midi(self, name: str) -> None:
         try:
@@ -179,6 +223,7 @@ class SoundPlayer:
             pygame.mixer.music.set_volume(self._bgm_volume)
             pygame.mixer.music.play(-1)
             self._wav_bgm = None
+            self._music_paused = False  # play() 会解除暂停态, 标志同步
             self._current_bgm = name
         except (OSError, KeyError, pygame.error) as e:
             log.warning("BGM 播放失败({}): {}", name, e)
@@ -203,6 +248,7 @@ class SoundPlayer:
             pygame.mixer.music.set_volume(self._bgm_volume)
             pygame.mixer.music.play(0)
             self._wav_bgm = track
+            self._music_paused = False  # play() 会解除暂停态, 标志同步
             self._wav_pass_ms = track.total_seconds * 1000.0
             return True
         except (OSError, pygame.error) as e:
@@ -219,6 +265,8 @@ class SoundPlayer:
         """
         if self._wav_bgm is None:
             return
+        if self._music_paused:
+            return  # 暂停中 get_busy()=False(pygame 2.6 实测), 防误判播完回卷
         try:
             if not pygame.mixer.music.get_busy():
                 self._rewind_wav()
@@ -243,6 +291,7 @@ class SoundPlayer:
         except pygame.error:
             pass
         self._wav_bgm = None
+        self._music_paused = False
         self._current_bgm = ""
 
     def stop_music(self) -> None:
@@ -253,4 +302,5 @@ class SoundPlayer:
         except pygame.error:
             pass
         self._wav_bgm = None
+        self._music_paused = False
         self._current_bgm = ""
