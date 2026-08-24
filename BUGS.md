@@ -38,7 +38,13 @@
 8.背景闪屏+模糊
 9.进入符卡的时候背景没有变化
 10.B在boss战的时候出现极其严重的异常（没伤害，锁定不是boss“你B锁弹幕干啥”等超过5+个bug）
-11.森罗结界和森罗结界奖励的提示没了
+11.森罗结界和森罗结界奖励的提示没了 ✅ 已修复
+- 根因：STATUS_BORDER("Supernatural Border!!")/STATUS_BORDER_BONUS("Border Bonus")
+  两条横幅的渲染（popup_view）早就有，但逻辑层从未触发——结界激活
+  （Player.cpp:2138）与自然破（Player.cpp:2013）两处 ShowStatusPopup 调用漏接。
+- 修复：world._tick_border 激活时 show_status_popup(0, STATUS_BORDER)，
+  自然破时 show_status_popup(score, STATUS_BORDER_BONUS)。
+- 回归测试：`tests/test_integration.py::test_border_banners`
 12.full power mode能消弹，但是不是并不是“仅限于消弹”，我多余P点变成的樱点和full power mode的提示呢
 13.森罗结界的那个樱花圈材质没了
 14.retry和quit to title的二次确认没了（而且原版这里并不能保存rep）

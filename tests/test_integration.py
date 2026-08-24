@@ -492,3 +492,24 @@ def test_point_item_collect_popup() -> None:
     # 弹字上浮 (AsciiManager.cpp:55)
     g.tick(keys=_STOP_KEYS)
     assert g.globals.popups and g.globals.popups[0].pos.y < pos.y
+
+def test_border_banners() -> None:
+    """结界激活弹 "Supernatural Border!!" (Player.cpp:2138);
+    自然破弹 "Border Bonus" (Player.cpp:2013) (BUGS.md#11)。"""
+    from touhou.games.th07.globals import STATUS_BORDER, STATUS_BORDER_BONUS
+    g = _game()
+    _tick_until_alive(g)
+    _isolate(g)  # 停波次防流弹提前破结界
+    g._add_cherry_plus(50000)  # 满樱信号 → READY
+    g.tick(keys=_STOP_KEYS)
+    assert g.border.active, "READY 未自动激活"
+    assert g.globals.status_popup == STATUS_BORDER
+    # 结界自然破(倒计时走完, ~数百帧) → Border Bonus 横幅 + 得分
+    broke = False
+    for _ in range(900):
+        g.tick(keys=_STOP_KEYS)
+        if g.globals.status_popup == STATUS_BORDER_BONUS:
+            broke = True
+            break
+    assert broke, "结界自然破未弹 Border Bonus 横幅"
+    assert g.globals.status_popup_arg > 0  # fmtArg = (cherry-cherryStart)*10

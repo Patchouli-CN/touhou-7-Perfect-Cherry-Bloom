@@ -74,7 +74,12 @@ from .bomb import (
     try_start_bomb,
 )
 from .boss import SPELLCARD_SCORE, Boss
-from .globals import STATUS_FULL_POWER, ZunGlobals
+from .globals import (
+    STATUS_BORDER,
+    STATUS_BORDER_BONUS,
+    STATUS_FULL_POWER,
+    ZunGlobals,
+)
 from .results import RunStats, ScoreRecord, TopList, clear_percent, rating
 from ...engine.score_store import ScoreStore, make_highscore_record
 from ...schema.sound import SE, SoundQueue
@@ -1244,6 +1249,8 @@ class PerfectCherryBloom:
                     self.player.state = PlayerState.BORDER
                     log.debug("结界激活 (frame={}, pos=({:.1f},{:.1f}))",
                               self.frame, self.player.pos.x, self.player.pos.y)
+                    # "Supernatural Border!!" 横幅 (Player.cpp:2138)
+                    g.show_status_popup(0, STATUS_BORDER)
                     # 结界激活 (Player.cpp:2139-2140)
                     self.sounds.play(SE.BORDER_ACTIVATE)
                     self.sounds.play(SE.BORDER_ACTIVATE2)
@@ -1256,6 +1263,8 @@ class PerfectCherryBloom:
             g.cherry_max = res.cherry_max
             g.cherry_plus = res.cherry_plus
             g.add_score(res.score)
+            # "Border Bonus %7d" 横幅 (Player.cpp:2013)
+            g.show_status_popup(res.score, STATUS_BORDER_BONUS)
             self.player.state = PlayerState.INVULNERABLE
             self.player.invuln = max(self.player.invuln, res.invulnerability_timer)
             self.sounds.play(SE.BORDER_BREAK)  # Player.cpp:2015
