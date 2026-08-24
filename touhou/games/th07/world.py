@@ -241,7 +241,6 @@ class PerfectCherryBloom:
         # 与开局同值; view 按 config 覆写开局残机时同步改这里)
         self.initial_lives = initial_lives
         self._death_pos: Vec2 | None = None      # 死亡点(掉 P 位置)
-        self._last_enemy_hit: Vec2 | None = None  # positionOfLastEnemyHit(追踪炸弹用)
         self._border_clear_boxes: list = []       # BreakBorder 的全屏清弹圆
         self._score_milestone = 0               # score 里程碑去抖(每 1000 万)
 
@@ -779,7 +778,6 @@ class PerfectCherryBloom:
         counter = self.frame
         for e in kills:
             self._kill_reward(e, counter)
-            self._last_enemy_hit = e.pos
             counter += 1
 
         self._tick_boss()
@@ -1041,7 +1039,6 @@ class PerfectCherryBloom:
         self._rand_table_idx = 0
         self._border_clear_boxes = []
         self._death_pos = None
-        self._last_enemy_hit = None
         # Player::RegisterChain(0): 玩家/炸弹/结界重建 → SPAWNING 出生点
         self.player = Player(shot_data=self.shot_data,
                              shot_data_focus=self.shot_data_focus,
@@ -1137,9 +1134,12 @@ class PerfectCherryBloom:
     # ---- 炸弹 ----
     def _bomb_ctx(self) -> BombContext:
         g = self.globals
+        # 追踪炸弹目标 = 索敌系统的 positionOfLastEnemyHit (BombData.cpp:390/
+        # :1403 用 player->positionOfLastEnemyHit; EnemyManager.cpp:894-938
+        # 每帧伤害扫描按 boss 优先/|dx| 更新), 不是击杀/炸弹盒命中位置
         return BombContext(player_pos=self.player.pos, cherry=g.cherry,
                            cherry_start=g.cherry_start, difficulty=self.difficulty,
-                           last_enemy_hit=self._last_enemy_hit,
+                           last_enemy_hit=self.player.position_of_last_enemy_hit,
                            rng_float=self.rng.unit)
 
     def _try_bomb(self) -> None:
@@ -1209,6 +1209,11 @@ class PerfectCherryBloom:
                                  power=self.power, state=STATE_ATTRACT)
                 b.dead = True
         for e in self.host.alive():
+            # bomb 盒伤害同走 CalcDamageToEnemy 门控 (EnemyManager.cpp:776-779
+            # canDie && isHittable); 无此门控时不可击目标(如符卡宣言硬直中
+            # 被 ECL 置 isHittable=0 的机体)也会掉血
+            if not (e.can_die and e.is_hittable):
+                continue
             dmg = self.bomb.damage_to(e.pos, Vec2(e.radius, e.radius))
             if dmg:
                 r = settle_damage(int(dmg), is_boss=e.is_boss, is_focus=self.player.focus,
@@ -1219,7 +1224,6 @@ class PerfectCherryBloom:
                                   enemy_timer=e._tick, can_be_damaged=e.can_be_damaged)
                 e.life -= r.damage
                 g.add_score(r.score_code)
-                self._last_enemy_hit = e.pos
                 if r.damage:
                     self.sounds.play(SE.SOUND_20)  # 敌受击音 (EnemyManager.cpp:1052)
                 if e.life <= 0 and e.kill():
@@ -1234,7 +1238,6 @@ class PerfectCherryBloom:
                 g.add_score(r.score_code)
                 if r.cherry_gain:
                     self._add_cherry_plus(r.cherry_gain)
-                self._last_enemy_hit = self.boss.pos
 
     # ---- 结界 ----
     def _tick_border(self) -> None:
@@ -1361,7 +1364,6 @@ class PerfectCherryBloom:
             g.add_score(r.score_code)
             if r.cherry_gain:
                 self._add_cherry_plus(r.cherry_gain)
-            self._last_enemy_hit = boss.pos
         self.targeting.update(boss.pos, self.player.pos, is_boss=True,
                               is_sakuya=self.character in _SAKUYA_CHARACTERS)
         if boss.life <= 0:

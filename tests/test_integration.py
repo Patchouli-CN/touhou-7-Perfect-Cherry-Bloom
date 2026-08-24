@@ -513,3 +513,37 @@ def test_border_banners() -> None:
             break
     assert broke, "结界自然破未弹 Border Bonus 横幅"
     assert g.globals.status_popup_arg > 0  # fmtArg = (cherry-cherryStart)*10
+
+
+def test_bomb_homing_targets_boss_via_targeting() -> None:
+    """追踪炸弹目标 = 索敌系统的 positionOfLastEnemyHit, 无敌人时 (-999,-999)
+    回落追玩家 (BUGS.md#10, BombData.cpp:390 / EnemyManager.cpp:894-938)。"""
+    g = _game()
+    _tick_until_alive(g)
+    _isolate(g)
+    ctx = g._bomb_ctx()
+    assert ctx.last_enemy_hit is not None and ctx.last_enemy_hit.x <= -100
+    g._spawn_demo_boss()
+    g.tick(keys=_STOP_KEYS)  # 跑一帧让索敌扫描写回 player 字段
+    ctx = g._bomb_ctx()
+    assert ctx.last_enemy_hit == g.boss.pos
+
+
+def test_bomb_damage_box_respects_hittable_gate() -> None:
+    """bomb 伤害盒同走 canDie && isHittable 门控 (BUGS.md#10,
+    EnemyManager.cpp:776-779): isHittable=0 的敌人不掉血。"""
+    from touhou.utils import Vec2 as V2
+    g = _game()
+    _tick_until_alive(g)
+    _isolate(g)
+    e = g.host.spawn(path=[V2(192.0, 120.0)], life=1000, speed=0.0)
+    # 手工放一个盖住敌人的 bomb 伤害盒
+    g.bomb.is_in_use = True
+    from touhou.engine.bomb_base import DamageBox
+    g.bomb.damage_boxes.append(DamageBox(e.pos, V2(100.0, 100.0), 10))
+    e.is_hittable = False
+    g._apply_bomb_boxes()
+    assert e.life == 1000, "isHittable=0 不应吃 bomb 伤害"
+    e.is_hittable = True
+    g._apply_bomb_boxes()
+    assert e.life < 1000, "isHittable=1 应吃 bomb 伤害"

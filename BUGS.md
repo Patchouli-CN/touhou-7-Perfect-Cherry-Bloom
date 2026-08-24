@@ -37,7 +37,22 @@
   建议结合 #3#5#10 等修复后实测复测。回归测试：test_bullets/test_exins 共 +7 例
 8.背景闪屏+模糊
 9.进入符卡的时候背景没有变化
-10.B在boss战的时候出现极其严重的异常（没伤害，锁定不是boss“你B锁弹幕干啥”等超过5+个bug）
+10.B在boss战的时候出现极其严重的异常（没伤害，锁定不是boss“你B锁弹幕干啥”等超过5+个bug） ⚠️ 部分修复
+- 根因①（锁弹幕不锁 boss）：追踪类炸弹（灵梦A集中 梦想妙珠集 BombData.cpp:390、
+  咲夜A集中 :1403）的目标 positionOfLastEnemyHit 被接成了一个击杀/bomb盒命中时
+  才刷新的土变量 _last_enemy_hit，而 C++ 该值由 EnemyManager 伤害扫描每帧
+  按 boss 优先/|dx| 更新（EnemyManager.cpp:894-938）。结果追踪珠追的是上一个
+  被打死的杂鱼/被 bomb 盒蹭到的弹系敌人（弹幕），根本不到 boss → 也没伤害。
+- 修复①：_bomb_ctx 改用索敌系统写回的 player.position_of_last_enemy_hit，
+  删除 _last_enemy_hit 及全部写入点。
+- 根因②（伤害门控缺失）：bomb 伤害盒对敌人没走 C++ CalcDamageToEnemy 的
+  canDie && isHittable 门控（EnemyManager.cpp:776-779），不可击目标也掉血。
+- 修复②：_apply_bomb_boxes 敌人循环补该门控。
+- 回归测试：`tests/test_integration.py::test_bomb_homing_targets_boss_via_targeting`、
+  `::test_bomb_damage_box_respects_hittable_gate`
+- 未尽：用户描述"超过5+个bug"不可枚举，本次只修了代码比对能坐实的 2 处偏差；
+  bomb 盒与子弹伤害分路径结算的已知偏差（world._apply_bomb_boxes docstring）
+  保持现状。建议实机复测后补具体条目。
 11.森罗结界和森罗结界奖励的提示没了 ✅ 已修复
 - 根因：STATUS_BORDER("Supernatural Border!!")/STATUS_BORDER_BONUS("Border Bonus")
   两条横幅的渲染（popup_view）早就有，但逻辑层从未触发——结界激活
