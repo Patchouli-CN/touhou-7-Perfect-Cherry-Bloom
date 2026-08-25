@@ -235,13 +235,13 @@ def _type_checking_node_ids(tree: ast.AST) -> set[int]:
 
 
 def test_apis_and_engine_do_not_import_games() -> None:
-    # 架构铁律: 顶层框架(apis)与 engine 不 import games.*(反向依赖已清零,
+    # 架构铁律: 顶层框架(apis)与 engine、utils 不 import games.*(反向依赖已清零,
     # AST 级守住; 注释/docstring 提及不算)。唯一豁免: engine/render 在
     # TYPE_CHECKING 下引用 games.th07.view.screens 的菜单流类型(仅 mypy
     # 可见, 运行时不产生依赖, 见该模块注释)
     pkg = Path(__file__).resolve().parent.parent / "touhou"
     offenders = []
-    for sub in (pkg / "apis", pkg / "engine"):
+    for sub in (pkg / "apis", pkg / "engine", pkg / "utils"):
         for f in sub.rglob("*.py"):
             if "__pycache__" in f.parts:
                 continue
