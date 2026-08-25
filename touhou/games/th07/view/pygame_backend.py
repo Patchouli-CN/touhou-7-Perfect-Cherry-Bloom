@@ -399,7 +399,8 @@ class PygameRenderer:
         sr = getattr(game, "stage_results", None)
         if sr is not None:
             self._stage_results_view.render(surf, sr, game.frame)
-        # 震屏: 消费引擎帧末快照 frame_shakes (BombEffects type=1, view 侧衰减),
+        # 震屏: 消费引擎帧末快照 frame_shakes (ScreenEffect 的 SCREEN_EFFECT_SHAKE,
+        # 上游 55ff90c 由 BombEffects 改名; view 侧衰减),
         # 整帧位移只动游戏区 —— HUD 不晃 (C++ Gui.cpp:159-160 绘制前清零 offset)。
         # 快照按 (game, frame) 去重: 暂停/续关菜单冻结 tick 时帧号不变,
         # 不重复注册同一帧的事件。

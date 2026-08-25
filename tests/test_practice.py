@@ -247,3 +247,41 @@ def test_practice_gameover_no_continue_menu(tmp_path, monkeypatch) -> None:
     assert g.finalized == 1                # 结算照走(store 入账一致)
     assert app._screen == Screen.MAIN_MENU
     assert app._game is None
+
+
+# ---------------------------------------------------------------------------
+# 中选开局樱点补偿 (GameManager.cpp:609-628 AddedCallback switch):
+# 2面 cherry=cherryMax; N面 cherryMax += 50000*(N-2) 且 cherry=cherryMax
+# ---------------------------------------------------------------------------
+
+class StubPracticeCherryGame(StubPracticeGame):
+    """带真实 globals(樱点字段)的练习桩, 复刻 world 的 Normal 开局初始化。"""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        from touhou.games.th07.globals import ZunGlobals
+
+        g = ZunGlobals()
+        g.initialize_rank(1)                       # Normal
+        g.cherry_max = g.cherry_start + 200000     # 同 world 新开局分支
+        self.globals = g
+
+
+def test_practice_midstage_start_cherry_bonus(tmp_path, monkeypatch) -> None:
+    from touhou.engine.score_store import ScoreStore
+
+    s = ScoreStore()
+    s.record_clear(0, 1, 4, 0)           # 解锁到 4 面(同 test_practice_stage_unlock)
+    s.save(tmp_path / "score.json")
+    # 4 面起步: cherryMax +100000 且填满
+    app = _make_app(tmp_path, monkeypatch, game_cls=StubPracticeCherryGame)
+    _start_practice(app, stage=4)
+    g = app._game.globals
+    assert g.cherry_max == g.cherry_start + 200000 + 100000
+    assert g.cherry == g.cherry_max
+    # 2 面起步: 上限不加, 只填满
+    app2 = _make_app(tmp_path, monkeypatch, game_cls=StubPracticeCherryGame)
+    _start_practice(app2, stage=2)
+    g2 = app2._game.globals
+    assert g2.cherry_max == g2.cherry_start + 200000
+    assert g2.cherry == g2.cherry_max

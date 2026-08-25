@@ -722,6 +722,13 @@ class GameApp:
             # 续关回残基数同步(retry 菜单 Yes: SetLivesRemaining(defaultCfg->lifeCount))
             if hasattr(self._game, "initial_lives"):
                 self._game.initial_lives = int(self._config.initial_lives)
+        # Practice 中选开局的樱点补偿 (GameManager.cpp:609-628 AddedCallback
+        # switch(currentStage+1): 2面 cherry=cherryMax; 3面起 cherryMax
+        # +=50000*(stage-2) 且 cherry=cherryMax。enter_stage 不动樱点, 安全)
+        if stage is not None and stage >= 2 and g0 is not None \
+                and hasattr(g0, "cherry_max"):
+            g0.cherry_max += 50000 * (stage - 2)
+            g0.cherry = g0.cherry_max
         # 回放录制: 记开局参数, 之后每帧在 _run_game 记输入(播放模式不录)
         if record:
             self._recorder = replay_mod.ReplayRecorder(replay_mod.make_meta(

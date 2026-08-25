@@ -196,7 +196,8 @@ class PerfectCherryBloom:
         self.sounds = SoundQueue()          # 本帧累积的发声队列(节流语义同 C++)
         self.frame_sounds: list[int] = []   # 上一帧的音效快照(take 后的队列)
         self.bgm_events: list[tuple] = []   # 本帧累积的 BGM 事件
-        # 震屏事件 (BombEffects::RegisterChain(1,...) 透出; bomb.py/ecl_host.py
+        # 震屏事件 (ScreenEffect::RegisterChain(SCREEN_EFFECT_SHAKE,...) 透出;
+        # 上游 55ff90c 由 BombEffects 改名 ScreenEffect; bomb.py/ecl_host.py
         # 各注册点累积, 帧末拍成 frame_shakes 快照, view 层维护衰减与偏移)
         self.frame_shakes: list[tuple[int, int, int]] = []
         self.frame_bgm: list[tuple] = []    # 上一帧的 BGM 事件快照
