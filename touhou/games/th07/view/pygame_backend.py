@@ -132,6 +132,9 @@ class PygameRenderer:
         self._scr = pygame.display.set_mode((TITLE_W * scale, TITLE_H * scale))
         pygame.display.set_caption(self._caption)
         self._clock = pygame.time.Clock()
+        # 渲染压力告警状态(Minecraft "Can't keep up!" 梗, 见 present)
+        self._behind_ms = 0.0
+        self._behind_warned_at = 0.0
 
     def close(self) -> None:
         pygame.quit()
@@ -152,7 +155,24 @@ class PygameRenderer:
         if pygame.display.get_init():
             pygame.display.flip()
         if self._clock is not None:
-            self._clock.tick(60)
+            elapsed = self._clock.tick(60)
+            self._check_frame_overrun(elapsed)
+
+    def _check_frame_overrun(self, elapsed_ms: float) -> None:
+        """渲染压力告警 —— 致敬 Minecraft 的经典日志
+        "Can't keep up! Is the server overloaded? Running Xms or Y ticks behind"。
+        单帧耗时超出 60fps 预算(16.67ms)即累计落后量, 落后超 2 帧时
+        WARNING 一次; 节流 5s 防刷屏, 告警后清零重新累计。"""
+        self._behind_ms = max(0.0, self._behind_ms + elapsed_ms - 1000 / 60)
+        now = time.time()
+        if self._behind_ms > 2000 / 60 \
+                and now - self._behind_warned_at > 5.0:
+            self._behind_warned_at = now
+            ticks = self._behind_ms / (1000 / 60)
+            log.warning("Can't keep up! Is the renderer overloaded? "
+                        "Running {:.0f}ms ({:.1f} ticks) behind",
+                        self._behind_ms, ticks)
+            self._behind_ms = 0.0
 
     # ---- 输入采集 ----
     def set_keymap(self, keymap) -> None:
