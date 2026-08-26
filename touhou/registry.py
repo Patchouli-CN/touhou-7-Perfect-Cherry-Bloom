@@ -14,8 +14,8 @@
   未登记的作品只能 headless 运行
 - mod 能力:     ``@register_mods(name)``             装饰作品专属 mod 能力
   提供者类(th07 = games.th07.mods.Th07Mods), ``ModApi(game)`` 构造时实例化
-  并把其公开方法收割进 capabilities 能力表(作品机制不堆进 ModApi 通用核,
-  见 apis/modding.py 的分层纪律)
+  并把其公开方法收割进分层命名空间(归属用 ``@mod_namespace(ns)`` 声明,
+  作品机制不堆进 ModApi 通用核, 见 apis/modding.py 的分层纪律)
 
 另有与作品名无关的正交维度:
 - 渲染后端:     ``@register_renderer(name)``            装饰 Renderer 实现类
@@ -50,6 +50,7 @@ __all__ = [
     "GameSpec",
     "get_game",
     "get_renderer",
+    "mod_namespace",
     "register_anm",
     "register_app",
     "register_ecl",
@@ -231,12 +232,43 @@ def register_mods(name: str) -> Callable[[type], type]:
 
     契约: ``provider(game)`` 构造(game 是 apis.basic.Game 门面; 作品包内摸
     ``game._impl`` 是同层操作), 其**公开方法**(非 ``_`` 开头、callable)被
-    ``ModApi(game)`` 收割进 ``capabilities`` 能力表(见 apis/modding.py)。
-    作品专属机制(如 th07 樱点/结界)经此喂给 ModApi, 不进通用核。
+    ``ModApi(game)`` 收割进分层命名空间(见 apis/modding.py)。
+    归属声明: 方法/类上用 ``@mod_namespace("player")`` 标注挂在哪个命名
+    空间下(往核心命名空间加方法, 或开一棵作品专属的新命名空间, 如
+    th07 的 ``api.border``); 未标注的方法默认挂到以作品名命名的命名空间
+    (如 ``api.th07``)。作品专属机制(如 th07 樱点/结界)经此喂给 ModApi,
+    不进通用核。
     """
     def deco(cls: type) -> type:
         _put(_MODS, "mod 能力提供者", name, cls)
         return cls
+    return deco
+
+
+def mod_namespace(name: str) -> Callable[[Any], Any]:
+    """声明作品 mod 能力的命名空间归属(装饰提供者方法, 或提供者类作全类默认)。
+
+    配合 ``@register_mods(name)`` 使用 —— ``ModApi(game)`` 收割提供者公开
+    方法时按此归属挂载::
+
+        @register_mods("th07")
+        class Th07Mods:
+            @mod_namespace("player")     # → api.player.set_cherry (加入核心命名空间)
+            def set_cherry(self, value): ...
+
+            @mod_namespace("border")     # → api.border.border_break (新命名空间)
+            def border_break(self): ...
+
+    方法级标注优先; 未标注的方法回落到类级标注, 都没有则挂到以作品名命名
+    的命名空间。与目标命名空间既有成员重名在 ``ModApi`` 构造时 fail fast
+    (ValueError), 不许静默覆盖通用核。
+    """
+    if not name:
+        raise ValueError("mod 能力的命名空间名不能为空")
+
+    def deco(obj: Any) -> Any:
+        obj._mod_namespace = name
+        return obj
     return deco
 
 

@@ -53,6 +53,9 @@ if TYPE_CHECKING:
     # 引擎侧公共结构(仅类型检查期): ECL 宿主接口/敌人状态/道具收集上下文
     from .engine.ecl import EclEnemyState, EclHost
     from .games.th07.items import GameContext
+    # Vec2(仅类型检查期): ModdableBossFace 的 pos 声明用; utils 是叶子层,
+    # 运行时也可 import, 这里随本模块惯例放 TYPE_CHECKING 保持零依赖
+    from .utils import Vec2
     # 协议符合性静态断言用(见文件末尾; 运行时不 import, 无循环)
     from .games.th07.world import PerfectCherryBloom
 
@@ -70,6 +73,7 @@ __all__ = [
     "ItemFace",
     "KeysTuple",
     "LaserFace",
+    "ModdableBossFace",
     "ModdableBulletWorldFace",
     "ModdableEngine",
     "ModdableGlobalsFace",
@@ -395,7 +399,7 @@ def _perfect_cherry_bloom_satisfies_game_engine(
     return impl
 
 
-# ---- ModdableEngine 可变协议(apis.modding.Mods 魔改门面的写入面) ----
+# ---- ModdableEngine 可变协议(apis.modding.ModApi 魔改门面的写入面) ----
 # 与上面的只读 Face 对应: 同名成员改写为"可赋值属性"声明(只读 property 是
 # 其超集约束, 故可变面天然兼容 GameEngine 协议; msgspec.Struct 字段与带
 # setter 的 property 都满足)。成员命名全部是作品无关语义(power/bombs/lives/
@@ -416,22 +420,34 @@ class ModdableGlobalsFace(GameGlobalsFace, Protocol):
     score: int                 # 覆写只读 property 为可赋值属性
 
 
+class ModdableBossFace(BossFace, Protocol):
+    """Boss 可写形态 —— 在只读面上追加生命/位置的直接改写口。"""
+
+    life: float                # 覆写只读 property 为可赋值属性(当前生命;
+                               # 不改 max_life, 跌破阈值仍走引擎阶段切换)
+    pos: "Vec2"                # Vec2 不可变(frozen Struct), 写位置 = 整体重赋
+
+
 class ModdableBulletWorldFace(BulletWorldFace, Protocol):
-    """敌弹容器可写形态 —— 追加自定义弹幕的发射口。"""
+    """敌弹容器可写形态 —— 追加自定义弹幕的发射口与清屏口。"""
 
     def fire(self, burst: "Burst") -> int:
         """把一发 Burst 展开成实际子弹, 返回生成颗数。"""
         ...
 
+    def clear(self) -> None:
+        """清空全部敌弹(清屏; 不清 screen_clear_time 等引擎记账)。"""
+        ...
+
 
 class ModdableEngine(GameEngine, Protocol):
-    """可变对局引擎协议 —— 作品的引擎满足此协议即可被 apis.modding.Mods 改写。
+    """可变对局引擎协议 —— 作品的引擎满足此协议即可被 apis.modding.ModApi 改写。
 
     在 GameEngine(只读观测面)之上把资源三件套改为可赋值属性, 并把
-    player/globals/bullets 收窄为对应可写面。资源数值为引擎内部 float
-    表示(公共 API Mods 用 int, 内部转换); 火力上限等作品数值语义经
+    player/globals/bullets/boss 收窄为对应可写面。资源数值为引擎内部 float
+    表示(公共 API ModApi 用 int, 内部转换); 火力上限等作品数值语义经
     registry 的 GameData 提供, 不进协议。
-    Mods 内部按"能力位探测 + 清晰报错"消费: 调用到引擎不满足的成员时抛
+    ModApi 内部按"能力位探测 + 清晰报错"消费: 调用到引擎不满足的成员时抛
     NotImplementedError(带缺失成员名的中文说明), 不静默失败。
     符合性由文件末尾的 _perfect_cherry_bloom_satisfies_moddable_engine 钉住。
     """
@@ -449,6 +465,9 @@ class ModdableEngine(GameEngine, Protocol):
 
     @property
     def bullets(self) -> ModdableBulletWorldFace: ...
+
+    @property
+    def boss(self) -> ModdableBossFace | None: ...
 
 
 def _perfect_cherry_bloom_satisfies_moddable_engine(

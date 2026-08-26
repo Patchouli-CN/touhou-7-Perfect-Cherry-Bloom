@@ -17,6 +17,7 @@ from ....logger import logger as log
 from ....paths import resolve_data_path
 from ....registry import register_renderer
 from ....engine.render import ACTION_NAMES, EndingFrame, FrameInput, Renderer
+from ....engine.render import overlay as overlay_mod
 from .continue_view import ContinueView
 from .dialog_view import DialogueView
 from .ending_view import EndingView
@@ -119,6 +120,8 @@ class PygameRenderer:
         self._game_surf = None
         self._shake = ScreenShake()
         self._shake_consumed = None  # 已消费的 frame_shakes 所属 (id(game), frame)
+        # Mod 覆盖层字号缓存(engine/render/overlay 命令的 text 字号 → Font)
+        self._overlay_fonts: dict[int, pygame.font.Font] = {}
 
     # ---- 窗口生命周期 / 帧调度 ----
     def open(self, *, scale: int) -> None:
@@ -429,6 +432,16 @@ class PygameRenderer:
             self._shake_consumed = _shake_key
             for _ev in getattr(game, "frame_shakes", ()):
                 self._shake.register(*_ev)
+        # Mod 覆盖层(engine/render/overlay 的立即模式命令: ModApi.gui 每帧
+        # 推入, 本端 drain 消费, 命令只活一帧; headless 无本端即静默丢弃)。
+        # 画在游戏区 surf 上: 坐标系 = 游戏区像素(384x448, y 向下), 与场上
+        # 实体同面, 震屏时随游戏区一起位移 —— 与子弹/自机保持对齐
+        _cmds = overlay_mod.SINK.drain()
+        if _cmds:
+            try:
+                self._render_overlay(surf, _cmds)
+            except Exception:
+                pass  # 渲染异常不拖垮游戏循环
         dx, dy = self._shake.tick()
         frame.blit(surf, (GAME_X + dx, GAME_Y + dy))
         # GUI 层(关卡标题/符卡宣言/bomb cutin): 原版画在 640x480 窗口
@@ -457,6 +470,35 @@ class PygameRenderer:
             except Exception:
                 pass
         self._blit_scaled(frame)
+
+    def _overlay_font(self, size: int):
+        """覆盖层文字字号缓存(每字号一只 Font, 懒加载容错同 _load_font)。"""
+        font = self._overlay_fonts.get(size)
+        if font is None:
+            font = _load_font(size)
+            self._overlay_fonts[size] = font
+        return font
+
+    def _render_overlay(self, surf, cmds) -> None:
+        """把本帧 Mod 覆盖层命令画到游戏区 surface(pygame.draw + font)。
+
+        坐标系 = 游戏区像素(384x448, y 向下), 调用方(render_game)已兜
+        异常; 单条命令的语义即 engine/render/overlay.py 的结构定义。
+        """
+        for cmd in cmds:
+            if isinstance(cmd, overlay_mod.OverlayLine):
+                pygame.draw.line(surf, cmd.color, (cmd.x1, cmd.y1),
+                                 (cmd.x2, cmd.y2), cmd.width)
+            elif isinstance(cmd, overlay_mod.OverlayCircle):
+                pygame.draw.circle(surf, cmd.color, (cmd.x, cmd.y),
+                                   cmd.radius, cmd.width)
+            elif isinstance(cmd, overlay_mod.OverlayPolyline):
+                if len(cmd.points) >= 2:
+                    pygame.draw.lines(surf, cmd.color, cmd.closed,
+                                      cmd.points, cmd.width)
+            elif isinstance(cmd, overlay_mod.OverlayText):
+                surf.blit(self._overlay_font(cmd.size).render(
+                    cmd.content, True, cmd.color), (cmd.x, cmd.y))
 
     def render_pause(self, game, cursor: int, *,
                      hint: "str | None" = None,

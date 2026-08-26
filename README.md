@@ -121,22 +121,30 @@ print(game.score, game.lives, game.result)  # 结算后 result 非 None
 - `touhou.types` 是类型门面：集中公共类型别名与结构式 Protocol，供 IDE
   类型提示（运行时请从 `touhou`/`touhou.apis.basic` 导入）。
 
-**魔改**（`ModApi`，官方写入口，与只读的 `Game` 读写分离）：
+**魔改**（`ModApi`，官方写入口，与只读的 `Game` 读写分离；分层命名空间）：
 
 ```python
 from touhou.apis.modding import ModApi
 
 mods = ModApi(tw.game)
-mods.set_invulnerability_time()   # 无敌(计时每帧递减, policy 里每帧调)
-mods.set_power(mods.full_power)   # 满火力(上限取自作品数值表)
-mods.fire_ring(x, y, arms=24)     # 自定义环形弹幕
-mods.set_cherry(50000)            # 作品专属能力(th07 樱点), 经能力表分发
-mods.available()                  # 全部能力清单: 通用核 + 作品能力, 带一句话说明
+mods.player.set_invulnerability_time()  # 无敌(计时每帧递减, policy 里每帧调)
+mods.player.set_power(mods.player.full_power)  # 满火力(上限取自作品数值表)
+mods.bullets.fire_ring(x, y, arms=24)   # 自定义环形弹幕
+mods.player.set_cherry(50000)           # 作品能力(th07 樱点), 并入 player 命名空间
+mods.border.border_break()              # 作品注册的新命名空间(th07 结界)
+mods.gui.circle(*mods.player.pos, 32)   # 画面覆盖层(立即模式, headless 下 no-op)
+mods.available()                        # 分层能力清单: 命名空间 → {能力: 说明}
 ```
 
+五个通用核命名空间：`player`（无敌/火力/残机/Bomb/坐标）、`boss`
+（exists/set_life/set_pos）、`bullets`（fire/fire_ring/clear/count）、
+`score`（add）、`gui`（line/circle/polyline/text 覆盖层，坐标系 =
+游戏区像素 384x448、y 向下，与 `player_pos`/`bullets_array()` 同系）。
+
 作品专属机制（th07 樱点/结界等）不进 `ModApi` 通用核，由作品包
-（`games/th07/mods.py`）经 `@register_mods("th07")` 登记提供者类，
-`ModApi` 构造时收割其公开方法进 `capabilities` 能力表。
+（`games/th07/mods.py`）经 `@register_mods("th07")` 登记提供者类、
+`@mod_namespace("player"/"border")` 声明归属，`ModApi` 构造时按归属收割
+（往核心命名空间加方法，或注册整棵新命名空间；重名通用核 fail fast）。
 
 **ECL 编解码**（作品脚本文件的工具链入口）：
 
