@@ -71,8 +71,8 @@ def test_codec_default_game_is_th07() -> None:
     """默认作品名 th07; 经注册表拿到的格式类就是 engine 的 EclFile。"""
     codec = EclCodec()
     assert codec.game == "th07"
-    assert codec._spec.file_format is EclFile
-    assert codec._spec.machine is not None
+    assert codec._ecl_spec.file_format is EclFile
+    assert codec._ecl_spec.machine is not None
 
 
 def test_codec_decode_encode_synthetic() -> None:

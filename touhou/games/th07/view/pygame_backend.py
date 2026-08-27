@@ -164,11 +164,11 @@ class PygameRenderer:
     def _check_frame_overrun(self, elapsed_ms: float) -> None:
         """渲染压力告警 —— 致敬 Minecraft 的经典日志
         "Can't keep up! Is the server overloaded? Running Xms or Y ticks behind"。
-        单帧耗时超出 60fps 预算(16.67ms)即累计落后量, 落后超 2 帧时
+        单帧耗时超出 60fps 预算(16.67ms)即累计落后量, 落后超 10 帧时
         WARNING 一次; 节流 5s 防刷屏, 告警后清零重新累计。"""
         self._behind_ms = max(0.0, self._behind_ms + elapsed_ms - 1000 / 60)
         now = time.time()
-        if self._behind_ms > 2000 / 60 \
+        if self._behind_ms > 10000 / 60 \
                 and now - self._behind_warned_at > 5.0:
             self._behind_warned_at = now
             ticks = self._behind_ms / (1000 / 60)

@@ -38,7 +38,11 @@ from __future__ import annotations
 
 import msgspec
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .engine.ecl_base import EclMachineBase
+    from .engine.ecl import EclFile
 
 from .exceptions import DuplicateRegistrationError, NotRegisteredError
 
@@ -67,8 +71,8 @@ __all__ = [
 @dataclass(frozen=True)
 class EclSpec:
     """一部作品的 ECL 虚拟机实现(指令集解释器 + 二进制文件格式)。"""
-    machine: type       # EclMachine 类(指令集/解释器实现)
-    file_format: type   # EclFile 类(ecldata 二进制 parse/serialize;
+    machine: type["EclMachineBase"]       # EclMachine 类(指令集/解释器实现)
+    file_format: type["EclFile"]   # EclFile 类(ecldata 二进制 parse/serialize;
                         # 统一 enc/dec 入口 engine/ecl_codec.EclCodec 经此解析)
 
 
@@ -306,14 +310,16 @@ def get_renderer(name: str) -> type:
     return _RENDERER[name]
 
 
-def get_game(name: str) -> GameSpec:
-    """按作品名取注册描述; 未注册报带已注册列表的 NotRegisteredError。"""
+def get_game(name: str | None, report_err: bool = True) -> GameSpec | None:
+    """按作品名取注册描述; 未注册时，如果`report_err`为`True`，则报带已注册列表的 NotRegisteredError。"""
     if name not in _ECL and name not in _ANM \
             and name not in _HOOKS and name not in _WORLD \
             and name not in _DATA and name not in _APP \
             and name not in _MODS:
-        raise NotRegisteredError(
-            f"未注册的作品: {name!r} (已注册: {registered_games()})")
+        if report_err:
+            raise NotRegisteredError(
+                f"未注册的作品: {name!r} (已注册: {registered_games()})")
+        return None
     return GameSpec(name=name, ecl=_ECL.get(name), anm=_ANM.get(name),
                     hooks=_HOOKS.get(name, GameHooks()),
                     world=_WORLD.get(name), data=_DATA.get(name),
