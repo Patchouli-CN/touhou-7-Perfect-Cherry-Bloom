@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import msgspec
 from dataclasses import dataclass
-from typing import Any, Callable, TYPE_CHECKING
+from typing import Any, Callable, TYPE_CHECKING, overload, Literal
 
 if TYPE_CHECKING:
     from .engine.ecl_base import EclMachineBase
@@ -84,13 +84,7 @@ class AnmSpec:
 
 
 class GameData(msgspec.Struct, frozen=True):
-    """一部作品的数值表/名单(registry 只搬运; th07 实例见 games/th07/data.py)。
-
-    全字段带默认值: 空 GameData() = "未提供", 对局实现回落到自己的内置
-    默认表(th07 = games/th07/data.py 的同名常量)。作品包模块(boss/bomb/items)的
-    模块级表即 th07 默认值, 独立使用(不经注册表)时行为不变。
-    (项目约定: 数据结构用 msgspec.Struct, 见用户规约 —— 不改 dataclass。)
-    """
+    """作品数值表/名单(registry 只搬运; th07 实例见 games/th07/data.py)。"""
 
     characters: tuple[str, ...] = ()          # 机体名单(下标 = shotType)
     difficulties: tuple[str, ...] = ()        # 难度名单(下标 = difficulty)
@@ -101,6 +95,15 @@ class GameData(msgspec.Struct, frozen=True):
                                               # Extra/Phantasm 是额外关卡, 不算难度)
     character_sht: dict[int, tuple[str, str]] = msgspec.field(
         default_factory=dict)                 # 机体 → (非 focus, focus) .sht 文件
+    
+    characters: tuple[str, ...] = (           # 角色元数据（作品有多少角色，默认th07角色列表占位）
+        "ReimuA", "ReimuB", "MarisaA", "MarisaB", "SakuyaA", "SakuyaB"
+    )
+    difficulties: tuple[str, ...] = (         # 难度元数据（作品有什么难度，考虑th07特殊情况）
+        "Easy", "Normal", "Hard", "Lunatic",
+        "Extra", "Phantasm"
+    )
+    
     spellcard_scores: tuple[int, ...] = ()    # 符卡基础分值(代码值)
     bomb_params: dict[tuple[int, bool], tuple[int, int, int, float]] = \
         msgspec.field(default_factory=dict)   # (机体, focus) → 炸弹参数原始行
@@ -309,6 +312,13 @@ def get_renderer(name: str) -> type:
             f"未注册的渲染后端: {name!r} (已注册: {registered_renderers()})")
     return _RENDERER[name]
 
+@overload
+def get_game(name: str | None, report_err: Literal[False]) -> GameSpec | None:
+    ...
+
+@overload
+def get_game(name: str | None, report_err: Literal[True] = True) -> GameSpec:
+    ...
 
 def get_game(name: str | None, report_err: bool = True) -> GameSpec | None:
     """按作品名取注册描述; 未注册时，如果`report_err`为`True`，则报带已注册列表的 NotRegisteredError。"""

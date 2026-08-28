@@ -18,43 +18,14 @@ from __future__ import annotations
 
 import msgspec
 import numpy as np
-from enum import Enum, IntEnum
+from enum import Enum
 from pathlib import Path
 from typing import Callable, Generic, Iterator, Literal, TypeVar, overload
 
 from ..engine.lasers import LaserState
 from ..engine.replay import ReplayRecorder, make_meta, new_replay_name
-from ..registry import GameSpec, get_game
+from ..registry import GameSpec, get_game, GameHooks
 from ..types import GameEngine, InputSource, KeysTuple, PathLike
-
-
-# ---- 枚举 ----
-# ShotType/Difficulty 是"已知枚举"= th07 的 6 机体/6 难度(语义与原作一致的作品
-# 可直接复用)。Game/TouhouWorld 的 character/difficulty 参数接受裸 int, 不限定
-# 必须用这两个枚举; 新作品可在自己的 games/thXX/ 定义新枚举, 经 game= 参数
-# 传入使用, 不需要改动本模块。
-class ShotType(IntEnum):
-    """机体(= 内部 shotType 0..5; 名单为 th07 的 6 机体)。"""
-    REIMU_A = 0
-    REIMU_B = 1
-    MARISA_A = 2
-    MARISA_B = 3
-    SAKUYA_A = 4
-    SAKUYA_B = 5
-
-
-#: ``Character`` 是 ``ShotType`` 的别名(用户入口习惯叫法)。
-Character = ShotType
-
-
-class Difficulty(IntEnum):
-    """难度(= 内部 difficulty 0..5; Extra/Phantasm 对应 7/8 面; th07 的 6 难度)。"""
-    EASY = 0
-    NORMAL = 1
-    HARD = 2
-    LUNATIC = 3
-    EXTRA = 4
-    PHANTASM = 5
 
 
 class GamePhase(Enum):
@@ -67,16 +38,14 @@ class GamePhase(Enum):
     RESULT = "result"              # 总结算已出(result 可读)
 
 
-class GameEventKind(Enum):
-    """逐帧事件类别。"""
+class GameEventKind:
+    """通用事件类别。"""
     SPELLCARD_BEGIN = "spellcard_begin"          # name=符卡名
     SPELLCARD_CAPTURED = "spellcard_captured"    # name=符卡名
     SPELLCARD_END = "spellcard_end"              # 未捕获结束(超时/击破失败); name=符卡名
     PLAYER_DEATH = "player_death"
     BOMB_START = "bomb_start"
     EXTEND = "extend"                            # 奖残(残机增加)
-    BORDER_START = "border_start"                # 森罗结界激活
-    BORDER_BREAK = "border_break"                # 结界破裂
     STAGE_CLEAR = "stage_clear"                  # stage=刚通过的关号
     GAME_OVER = "game_over"
     GAME_CLEAR = "game_clear"                    # 通关(总结算)
@@ -85,7 +54,7 @@ class GameEventKind(Enum):
 
 class GameEvent(msgspec.Struct, frozen=True):
     """一帧内发生的事件。name/stage 仅在相关类别时有值。"""
-    kind: GameEventKind
+    kind: str
     frame: int
     name: str | None = None
     stage: int | None = None
@@ -182,11 +151,13 @@ class Snapshot(msgspec.Struct, frozen=True):
 # ---- 对局门面 ----
 def _require_world(game: str) -> GameSpec:
     """经注册表解析作品, 并要求其对局实现已注册(供 Game/TouhouWorld 构造)。"""
+    
     spec = get_game(game)
-    if spec.world is None:
+    if spec and spec.world is None:
         raise ValueError(
             f"作品 {game!r} 已注册, 但缺对局实现"
             f"(需要 @register_world_impl({game!r}) 装饰主逻辑类)")
+        
     return spec
 
 
@@ -200,8 +171,8 @@ class Game:
                 snap = game.snapshot()   # 按需, 每帧构造有开销
     """
 
-    def __init__(self, character: ShotType = ShotType.REIMU_A,
-                 difficulty: Difficulty = Difficulty.NORMAL,
+    def __init__(self, character: str = "ReimuA",
+                 difficulty: str = "Normal",
                  stage: int = 1, *,
                  game: str = "th07",
                  data_path: PathLike | None = None,
@@ -210,8 +181,10 @@ class Game:
                  score_path: PathLike | None = None) -> None:
         # 经注册表解析作品(未注册名报带已注册列表的 KeyError);
         # 对局实现(register_world_impl 登记)必须有, 否则无法构造对局
-        self.spec = _require_world(game)
         self.game_name = game
+        self.spec = _require_world(game)
+        self._validate_data(character, difficulty)
+        
         # difficulty>=4(Extra/Phantasm) 固定 2 残, lives 仅 <4 生效
         kwargs: dict = {}
         if lives is not None:
@@ -219,16 +192,30 @@ class Game:
         if self.spec.data is not None:
             kwargs["data"] = self.spec.data  # 数值表(register_game_data 登记)
         world = self.spec.world
-        assert world is not None  # _require_world 已校验
-        # 注册表取回的构造器返回 Any; 门面只面向 GameEngine 协议编程
-        # (touhou/types.py), th07 的 PerfectCherryBloom 鸭子满足该协议
+        
+        character_id  = 0
+        difficulty_id = 0
+        
+        if self.spec.data:
+            character_id = self.spec.data.characters.index(character)
+            difficulty_id = self.spec.data.difficulties.index(difficulty)
+        
         self._impl: GameEngine = world(
-            data_path=data_path, character=int(character),
-            difficulty=int(difficulty), seed=seed, score_path=score_path,
-            hooks=self.spec.hooks, **kwargs)
+            data_path=data_path, character=character_id,
+            difficulty=difficulty_id, seed=seed, score_path=score_path,
+            hooks=self.spec.hooks, **kwargs) # type: ignore
+        
         if stage != 1:
             self._impl.enter_stage(stage)
         self._prev = self._probe()  # 事件差的基准帧状态(每帧 step 后更新)
+        
+    def _validate_data(self, character: str, difficulty: str) -> None:
+        """ 验证数据 """
+        if self.spec and self.spec.data:
+            if character not in self.spec.data.characters:
+                raise ValueError(f"{self.game_name} 不支持角色 {character}，可选: {self.spec.data.characters}")
+            if difficulty not in self.spec.data.difficulties:
+                raise ValueError(f"{self.game_name} 不支持难度 {difficulty}，选择: {self.spec.data.difficulties}")
 
     @classmethod
     def _from_impl(cls, impl: GameEngine, spec: GameSpec, game_name: str
@@ -294,7 +281,7 @@ class Game:
         g = self._impl
         out: list[GameEvent] = []
 
-        def emit(kind: GameEventKind, **kw) -> None:
+        def emit(kind: str, **kw) -> None:
             out.append(GameEvent(kind, frame=g.frame, **kw))
 
         if now["spell_key"] != prev["spell_key"]:
@@ -311,10 +298,14 @@ class Game:
             emit(GameEventKind.BOMB_START)
         if now["lives"] > prev["lives"]:
             emit(GameEventKind.EXTEND)
+            
+        # TODO: 这里耦合了TH07，后续解耦合
+        # TODO: 记得采用EventBus架构（事件发布/订阅机制）
         if now["border_active"] and not prev["border_active"]:
-            emit(GameEventKind.BORDER_START)
+            emit("border_start")
         elif prev["border_active"] and not now["border_active"]:
-            emit(GameEventKind.BORDER_BREAK)
+            emit("border_break")
+        # ================================
         if now["stage"] != prev["stage"]:
             emit(GameEventKind.STAGE_CLEAR, stage=prev["stage"])
         if now["ending"] and not prev["ending"]:
@@ -345,16 +336,6 @@ class Game:
     @property
     def power(self) -> int:
         return int(self._impl.power)
-
-    @property
-    def cherry(self) -> int:
-        # 樱点是 th07 专属能力位(非 GameEngine 必选协议): 无樱点系统的作品得 0
-        return getattr(self._impl, "cherry", 0)
-
-    @property
-    def cherry_max(self) -> int:
-        # 与 cherry 同理: th07 专属能力位, 无樱点系统的作品得 0
-        return int(getattr(self._impl.globals, "cherry_max", 0))
 
     @property
     def graze(self) -> int:
@@ -571,7 +552,7 @@ class TouhouWorldEventStream:
             self._recorder = self._new_recorder()
         while not self._done:
             if self.policy is not None:
-                inp = self.policy(g)
+                inp = self.policy(g) # type: ignore
             else:
                 default = self._world.auto_input
                 inp = default(g) if callable(default) else default
@@ -624,8 +605,8 @@ class TouhouWorld(Generic[_H]):
     @overload
     def __init__(self: "TouhouWorld[Literal[True]]",
                  wd: WorldData | None = None,
-                 character: ShotType = ShotType.REIMU_A,
-                 difficulty: Difficulty = Difficulty.NORMAL,
+                 character: str = "ReimuA",
+                 difficulty: str = "Normal",
                  lives: int = 3, *, headless: Literal[True],
                  stage: int = 1,
                  game: str = "th07",
@@ -634,8 +615,8 @@ class TouhouWorld(Generic[_H]):
     @overload
     def __init__(self: "TouhouWorld[Literal[False]]",
                  wd: WorldData | None = None,
-                 character: ShotType = ShotType.REIMU_A,
-                 difficulty: Difficulty = Difficulty.NORMAL,
+                 character: str = "ReimuA",
+                 difficulty: str = "Normal",
                  lives: int = 3, headless: Literal[False] = False,
                  stage: int = 1, *,
                  game: str = "th07",
@@ -643,16 +624,16 @@ class TouhouWorld(Generic[_H]):
                  auto_input: InputSource | None = None) -> None: ...
     @overload
     def __init__(self, wd: WorldData | None = None,
-                 character: ShotType = ShotType.REIMU_A,
-                 difficulty: Difficulty = Difficulty.NORMAL,
+                 character: str = "ReimuA",
+                 difficulty: str = "Normal",
                  lives: int = 3, headless: bool = False,
                  stage: int = 1, *,
                  game: str = "th07",
                  seed: int | None = None,
                  auto_input: InputSource | None = None) -> None: ...
     def __init__(self, wd: WorldData | None = None,
-                 character: ShotType = ShotType.REIMU_A,
-                 difficulty: Difficulty = Difficulty.NORMAL,
+                 character: str = "ReimuA",
+                 difficulty: str = "Normal",
                  lives: int = 3, headless: bool = False,
                  stage: int = 1, *,
                  game: str = "th07",
