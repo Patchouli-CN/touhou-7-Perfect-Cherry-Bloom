@@ -1,4 +1,5 @@
 """Touhou Pythonic 引擎测试: 用真实 th07 数据验证。"""
+
 from __future__ import annotations
 
 import math

@@ -39,6 +39,7 @@
 - ``available()`` 返回分层清单(命名空间 → {能力名: 一句话说明}),
   ``is_capabilities_exist("player.set_cherry")`` 按点路径探测。
 """
+
 from __future__ import annotations
 
 import math
@@ -130,7 +131,8 @@ class _ModNamespace:
             raise NotImplementedError(
                 f"当前作品引擎({type(self._impl).__name__})不支持{purpose}: "
                 f"缺少成员 {type(obj).__name__}.{name}"
-                f"(ModdableEngine 协议要求, 见 touhou/types.py)")
+                f"(ModdableEngine 协议要求, 见 touhou/types.py)"
+            )
         # 只读 property(类上有 property 但无 setter)同样视为不可写;
         # 实例属性/msgspec 字段无类级 property, 走不到这个分支
         cls_attr = getattr(type(obj), name, None)
@@ -138,7 +140,8 @@ class _ModNamespace:
             raise NotImplementedError(
                 f"当前作品引擎({type(self._impl).__name__})不支持{purpose}: "
                 f"成员 {type(obj).__name__}.{name} 为只读"
-                f"(ModdableEngine 协议要求可写, 见 touhou/types.py)")
+                f"(ModdableEngine 协议要求可写, 见 touhou/types.py)"
+            )
 
 
 class PlayerMods(_ModNamespace):
@@ -157,7 +160,7 @@ class PlayerMods(_ModNamespace):
 
     # ---- 无敌 ----
     def god_mode(self) -> None:
-        """ 无敌挂 """
+        """无敌挂"""
         return self.set_invulnerability_time(999)
 
     def set_invulnerability_time(self, timer: int = 999) -> None:
@@ -167,8 +170,7 @@ class PlayerMods(_ModNamespace):
         **每帧调用**才能持续无敌; 单次调用只保 ``timer`` 帧。
         """
         player = self._impl.player
-        self._require_writable(player, "invulnerability_timer",
-                               "无敌改写(god_mode)")
+        self._require_writable(player, "invulnerability_timer", "无敌改写(god_mode)")
         setattr(player, "invulnerability_timer", timer)
 
     # ---- 资源直改(公共签名用 int; 引擎内部 float 表示不外泄) ----
@@ -177,7 +179,8 @@ class PlayerMods(_ModNamespace):
         if not 0 <= power <= self._full_power:
             raise ValueError(
                 f"火力 {power} 超出本作品合法范围 0..{self._full_power}"
-                f"(满火力值来自注册表 GameData.full_power)")
+                f"(满火力值来自注册表 GameData.full_power)"
+            )
         self._require_writable(self._impl, "power", "火力改写")
         setattr(self._impl, "power", float(power))
 
@@ -215,8 +218,9 @@ class BossMods(_ModNamespace):
         """取当前 Boss 对象; 无 Boss(或未进 Boss 战)时报中文错。"""
         boss = getattr(self._impl, "boss", None)
         if boss is None:
-            raise ValueError("当前场上没有 Boss(未进 Boss 战或已击破), "
-                             "先判 api.boss.exists 再写")
+            raise ValueError(
+                "当前场上没有 Boss(未进 Boss 战或已击破), 先判 api.boss.exists 再写"
+            )
         return boss
 
     def set_life(self, life: float) -> None:
@@ -247,22 +251,40 @@ class BulletsMods(_ModNamespace):
             raise NotImplementedError(
                 f"当前作品引擎({type(self._impl).__name__})不支持自定义弹幕: "
                 f"缺少成员 {type(bullets).__name__}.fire"
-                f"(ModdableEngine 协议要求, 见 touhou/types.py)")
+                f"(ModdableEngine 协议要求, 见 touhou/types.py)"
+            )
         return int(fire(burst))
 
-    def fire_ring(self, x: float, y: float, *, arms: int = 24,
-                  speed: float = 1.5, sprite: int = 1,
-                  sprite_offset: int = 6) -> int:
+    def fire_ring(
+        self,
+        x: float,
+        y: float,
+        *,
+        arms: int = 24,
+        speed: float = 1.5,
+        sprite: int = 1,
+        sprite_offset: int = 6,
+    ) -> int:
         """便捷: 以 (x, y) 为中心发一圈 ``arms`` 颗的单层匀速环形弹幕。
 
         ``sprite``/``sprite_offset`` 是弹型模板号/变体偏移, **取值含义由作品
         定义**(th07: sprite 0..10 弹型模板, offset 为颜色/变体偏移, 数据见
         games.th07); 本 API 不做作品假设, 原样透传给引擎。返回生成颗数。
         """
-        return self.fire(Burst(
-            path=Vec2(x, y), base_angle=math.pi / 2, aim=Aim.RING_ABSOLUTE,
-            arms=arms, rings=1, speed_a=speed, speed_b=speed, angle_step=0.0,
-            sprite=sprite, sprite_offset=sprite_offset))
+        return self.fire(
+            Burst(
+                path=Vec2(x, y),
+                base_angle=math.pi / 2,
+                aim=Aim.RING_ABSOLUTE,
+                arms=arms,
+                rings=1,
+                speed_a=speed,
+                speed_b=speed,
+                angle_step=0.0,
+                sprite=sprite,
+                sprite_offset=sprite_offset,
+            )
+        )
 
     def clear(self) -> None:
         """清屏: 移除全部敌弹(容器需有 clear() 能力位, 缺失报中文错)。
@@ -276,7 +298,8 @@ class BulletsMods(_ModNamespace):
             raise NotImplementedError(
                 f"当前作品引擎({type(self._impl).__name__})不支持清屏: "
                 f"缺少成员 {type(bullets).__name__}.clear"
-                f"(ModdableEngine 协议要求, 见 touhou/types.py)")
+                f"(ModdableEngine 协议要求, 见 touhou/types.py)"
+            )
         clear()
 
     # ---- 观测补充(mod 常用的计数; 全景观测仍走 Game.snapshot) ----
@@ -312,30 +335,58 @@ class GuiMods:
     def __init__(self, sink: OverlaySink = SINK) -> None:
         self._sink = sink
 
-    def line(self, x1: float, y1: float, x2: float, y2: float, *,
-             color: tuple[int, int, int] = (255, 255, 255),
-             width: int = 1) -> None:
+    def line(
+        self,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        *,
+        color: tuple[int, int, int] = (255, 255, 255),
+        width: int = 1,
+    ) -> None:
         """画一条线段 (x1, y1)-(x2, y2)(本帧有效)。"""
         self._sink.push(OverlayLine(x1, y1, x2, y2, color=color, width=width))
 
-    def circle(self, x: float, y: float, radius: float, *,
-               color: tuple[int, int, int] = (255, 255, 255),
-               width: int = 1) -> None:
+    def circle(
+        self,
+        x: float,
+        y: float,
+        radius: float,
+        *,
+        color: tuple[int, int, int] = (255, 255, 255),
+        width: int = 1,
+    ) -> None:
         """画一个圆 (x, y) 半径 ``radius``; ``width=0`` 为实心填充(本帧有效)。"""
-        self._sink.push(
-            OverlayCircle(x, y, radius, color=color, width=width))
+        self._sink.push(OverlayCircle(x, y, radius, color=color, width=width))
 
-    def polyline(self, points: list[tuple[float, float]] | tuple[tuple[float, float], ...],
-                 *, color: tuple[int, int, int] = (255, 255, 255),
-                 width: int = 1, closed: bool = False) -> None:
+    def polyline(
+        self,
+        points: list[tuple[float, float]] | tuple[tuple[float, float], ...],
+        *,
+        color: tuple[int, int, int] = (255, 255, 255),
+        width: int = 1,
+        closed: bool = False,
+    ) -> None:
         """画一条折线(导航路线等); ``closed=True`` 首尾相连成多边形(本帧有效)。"""
-        self._sink.push(OverlayPolyline(
-            tuple((float(px), float(py)) for px, py in points),
-            color=color, width=width, closed=closed))
+        self._sink.push(
+            OverlayPolyline(
+                tuple((float(px), float(py)) for px, py in points),
+                color=color,
+                width=width,
+                closed=closed,
+            )
+        )
 
-    def text(self, x: float, y: float, content: str, *,
-             color: tuple[int, int, int] = (255, 255, 255),
-             size: int = 16) -> None:
+    def text(
+        self,
+        x: float,
+        y: float,
+        content: str,
+        *,
+        color: tuple[int, int, int] = (255, 255, 255),
+        size: int = 16,
+    ) -> None:
         """画一段文字, 左上角锚在 (x, y)(自定义弹出提示; 本帧有效)。"""
         self._sink.push(OverlayText(x, y, content, color=color, size=size))
 
@@ -411,15 +462,15 @@ class ModApi:
             member = getattr(provider, name)
             if not callable(member):
                 continue
-            ns_name = getattr(member, "_mod_namespace", None) \
-                or class_ns or spec_name
+            ns_name = getattr(member, "_mod_namespace", None) or class_ns or spec_name
             ns = self.__dict__.get(ns_name)
             if ns is None:
                 # 整棵新命名空间: 名字不许与 ModApi 既有成员(类/实例)冲突
                 if hasattr(ModApi, ns_name) or ns_name in self.__dict__:
                     raise ValueError(
                         f"作品 {spec_name!r} 的 mod 命名空间 {ns_name!r} "
-                        f"与 ModApi 既有成员重名(请给命名空间改名)")
+                        f"与 ModApi 既有成员重名(请给命名空间改名)"
+                    )
                 ns = GameModsNamespace(ns_name, spec_name)
                 self.__dict__[ns_name] = ns
             # fail fast: 与目标命名空间既有成员(通用核真方法/已收割能力)
@@ -428,7 +479,8 @@ class ModApi:
                 raise ValueError(
                     f"作品 {spec_name!r} 的 mod 能力 {ns_name}.{name} "
                     f"与命名空间既有成员重名(请给作品能力改名; "
-                    f"通用核成员见 available())")
+                    f"通用核成员见 available())"
+                )
             setattr(ns, name, member)
             self._game_caps.append((ns_name, name, member))
 
@@ -437,16 +489,20 @@ class ModApi:
         game = self.__dict__.get("game")
         spec_name = game.spec.name if game is not None else "?"
         spec_mods = game.spec.mods if game is not None else None
-        namespaces = sorted(k for k in self.__dict__ if not k.startswith("_")
-                            and k != "game")
+        namespaces = sorted(
+            k for k in self.__dict__ if not k.startswith("_") and k != "game"
+        )
         hint = ""
         if spec_mods is None:
-            hint = (f"; 作品 {spec_name!r} 未注册 mod 能力(需要 "
-                    f"@register_mods({spec_name!r}) 装饰能力提供者类, "
-                    f"见 touhou/registry.py)")
+            hint = (
+                f"; 作品 {spec_name!r} 未注册 mod 能力(需要 "
+                f"@register_mods({spec_name!r}) 装饰能力提供者类, "
+                f"见 touhou/registry.py)"
+            )
         raise AttributeError(
             f"ModApi 没有成员 {name!r}: 现有命名空间 {namespaces}{hint}"
-            f"(全量能力清单见 available())")
+            f"(全量能力清单见 available())"
+        )
 
     def is_capabilities_exist(self, path: str) -> bool:
         """能力是否存在, 点路径 ``"命名空间.能力名"``(如 ``"player.set_cherry"``)。
@@ -468,6 +524,7 @@ class ModApi:
         out = {ns: dict(caps) for ns, caps in _CORE_CAPABILITIES.items()}
         for ns_name, name, fn in self._game_caps:
             doc = (getattr(fn, "__doc__", None) or "").strip()
-            out.setdefault(ns_name, {})[name] = \
+            out.setdefault(ns_name, {})[name] = (
                 doc.splitlines()[0] if doc else "(无说明)"
+            )
         return out

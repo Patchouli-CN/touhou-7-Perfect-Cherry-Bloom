@@ -1,4 +1,5 @@
 """Touhou: .anm 解析测试(用真实 th07.dat 里的 title01.anm 核对)。"""
+
 from __future__ import annotations
 
 import sys
@@ -49,8 +50,8 @@ def test_sprite_image_decode(anm: AnmFile) -> None:
     assert (w, h) == (512, 256)
     assert len(rgba) == w * h * 4
     alphas = rgba[3::4]
-    assert max(alphas) > 200          # logo 主体不透明
-    assert min(alphas) == 0           # 边角全透明
+    assert max(alphas) > 200  # logo 主体不透明
+    assert min(alphas) == 0  # 边角全透明
     # "Start" 菜单贴图非全透明
     w, h, rgba = anm.sprite_image(0, entry=1)
     assert (w, h) == (80, 32)
@@ -58,7 +59,7 @@ def test_sprite_image_decode(anm: AnmFile) -> None:
     # 白色文字: 取亮色像素(排除不透明描边), RGB 都应接近白(验证 BGRA 没翻)
     opaque = [i for i in range(w * h) if rgba[4 * i + 3] > 200]
     best = max(opaque, key=lambda i: rgba[4 * i] + rgba[4 * i + 1] + rgba[4 * i + 2])
-    r, g, b = rgba[4 * best:4 * best + 3]
+    r, g, b = rgba[4 * best : 4 * best + 3]
     assert r > 200 and g > 200 and b > 200
 
 

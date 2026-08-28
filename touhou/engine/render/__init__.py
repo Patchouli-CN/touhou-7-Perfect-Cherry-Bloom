@@ -27,6 +27,7 @@
 - 菜单 flow/cursor 等状态对象(OptionFlow/MusicRoomFlow…, 均 pygame-free)
   由 GameApp 持有并传入渲染方法; 后端只读它们取光标/文本, 不推进状态。
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Mapping, Protocol, Sequence
@@ -122,8 +123,9 @@ class Renderer(Protocol):
         ...
 
     # ---- 菜单系场景 ----
-    def render_title(self, cursor: int, frame: int, *,
-                     show_unimplemented: bool = False) -> None:
+    def render_title(
+        self, cursor: int, frame: int, *, show_unimplemented: bool = False
+    ) -> None:
         """标题主菜单(frame 驱动花瓣动画)。"""
         ...
 
@@ -131,8 +133,9 @@ class Renderer(Protocol):
 
     def render_character(self, cursor: int) -> None: ...
 
-    def render_practice_stage(self, cursor: int, max_stage: int, *,
-                              difficulty: str, character: str) -> None: ...
+    def render_practice_stage(
+        self, cursor: int, max_stage: int, *, difficulty: str, character: str
+    ) -> None: ...
 
     def render_extra(self, cursor: int) -> None: ...
 
@@ -140,8 +143,9 @@ class Renderer(Protocol):
 
     def render_keyconfig(self, flow: "KeyConfigFlow") -> None: ...
 
-    def render_player_data(self, flow: "PlayerDataFlow",
-                           store: "ScoreStore | None", frame: int) -> None: ...
+    def render_player_data(
+        self, flow: "PlayerDataFlow", store: "ScoreStore | None", frame: int
+    ) -> None: ...
 
     def render_music_room(self, flow: "MusicRoomFlow", frame: int) -> None: ...
 
@@ -156,9 +160,14 @@ class Renderer(Protocol):
         """渲染一帧对局(游戏区 + HUD + 对话/过关面板/震屏合成)。"""
         ...
 
-    def render_pause(self, game: "GameEngine", cursor: int, *,
-                     hint: str | None = None,
-                     confirm: "tuple[str, int] | None" = None) -> None:
+    def render_pause(
+        self,
+        game: "GameEngine",
+        cursor: int,
+        *,
+        hint: str | None = None,
+        confirm: "tuple[str, int] | None" = None,
+    ) -> None:
         """暂停: 冻结画面(render_game 同图) + 半透明暂停面板 + 瞬态提示。
 
         confirm: 二次确认态(Retry/Quit to Title, AsciiManager.cpp PauseMenu
@@ -166,17 +175,22 @@ class Renderer(Protocol):
         """
         ...
 
-    def render_continue(self, game: "GameEngine", cursor: int,
-                        retries_left: int) -> None:
+    def render_continue(
+        self, game: "GameEngine", cursor: int, retries_left: int
+    ) -> None:
         """GameOver 续关菜单(冻结画面 + Continue? Yes/No 覆盖层)。"""
         ...
 
     # ---- 结算 / 结局 ----
-    def render_result(self, result: dict, frame: int, *,
-                      store: "ScoreStore | None",
-                      name_entry: "NameEntryFlow | None",
-                      replay_save: "tuple[str, int, str] | None" = None
-                      ) -> None:
+    def render_result(
+        self,
+        result: dict,
+        frame: int,
+        *,
+        store: "ScoreStore | None",
+        name_entry: "NameEntryFlow | None",
+        replay_save: "tuple[str, int, str] | None" = None,
+    ) -> None:
         """结算画面。replay_save: Save Replay 流程覆盖层
         (ResultScreen.cpp HandleReplaySaveKeyboard) ——
         ("ask", Yes/No 光标下标, "") 询问态 / ("saved", -1, 文件名) 已存确认;
@@ -191,4 +205,3 @@ class Renderer(Protocol):
     def play_menu_se(self, key: str) -> None:
         """菜单音效("select"/"ok"/"cancel"); 未加载/无声卡静音跳过。"""
         ...
-

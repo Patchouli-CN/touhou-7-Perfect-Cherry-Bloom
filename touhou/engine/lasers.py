@@ -1,4 +1,4 @@
-""" 激光 —— 移植自 BulletManager.cpp 的 Laser 三态机 + 旋转命中判定。
+"""激光 —— 移植自 BulletManager.cpp 的 Laser 三态机 + 旋转命中判定。
 
 状态: SPAWNING(出现,窄命中) / ACTIVE(全宽命中) / DESPAWNING(消散)。
 命中: 把玩家位置旋转到激光局部坐标, 与激光盒 AABB 相交。
@@ -27,10 +27,10 @@ class Laser(msgspec.Struct):
     angle: float
     width: float = 8.0
     speed: float = 0.0
-    start_time: int = 0       # 出现完成帧
+    start_time: int = 0  # 出现完成帧
     hitbox_start_time: int = 0
-    duration: int = 0         # 全宽保持帧
-    end_time: int = 0         # 消散完成帧
+    duration: int = 0  # 全宽保持帧
+    end_time: int = 0  # 消散完成帧
     hitbox_end_time: int = 0
     start_length: float = 0.0  # 长度上限(0=不限)
     flags: int = 0
@@ -99,15 +99,21 @@ class Laser(msgspec.Struct):
         return relative.rotated(-self.angle)
 
 
-def laser_hits_player(laser: Laser, player_pos: Vec2, player_r: float,
-                      graze_extra: float = 48.0, can_graze: bool = True) -> tuple[bool, bool]:
+def laser_hits_player(
+    laser: Laser,
+    player_pos: Vec2,
+    player_r: float,
+    graze_extra: float = 48.0,
+    can_graze: bool = True,
+) -> tuple[bool, bool]:
     """返回 (命中判定点?, 擦激光?)。laser 需在 ACTIVE/命中时段。"""
     center, half = laser.hitbox
     local = laser.localize(player_pos)
 
     def aabb(center_: Vec2, half_: Vec2, point: Vec2) -> bool:
-        return (abs(point.x - center_.x) <= half_.x and
-                abs(point.y - center_.y) <= half_.y)
+        return (
+            abs(point.x - center_.x) <= half_.x and abs(point.y - center_.y) <= half_.y
+        )
 
     hit = aabb(Vec2(center.x, center.y), Vec2(half.x, half.y + player_r), local)
     graze = False
@@ -122,19 +128,36 @@ class LaserWorld(msgspec.Struct):
 
     lasers: list[Laser] = msgspec.field(default_factory=list)
 
-    def spawn(self, pos: Vec2, angle: float, *, aimed: bool = True,
-              width: float = 8.0, speed: float = 0.0, player_pos: Vec2 = Vec2(192, 400),
-              duration: int = 120, start_time: int = 20, hitbox_start_time: int = 20,
-              end_time: int = 40, hitbox_end_time: int = 40,
-              start_length: float = 160.0) -> Laser | None:
+    def spawn(
+        self,
+        pos: Vec2,
+        angle: float,
+        *,
+        aimed: bool = True,
+        width: float = 8.0,
+        speed: float = 0.0,
+        player_pos: Vec2 = Vec2(192, 400),
+        duration: int = 120,
+        start_time: int = 20,
+        hitbox_start_time: int = 20,
+        end_time: int = 40,
+        hitbox_end_time: int = 40,
+        start_length: float = 160.0,
+    ) -> Laser | None:
         if len(self.lasers) >= 64:
             return None
         if aimed:
             angle = angle_to(pos, player_pos) + angle
         laser = Laser(
-            pos=pos, angle=angle, width=width, speed=speed,
-            start_time=start_time, hitbox_start_time=hitbox_start_time,
-            duration=duration, end_time=end_time, hitbox_end_time=hitbox_end_time,
+            pos=pos,
+            angle=angle,
+            width=width,
+            speed=speed,
+            start_time=start_time,
+            hitbox_start_time=hitbox_start_time,
+            duration=duration,
+            end_time=end_time,
+            hitbox_end_time=hitbox_end_time,
             start_length=start_length,
         )
         # 激光初始长度(来自 shooter 的 endOffset; 之后随 speed 增长)
@@ -160,14 +183,21 @@ class LaserWorld(msgspec.Struct):
                 continue
             if l.state == LaserState.DESPAWNING and l.timer >= l.hitbox_end_time:
                 continue
-            lhit, lgraze = laser_hits_player(l, player_pos, player_r,
-                                             can_graze=l.graze_frame())
+            lhit, lgraze = laser_hits_player(
+                l, player_pos, player_r, can_graze=l.graze_frame()
+            )
             hit = hit or lhit
             grazed = grazed or lgraze
         return hit, grazed
 
-    def remove_all(self, *, spawn_items: bool, skip_flag4: bool = True,
-                   spawn_at_pos: bool = False, spawn_item=None) -> None:
+    def remove_all(
+        self,
+        *,
+        spawn_items: bool,
+        skip_flag4: bool = True,
+        spawn_at_pos: bool = False,
+        spawn_item=None,
+    ) -> None:
         """清弹连带激光 (BulletManager.cpp:439-471 RemoveAllBullets 激光段 /
         :524-550 DespawnBullets 激光段)。
 

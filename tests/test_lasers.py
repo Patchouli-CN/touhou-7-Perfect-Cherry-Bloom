@@ -1,4 +1,5 @@
 """Touhou: 激光三态机 + 命中/擦激光测试。"""
+
 from __future__ import annotations
 
 import math
@@ -18,7 +19,9 @@ def _aimed_world(player: Vec2 = Vec2(192, 400)) -> LaserWorld:
 
 def test_three_state_machine() -> None:
     w = LaserWorld()
-    l = w.spawn(Vec2(100, 100), 0.0, aimed=False, duration=60, start_time=20, end_time=30)
+    l = w.spawn(
+        Vec2(100, 100), 0.0, aimed=False, duration=60, start_time=20, end_time=30
+    )
     assert l.state == LaserState.SPAWNING
     for _ in range(25):
         l.step()
@@ -53,16 +56,22 @@ def test_graze_expands_box() -> None:
     l = w.spawn(Vec2(0, 0), 0.0, aimed=False, width=8.0, start_length=160.0)
     # 玩家在激光一侧, y 偏差 30: 命中带=半宽4+玩家半径4=8, 擦带外扩到 8+48=56
     hit, graze = laser_hits_player(l, Vec2(80, 30), 4.0, graze_extra=48.0)
-    assert not hit       # 30 > 8
-    assert graze         # 30 < 56
+    assert not hit  # 30 > 8
+    assert graze  # 30 < 56
 
 
-def _remove_all_laser(*, flags: int = 0, offset_a: float = 0.0,
-                      offset_b: float = 100.0, angle: float = 0.0,
-                      state: LaserState = LaserState.ACTIVE):
+def _remove_all_laser(
+    *,
+    flags: int = 0,
+    offset_a: float = 0.0,
+    offset_b: float = 100.0,
+    angle: float = 0.0,
+    state: LaserState = LaserState.ACTIVE,
+):
     w = LaserWorld()
-    l = w.spawn(Vec2(50, 50), angle, aimed=False, duration=999,
-                start_time=20, end_time=30)
+    l = w.spawn(
+        Vec2(50, 50), angle, aimed=False, duration=999, start_time=20, end_time=30
+    )
     l.flags = flags
     l.offset_a = offset_a
     l.offset_b = offset_b
@@ -102,14 +111,22 @@ def test_remove_all_spawns_items_along_laser() -> None:
     got = []
     w.remove_all(spawn_items=True, spawn_item=got.append)
     # angle=0 → 沿 +x: x = 50+0/32/64/96, y = 50
-    assert [(round(p.x), round(p.y)) for p in got] == \
-        [(50, 50), (82, 50), (114, 50), (146, 50)]
-    w, l = _remove_all_laser(offset_a=0.0, offset_b=100.0,
-                             angle=math.pi / 2)  # 沿 +y
+    assert [(round(p.x), round(p.y)) for p in got] == [
+        (50, 50),
+        (82, 50),
+        (114, 50),
+        (146, 50),
+    ]
+    w, l = _remove_all_laser(offset_a=0.0, offset_b=100.0, angle=math.pi / 2)  # 沿 +y
     got = []
     w.remove_all(spawn_items=True, spawn_at_pos=True, spawn_item=got.append)
-    assert [(round(p.x), round(p.y)) for p in got] == \
-        [(50, 50), (50, 50), (50, 82), (50, 114), (50, 146)]
+    assert [(round(p.x), round(p.y)) for p in got] == [
+        (50, 50),
+        (50, 50),
+        (50, 82),
+        (50, 114),
+        (50, 146),
+    ]
     # 已 DESPAWNING: 不出道具, hitboxEndTime 照样清零
     w, l = _remove_all_laser(state=LaserState.DESPAWNING)
     got = []

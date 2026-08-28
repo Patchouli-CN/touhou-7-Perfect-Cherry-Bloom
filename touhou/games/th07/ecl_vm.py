@@ -1,4 +1,4 @@
-""" TH07(东方妖妖梦)专属 ECL 虚拟机实现。
+"""TH07(东方妖妖梦)专属 ECL 虚拟机实现。
 
 对照 th07 反编译源码 `EclManager.cpp/.hpp`、`EnemyEclInstr.cpp`:
 - ``EclVarId``: TH07 变量命名空间(10000~10073, EclManager.hpp 的变量表);
@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 import struct
 from enum import IntEnum
-from typing import Callable, Optional
+from typing import Callable
 
 from ...engine.ecl import (
     EclEnemyState,
@@ -53,6 +53,7 @@ from ...utils import (
 )
 
 # ---- TH07 变量命名空间(照抄 EclManager.hpp; 10000~10073) ----
+
 
 class EclVarId(IntEnum):
     LOCAL_INT1_1 = 10000
@@ -180,8 +181,14 @@ class EclMachineTh07(EclMachineBase):
             return w.rng.int_below(a.global_ints[0]) + a.global_ints[1]
         if EclVarId.BOSS_LIFE_THRESHOLD1 <= v <= EclVarId.BOSS_LIFE_THRESHOLD4:
             return e.life_callback_threshold[var_id - 10066]
-        if v in (EclVarId.POS_X, EclVarId.POS_Y, EclVarId.POS_Z,
-                 EclVarId.PLAYER_POS_X, EclVarId.PLAYER_POS_Y, EclVarId.PLAYER_POS_Z):
+        if v in (
+            EclVarId.POS_X,
+            EclVarId.POS_Y,
+            EclVarId.POS_Z,
+            EclVarId.PLAYER_POS_X,
+            EclVarId.PLAYER_POS_Y,
+            EclVarId.PLAYER_POS_Z,
+        ):
             return int(self._get_float(var_id))  # C: float 字段按位读出当 int 用会错,
             # 但源码 int 版确实直接 return enemy->pos.x(f32→i32 截断)
         return int(self._get_float(var_id))  # 其余纯 float 变量: f32→i32
@@ -402,8 +409,12 @@ class EclMachineTh07(EclMachineBase):
             it.duration = self._int_arg(instr, 1)
             it.func_idx = self._int_arg(instr, 2)
             it.easing = self._int_arg(instr, 3)
-            it.params = [self._float_arg(instr, 4), self._float_arg(instr, 5),
-                         self._float_arg(instr, 6), self._float_arg(instr, 7)]
+            it.params = [
+                self._float_arg(instr, 4),
+                self._float_arg(instr, 5),
+                self._float_arg(instr, 6),
+                self._float_arg(instr, 7),
+            ]
             break
 
     def _spawn_bullet_pattern(self, instr: EclInstr) -> None:
@@ -437,8 +448,9 @@ class EclMachineTh07(EclMachineBase):
                 p.speed2 = 0.3
         p.flags = instr.args[7]
         sprite_offset = instr.arg_i16(0, 1)
-        p.sprite_offset = self._get_int(sprite_offset) if instr.param_mask & 2 \
-            else sprite_offset
+        p.sprite_offset = (
+            self._get_int(sprite_offset) if instr.param_mask & 2 else sprite_offset
+        )
         if not e.disable_bullets:
             self.host.spawn_bullet_pattern(p)
 
@@ -448,8 +460,9 @@ class EclMachineTh07(EclMachineBase):
         p.pos = e.pos + e.shoot_offset
         p.sprite = instr.arg_i16(0, 0)
         sprite_offset = instr.arg_i16(0, 1)
-        p.sprite_offset = self._get_int(sprite_offset) if instr.param_mask & 2 \
-            else sprite_offset
+        p.sprite_offset = (
+            self._get_int(sprite_offset) if instr.param_mask & 2 else sprite_offset
+        )
         p.angle1 = self._float_arg(instr, 1, 2)
         p.speed1 = self._float_arg(instr, 2, 3)
         p.start_offset = self._float_arg(instr, 3, 4)
@@ -467,8 +480,11 @@ class EclMachineTh07(EclMachineBase):
 
     def _jitter_pos(self) -> Vec3:
         e, w = self.enemy, self.world
-        return Vec3(e.pos.x + w.rng.unit() * 128.0 - 64.0,
-                    e.pos.y + w.rng.unit() * 128.0 - 64.0, e.pos.z)
+        return Vec3(
+            e.pos.x + w.rng.unit() * 128.0 - 64.0,
+            e.pos.y + w.rng.unit() * 128.0 - 64.0,
+            e.pos.z,
+        )
 
     def _spawn_items(self, num: int) -> None:
         """ECL_SPAWN_ITEMS: 火力未满第一个掉大P其余小P, 满火力全掉点。"""
@@ -531,6 +547,7 @@ class EclMachineTh07(EclMachineBase):
 # 161 条 opcode handler(从原 _execute 的 elif 链逐条拆出, self.→m. 机械替换)
 # ==========================================================================
 
+
 @EclMachineTh07.register(EclOpcode.UNIMP)
 def _op_unimp(m: EclMachineTh07, instr: EclInstr):
     return "error"  # RunEcl 直接返回错误(= 脚本结束/despawn)
@@ -585,8 +602,9 @@ def _op_rand(m: EclMachineTh07, instr: EclInstr):
 
 @EclMachineTh07.register(EclOpcode.RAND_ADD)
 def _op_rand_add(m: EclMachineTh07, instr: EclInstr):
-    m._store_int(instr, 0, m.world.rng.int_below(m._int_arg(instr, 1))
-                 + m._int_arg(instr, 2))
+    m._store_int(
+        instr, 0, m.world.rng.int_below(m._int_arg(instr, 1)) + m._int_arg(instr, 2)
+    )
 
 
 @EclMachineTh07.register(EclOpcode.RAND_FLOAT)
@@ -596,8 +614,9 @@ def _op_rand_float(m: EclMachineTh07, instr: EclInstr):
 
 @EclMachineTh07.register(EclOpcode.RAND_FLOAT_ADD)
 def _op_rand_float_add(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(instr, 0, m.world.rng.unit() * m._float_arg(instr, 1)
-                   + m._float_arg(instr, 2))
+    m._store_float(
+        instr, 0, m.world.rng.unit() * m._float_arg(instr, 1) + m._float_arg(instr, 2)
+    )
 
 
 @EclMachineTh07.register(EclOpcode.RAND_SIGN)
@@ -650,8 +669,9 @@ _INT_BINOP: dict[int, Callable[[int, int], int]] = {
 
 @EclMachineTh07.register(tuple(_INT_BINOP))
 def _op_int_arith(m: EclMachineTh07, instr: EclInstr):
-    m._store_int(instr, 0, _INT_BINOP[instr.id](m._int_arg(instr, 1),
-                                                m._int_arg(instr, 2)))
+    m._store_int(
+        instr, 0, _INT_BINOP[instr.id](m._int_arg(instr, 1), m._int_arg(instr, 2))
+    )
 
 
 # 算术四则(+取模) 5 合一: float 版
@@ -666,8 +686,9 @@ _FLOAT_BINOP: dict[int, Callable[[float, float], float]] = {
 
 @EclMachineTh07.register(tuple(_FLOAT_BINOP))
 def _op_float_arith(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(instr, 0, _FLOAT_BINOP[instr.id](m._float_arg(instr, 1),
-                                                    m._float_arg(instr, 2)))
+    m._store_float(
+        instr, 0, _FLOAT_BINOP[instr.id](m._float_arg(instr, 1), m._float_arg(instr, 2))
+    )
 
 
 @EclMachineTh07.register(EclOpcode.SIN)
@@ -682,16 +703,20 @@ def _op_cos(m: EclMachineTh07, instr: EclInstr):
 
 @EclMachineTh07.register(EclOpcode.ATAN2)
 def _op_atan2(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(instr, 0, math.atan2(
-        m._float_arg(instr, 4) - m._float_arg(instr, 2),
-        m._float_arg(instr, 3) - m._float_arg(instr, 1)))
+    m._store_float(
+        instr,
+        0,
+        math.atan2(
+            m._float_arg(instr, 4) - m._float_arg(instr, 2),
+            m._float_arg(instr, 3) - m._float_arg(instr, 1),
+        ),
+    )
 
 
 @EclMachineTh07.register(EclOpcode.LERP)
 def _op_lerp(m: EclMachineTh07, instr: EclInstr):
     delta = m._float_arg(instr, 1) - m._float_arg(instr, 2)
-    m._store_float(instr, 0,
-                   delta * m._float_arg(instr, 3) + m._float_arg(instr, 2))
+    m._store_float(instr, 0, delta * m._float_arg(instr, 3) + m._float_arg(instr, 2))
 
 
 @EclMachineTh07.register(EclOpcode.INIT_INTERP)
@@ -700,8 +725,14 @@ def _op_init_interp(m: EclMachineTh07, instr: EclInstr):
 
 
 # 条件跳转 6 合一: int 版
-_JUMP_IF_INT = (EclOpcode.JUMP_IF_EQ, EclOpcode.JUMP_IF_NEQ, EclOpcode.JUMP_IF_LT,
-                EclOpcode.JUMP_IF_LEQ, EclOpcode.JUMP_IF_GT, EclOpcode.JUMP_IF_GEQ)
+_JUMP_IF_INT = (
+    EclOpcode.JUMP_IF_EQ,
+    EclOpcode.JUMP_IF_NEQ,
+    EclOpcode.JUMP_IF_LT,
+    EclOpcode.JUMP_IF_LEQ,
+    EclOpcode.JUMP_IF_GT,
+    EclOpcode.JUMP_IF_GEQ,
+)
 
 
 @EclMachineTh07.register(_JUMP_IF_INT)
@@ -713,9 +744,14 @@ def _op_jump_if_int(m: EclMachineTh07, instr: EclInstr):
 
 
 # 条件跳转 6 合一: float 版
-_JUMP_IF_FLOAT = (EclOpcode.JUMP_IF_EQ_FLOAT, EclOpcode.JUMP_IF_NEQ_FLOAT,
-                  EclOpcode.JUMP_IF_LT_FLOAT, EclOpcode.JUMP_IF_LEQ_FLOAT,
-                  EclOpcode.JUMP_IF_GT_FLOAT, EclOpcode.JUMP_IF_GEQ_FLOAT)
+_JUMP_IF_FLOAT = (
+    EclOpcode.JUMP_IF_EQ_FLOAT,
+    EclOpcode.JUMP_IF_NEQ_FLOAT,
+    EclOpcode.JUMP_IF_LT_FLOAT,
+    EclOpcode.JUMP_IF_LEQ_FLOAT,
+    EclOpcode.JUMP_IF_GT_FLOAT,
+    EclOpcode.JUMP_IF_GEQ_FLOAT,
+)
 
 
 @EclMachineTh07.register(_JUMP_IF_FLOAT)
@@ -770,23 +806,26 @@ def _op_set_sub_anm(m: EclMachineTh07, instr: EclInstr):
 @EclMachineTh07.register(EclOpcode.SET_DEATH_ANM)
 def _op_set_death_anm(m: EclMachineTh07, instr: EclInstr):
     raw = instr.arg_bytes(0)
-    m.enemy.death_anm = (struct.unpack("<b", raw[0:1])[0], raw[1],
-                         struct.unpack("<b", raw[2:3])[0])
+    m.enemy.death_anm = (
+        struct.unpack("<b", raw[0:1])[0],
+        raw[1],
+        struct.unpack("<b", raw[2:3])[0],
+    )
 
 
 @EclMachineTh07.register(EclOpcode.SET_POS)
 def _op_set_pos(m: EclMachineTh07, instr: EclInstr):
     e = m.enemy
-    e.pos.set(m._float_arg(instr, 0), m._float_arg(instr, 1),
-              m._float_arg(instr, 2))
+    e.pos.set(m._float_arg(instr, 0), m._float_arg(instr, 1), m._float_arg(instr, 2))
     e.clamp_pos()
 
 
 @EclMachineTh07.register(EclOpcode.SET_AXIS_SPEED)
 def _op_set_axis_speed(m: EclMachineTh07, instr: EclInstr):
     e = m.enemy
-    e.axis_speed.set(m._float_arg(instr, 0), m._float_arg(instr, 1),
-                     m._float_arg(instr, 2))
+    e.axis_speed.set(
+        m._float_arg(instr, 0), m._float_arg(instr, 1), m._float_arg(instr, 2)
+    )
     e.angle = f32(math.atan2(e.axis_speed.y, e.axis_speed.x))
     e.move_mode = 0
 
@@ -856,8 +895,7 @@ def _op_set_shoot_interval(m: EclMachineTh07, instr: EclInstr):
     e, w = m.enemy, m.world
     e.shoot_interval = m._int_arg(instr, 0)
     if e.shoot_interval != 0:
-        e.shoot_interval = i32(e.shoot_interval +
-                               e.shoot_interval_rank_delta(w.rank))
+        e.shoot_interval = i32(e.shoot_interval + e.shoot_interval_rank_delta(w.rank))
         e.shoot_interval_timer = 0
 
 
@@ -866,8 +904,7 @@ def _op_set_shoot_interval_rand(m: EclMachineTh07, instr: EclInstr):
     e, w = m.enemy, m.world
     e.shoot_interval = m._int_arg(instr, 0)
     if e.shoot_interval != 0:
-        e.shoot_interval = i32(e.shoot_interval +
-                               e.shoot_interval_rank_delta(w.rank))
+        e.shoot_interval = i32(e.shoot_interval + e.shoot_interval_rank_delta(w.rank))
         e.shoot_interval_timer = w.rng.int_below(e.shoot_interval)
 
 
@@ -890,12 +927,14 @@ def _op_spawn_prev_bullet_pattern(m: EclMachineTh07, instr: EclInstr):
 
 @EclMachineTh07.register(EclOpcode.SET_SHOOT_OFFSET)
 def _op_set_shoot_offset(m: EclMachineTh07, instr: EclInstr):
-    m.enemy.shoot_offset.set(m._float_arg(instr, 0), m._float_arg(instr, 1),
-                             m._float_arg(instr, 2))
+    m.enemy.shoot_offset.set(
+        m._float_arg(instr, 0), m._float_arg(instr, 1), m._float_arg(instr, 2)
+    )
 
 
-@EclMachineTh07.register((EclOpcode.SPAWN_LASER_PATTERN_FIXED,
-                          EclOpcode.SPAWN_LASER_PATTERN_MOVING))
+@EclMachineTh07.register(
+    (EclOpcode.SPAWN_LASER_PATTERN_FIXED, EclOpcode.SPAWN_LASER_PATTERN_MOVING)
+)
 def _op_spawn_laser_pattern(m: EclMachineTh07, instr: EclInstr):
     m._spawn_laser_pattern(instr)
 
@@ -931,10 +970,14 @@ def _op_set_laser_pos_rel(m: EclMachineTh07, instr: EclInstr):
     e = m.enemy
     h = e.lasers[m._int_arg(instr, 0) & 31]
     if h is not None:
-        m.host.laser_set_pos(h, Vec3(
-            m._float_arg(instr, 1) + e.pos.x,
-            m._float_arg(instr, 2) + e.pos.y,
-            m._float_arg(instr, 3) + e.pos.z))
+        m.host.laser_set_pos(
+            h,
+            Vec3(
+                m._float_arg(instr, 1) + e.pos.x,
+                m._float_arg(instr, 2) + e.pos.y,
+                m._float_arg(instr, 3) + e.pos.z,
+            ),
+        )
 
 
 @EclMachineTh07.register(EclOpcode.SET_LASER_HIDE_WARNING)
@@ -973,8 +1016,7 @@ def _op_set_laser_start_len(m: EclMachineTh07, instr: EclInstr):
 def _op_set_laser_offsets(m: EclMachineTh07, instr: EclInstr):
     h = m.enemy.lasers[m._int_arg(instr, 0) & 31]
     if h is not None:
-        m.host.laser_set_offsets(h, m._float_arg(instr, 1),
-                                 m._float_arg(instr, 2))
+        m.host.laser_set_offsets(h, m._float_arg(instr, 1), m._float_arg(instr, 2))
 
 
 @EclMachineTh07.register(EclOpcode.IDFK)
@@ -1014,8 +1056,7 @@ def _op_move_dir_time(m: EclMachineTh07, instr: EclInstr):
     else:
         ang = add_normalize_angle(m._float_arg(instr, 2), 0.0)
         dist = m._float_arg(instr, 3) * m._int_arg(instr, 0)
-        e.move_interp.set(f32(math.cos(ang) * dist),
-                          f32(math.sin(ang) * dist), 0.0)
+        e.move_interp.set(f32(math.cos(ang) * dist), f32(math.sin(ang) * dist), 0.0)
         e.move_interp_start_pos = e.pos.copy()
         e.move_interp_timer = e.move_interp_start_time = m._int_arg(instr, 0)
         e.interp_easing = m._int_arg(instr, 1) & 0xFF
@@ -1027,8 +1068,9 @@ def _op_move_dir_time(m: EclMachineTh07, instr: EclInstr):
 @EclMachineTh07.register(EclOpcode.MOVE_POS_TIME)
 def _op_move_pos_time(m: EclMachineTh07, instr: EclInstr):
     e = m.enemy
-    new_pos = Vec3(m._float_arg(instr, 2), m._float_arg(instr, 3),
-                   m._float_arg(instr, 4))
+    new_pos = Vec3(
+        m._float_arg(instr, 2), m._float_arg(instr, 3), m._float_arg(instr, 4)
+    )
     e.move_interp = new_pos - e.pos
     e.move_interp_start_pos = e.pos.copy()
     e.move_interp_timer = e.move_interp_start_time = m._int_arg(instr, 0)
@@ -1043,9 +1085,9 @@ def _op_move_pos_time(m: EclMachineTh07, instr: EclInstr):
 def _op_move_orbit(m: EclMachineTh07, instr: EclInstr):
     e = m.enemy
     e.move_interp_timer = e.move_interp_start_time = m._int_arg(instr, 0)
-    e.move_interp_start_pos.set(m._float_arg(instr, 1),
-                                m._float_arg(instr, 2),
-                                m._float_arg(instr, 3))
+    e.move_interp_start_pos.set(
+        m._float_arg(instr, 1), m._float_arg(instr, 2), m._float_arg(instr, 3)
+    )
     e.move_angle = m._float_arg(instr, 4)
     e.move_angular_velocity = m._float_arg(instr, 5)
     e.move_radius = m._float_arg(instr, 6)
@@ -1085,8 +1127,7 @@ def _op_disable_movement_bounds(m: EclMachineTh07, instr: EclInstr):
 @EclMachineTh07.register(EclOpcode.RAND_FLOAT_RANGE)
 def _op_rand_float_range(m: EclMachineTh07, instr: EclInstr):
     lo = m._float_arg(instr, 1)
-    m._store_float(instr, 0,
-                   m.world.rng.unit() * (m._float_arg(instr, 2) - lo) + lo)
+    m._store_float(instr, 0, m.world.rng.unit() * (m._float_arg(instr, 2) - lo) + lo)
 
 
 @EclMachineTh07.register(EclOpcode.GET_EXIT_ANGLE)
@@ -1096,21 +1137,27 @@ def _op_get_exit_angle(m: EclMachineTh07, instr: EclInstr):
 
 @EclMachineTh07.register(EclOpcode.SET_MOVE_ANM)
 def _op_set_move_anm(m: EclMachineTh07, instr: EclInstr):
-    m.enemy.move_anm = (instr.arg_i16(0, 0), instr.arg_i16(0, 1),
-                        instr.arg_i16(1, 0), instr.arg_i16(1, 1),
-                        instr.arg_i16(2, 0))
+    m.enemy.move_anm = (
+        instr.arg_i16(0, 0),
+        instr.arg_i16(0, 1),
+        instr.arg_i16(1, 0),
+        instr.arg_i16(1, 1),
+        instr.arg_i16(2, 0),
+    )
 
 
 @EclMachineTh07.register(EclOpcode.SET_HITBOX_SIZE)
 def _op_set_hitbox_size(m: EclMachineTh07, instr: EclInstr):
-    m.enemy.hitbox_size.set(m._float_arg(instr, 0), m._float_arg(instr, 1),
-                            m._float_arg(instr, 2))
+    m.enemy.hitbox_size.set(
+        m._float_arg(instr, 0), m._float_arg(instr, 1), m._float_arg(instr, 2)
+    )
 
 
 @EclMachineTh07.register(EclOpcode.SET_GRAZE_SIZE)
 def _op_set_graze_size(m: EclMachineTh07, instr: EclInstr):
-    m.enemy.graze_size.set(m._float_arg(instr, 0), m._float_arg(instr, 1),
-                           m._float_arg(instr, 2))
+    m.enemy.graze_size.set(
+        m._float_arg(instr, 0), m._float_arg(instr, 1), m._float_arg(instr, 2)
+    )
 
 
 @EclMachineTh07.register(EclOpcode.SET_HAS_CONTACT_HITBOX)
@@ -1165,8 +1212,12 @@ def _op_set_life(m: EclMachineTh07, instr: EclInstr):
 
 @EclMachineTh07.register(EclOpcode.SET_BOSS_HEALTH)
 def _op_set_boss_health(m: EclMachineTh07, instr: EclInstr):
-    m.host.set_boss_health(m._int_arg(instr, 0), m._int_arg(instr, 1),
-                           m._int_arg(instr, 2), m._int_arg(instr, 3))
+    m.host.set_boss_health(
+        m._int_arg(instr, 0),
+        m._int_arg(instr, 1),
+        m._int_arg(instr, 2),
+        m._int_arg(instr, 3),
+    )
 
 
 @EclMachineTh07.register(EclOpcode.BEGIN_SPELLCARD)
@@ -1292,13 +1343,20 @@ def _op_set_num_boss_life_markers(m: EclMachineTh07, instr: EclInstr):
 def _op_spawn_enemy(m: EclMachineTh07, instr: EclInstr):
     e = m.enemy
     if e.life > 0:
-        pos = Vec3(m._float_arg(instr, 1), m._float_arg(instr, 2),
-                   m._float_arg(instr, 3))
+        pos = Vec3(
+            m._float_arg(instr, 1), m._float_arg(instr, 2), m._float_arg(instr, 3)
+        )
         if instr.id == EclOpcode.SPAWN_ENEMY_REL:
             pos = pos + e.pos
-        m.host.spawn_enemy(instr.arg_int(0), pos, m._int_arg(instr, 4),
-                           m._int_arg(instr, 5), m._int_arg(instr, 6),
-                           0, m.current.args.clone())
+        m.host.spawn_enemy(
+            instr.arg_int(0),
+            pos,
+            m._int_arg(instr, 4),
+            m._int_arg(instr, 5),
+            m._int_arg(instr, 6),
+            0,
+            m.current.args.clone(),
+        )
 
 
 @EclMachineTh07.register(EclOpcode.REMOVE_ALL_ENEMIES)
@@ -1381,8 +1439,13 @@ def _op_set_despawn_on_oob(m: EclMachineTh07, instr: EclInstr):
 
 @EclMachineTh07.register(EclOpcode.SET_TRAIL)
 def _op_set_trail(m: EclMachineTh07, instr: EclInstr):
-    m.enemy.trail = (instr.arg_bytes(0)[0], m._int_arg(instr, 1),
-                     m._int_arg(instr, 2), m._int_arg(instr, 3), 0)
+    m.enemy.trail = (
+        instr.arg_bytes(0)[0],
+        m._int_arg(instr, 1),
+        m._int_arg(instr, 2),
+        m._int_arg(instr, 3),
+        0,
+    )
 
 
 @EclMachineTh07.register(EclOpcode.SET_GLOBAL_EFFECT_COLOR_MUL)

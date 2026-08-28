@@ -1,4 +1,5 @@
 """EclCodec(engine/ecl_codec.py)统一 enc/dec 入口 + EclFile.serialize round-trip。"""
+
 from __future__ import annotations
 
 import struct
@@ -13,15 +14,21 @@ from touhou.registry import register_anm, register_ecl
 from touhou.schema.anm import AnmFile
 from touhou.schema.archive import GameArchive
 
-needs_data = pytest.mark.skipif(not DEFAULT_DATA.exists(),
-                                reason="需要真实 th07.dat")
+needs_data = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
 
 
-def _instr(time: int, op: int, args: tuple = (), mask: int = 0,
-           skip: int = 0xFF, unused: int = 0) -> bytes:
+def _instr(
+    time: int,
+    op: int,
+    args: tuple = (),
+    mask: int = 0,
+    skip: int = 0xFF,
+    unused: int = 0,
+) -> bytes:
     size = 12 + 4 * len(args)
     return struct.pack("<IhhBBH", time, op, size, unused, skip, mask) + b"".join(
-        struct.pack("<I", a & 0xFFFFFFFF) for a in args)
+        struct.pack("<I", a & 0xFFFFFFFF) for a in args
+    )
 
 
 def _build_ecl(*subs: list[bytes]) -> bytes:
@@ -35,12 +42,16 @@ def _build_ecl(*subs: list[bytes]) -> bytes:
         blob = b"".join(s) + _instr(0xFFFFFFFF, -1)
         blobs.append(blob)
         off += len(blob)
-    header = struct.pack("<hh", n, 0) + struct.pack("<16i", *([0] * 16)) \
+    header = (
+        struct.pack("<hh", n, 0)
+        + struct.pack("<16i", *([0] * 16))
         + struct.pack(f"<{n}i", *offsets)
+    )
     return header + b"".join(blobs)
 
 
 # ---- EclFile.serialize round-trip ----
+
 
 def test_serialize_roundtrip_synthetic() -> None:
     """手工构造的 .ecl(含非零 unused 字节): serialize(parse(data)) == data。"""
@@ -57,8 +68,9 @@ def test_serialize_roundtrip_synthetic() -> None:
 def test_serialize_roundtrip_real_ecldata() -> None:
     """真实 th07.dat 的全部 ecldata*.ecl: 逐字节相等。"""
     arc = GameArchive.open(DEFAULT_DATA)
-    names = sorted(n for n in arc.names()
-                   if n.startswith("ecldata") and n.endswith(".ecl"))
+    names = sorted(
+        n for n in arc.names() if n.startswith("ecldata") and n.endswith(".ecl")
+    )
     assert len(names) >= 8  # ecldata1..8(本篇 6 面 + Extra/Phantasm)
     for name in names:
         data = arc.load(name)
@@ -66,6 +78,7 @@ def test_serialize_roundtrip_real_ecldata() -> None:
 
 
 # ---- EclCodec 入口 ----
+
 
 def test_codec_default_game_is_th07() -> None:
     """默认作品名 th07; 经注册表拿到的格式类就是 engine 的 EclFile。"""
@@ -124,6 +137,5 @@ def test_codec_encode_without_serialize() -> None:
     codec = EclCodec("th91")
     ecl = codec.decode(b"\x00" * 4)
     assert isinstance(ecl, StubEclFile)
-    with pytest.raises(NotImplementedError,
-                       match="th91.*StubEclFile.*serialize"):
+    with pytest.raises(NotImplementedError, match="th91.*StubEclFile.*serialize"):
         codec.encode(ecl)  # type: ignore[arg-type]

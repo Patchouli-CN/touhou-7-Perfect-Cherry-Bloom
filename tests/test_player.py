@@ -1,4 +1,5 @@
 """玩家状态机/死亡重生/擦弹/咲夜B子机 测试(对照 th07 Player.cpp, §A.4/A.7)。"""
+
 from __future__ import annotations
 
 import math
@@ -8,9 +9,16 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.engine.bullets import Bullet  # noqa: E402
 from touhou.games.th07.player import (  # noqa: E402
-    DeathContext, KillResult, OptionState, Player,
-    PlayerEvent, PlayerEventKind, PlayerState,
-    OPTION_ANGLE_CENTER, OPTION_ANGLE_MAX, OPTION_ANGLE_MIN,
+    DeathContext,
+    KillResult,
+    OptionState,
+    Player,
+    PlayerEvent,
+    PlayerEventKind,
+    PlayerState,
+    OPTION_ANGLE_CENTER,
+    OPTION_ANGLE_MAX,
+    OPTION_ANGLE_MIN,
     OPTION_ANGLE_RETURN_STEP,
 )
 from touhou.schema.shot_data import ShotData, ShotLevel  # noqa: E402
@@ -19,10 +27,18 @@ from touhou.utils import Vec2  # noqa: E402
 # 一份手工 .sht: 重生倒计时 5 帧, 判定半径 4, 擦弹半宽源 grabItemRadius=48,
 # 樱罚系数 0.5, 速度 4.0/2.0, 一个 0 级空射击链
 SD = ShotData(
-    initial_bombs=3.0, initial_respawn_timer=5, hitbox_radius=4.0,
-    grab_item_radius=48.0, item_collect_speed=4.0, item_collect_radius=16.0,
-    cherry_penalty_multiplier=0.5, poc_y=128.0,
-    speed=4.0, speed_focus=2.0, speed_diagonal=2.8, speed_diagonal_focus=1.4,
+    initial_bombs=3.0,
+    initial_respawn_timer=5,
+    hitbox_radius=4.0,
+    grab_item_radius=48.0,
+    item_collect_speed=4.0,
+    item_collect_radius=16.0,
+    cherry_penalty_multiplier=0.5,
+    poc_y=128.0,
+    speed=4.0,
+    speed_focus=2.0,
+    speed_diagonal=2.8,
+    speed_diagonal_focus=1.4,
     levels=[ShotLevel(0, [])],
 )
 
@@ -44,6 +60,7 @@ def events_of(p: Player, kind: PlayerEventKind) -> list[PlayerEvent]:
 
 
 # ---- 出生/无敌状态机 ----
+
 
 def test_spawn_state_and_invulnerable_countdown() -> None:
     p = Player(shot_data=SD)
@@ -68,6 +85,7 @@ def test_killbox_ignored_while_invulnerable() -> None:
 
 # ---- 死亡 → 倒计时 → 重生全流程 ----
 
+
 def test_death_full_flow_with_lives() -> None:
     p = make_player()
     p.power = 100.0
@@ -87,7 +105,7 @@ def test_death_full_flow_with_lives() -> None:
     assert len(settle) == 1
     d = settle[0].data
     assert d.has_lives
-    assert d.new_power == 84.0            # 100 - 16
+    assert d.new_power == 84.0  # 100 - 16
     assert (d.drop_power_big, d.drop_power_small) == (1, 5)
     assert d.drop_full_power == 0
     # (40000-10000)*0.5 = 15000, 向下取整 10 不变
@@ -106,7 +124,7 @@ def test_death_full_flow_with_lives() -> None:
 
 def test_death_power_floor_branch() -> None:
     p = make_player()
-    p.power = 16.0   # <=16 → 归 0
+    p.power = 16.0  # <=16 → 归 0
     p.die()
     for _ in range(5):
         p.step(DeathContext(lives=1))
@@ -170,6 +188,7 @@ def test_bullet_grace_period_emits_each_frame() -> None:
 
 # ---- 擦弹(§A.7 CheckGraze/ScoreGraze) ----
 
+
 def test_graze_aabb_with_20px_expand() -> None:
     p = make_player()  # 擦弹半宽 24, pos=(192, 384)
     # 弹 (8x8) 中心贴边: |dx| = 24 + 4 + 20 = 48 → 相交(边相接算擦)
@@ -201,6 +220,7 @@ def test_graze_blocked_when_dead_or_spawning() -> None:
 
 # ---- 命中判定(CalcKillboxCollision) ----
 
+
 def test_killbox_aabb() -> None:
     p = make_player()  # 判定半宽 2 (hitboxRadius 4 / 2)
     # 弹 6x6: |dx| = 2 + 3 = 5 → 相交; 边相接算命中
@@ -221,6 +241,7 @@ def test_killbox_border_breaks_instead_of_death() -> None:
 
 
 # ---- 咲夜B optionAngle(§A.4) ----
+
 
 def test_sakuya_b_option_angle_swing_and_clamp() -> None:
     p = make_player(rotating_options=True)
@@ -274,6 +295,7 @@ def test_sakuya_b_focus_transition_endpoints() -> None:
 
 # ---- 非咲夜B 子机 8 帧过渡 ----
 
+
 def test_plain_options_focus_transition_endpoints() -> None:
     p = make_player()
     p.push_keys()
@@ -296,6 +318,7 @@ def test_plain_options_focus_transition_endpoints() -> None:
 
 
 # ---- 体术命中 (check_contact = CalcKillboxCollision 返回 1 语义, Player.cpp:1014-1039) ----
+
 
 def test_contact_hit_kills_alive_player() -> None:
     p = make_player()

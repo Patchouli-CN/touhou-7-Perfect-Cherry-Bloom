@@ -1,4 +1,4 @@
-""" 关卡数据(.std) —— Pythonic。
+"""关卡数据(.std) —— Pythonic。
 
 对照 th07 反编译 `Stage.cpp/.hpp` 还原 .std 全格式:
 
@@ -28,23 +28,46 @@ from __future__ import annotations
 import struct
 import msgspec
 
-_HEADER_SIZE = 1168      # StdRawHeader
-_OBJECT_HEAD_SIZE = 28   # StdRawObject 到 firstQuad 之前
-_QUAD_SIZE = 28          # StdRawQuadBasic
-_INSTANCE_SIZE = 16      # StdRawInstance
-_INSTR_SIZE = 20         # StdRawInstr(8 字节头 + 3×AnyArg)
+_HEADER_SIZE = 1168  # StdRawHeader
+_OBJECT_HEAD_SIZE = 28  # StdRawObject 到 firstQuad 之前
+_QUAD_SIZE = 28  # StdRawQuadBasic
+_INSTANCE_SIZE = 16  # StdRawInstance
+_INSTR_SIZE = 20  # StdRawInstr(8 字节头 + 3×AnyArg)
 
 #: 脚本指令名(调试用; 语义见模块 docstring)
 INSTR_NAMES = {
-    0: "set_pos", 1: "set_fog", 2: "fog_interp", 3: "stop", 4: "jump",
-    5: "cam_pos", 6: "cam_pos_interp", 7: "cam_lookat", 8: "cam_lookat_interp",
-    9: "cam_up", 10: "cam_up_interp", 11: "cam_fov", 12: "cam_fov_interp",
-    13: "clear_color", 14: "cam_pos_start", 15: "cam_pos_end",
-    16: "cam_pos_tan_start", 17: "cam_pos_tan_end", 18: "cam_pos_bezier",
-    19: "cam_lookat_start", 20: "cam_lookat_end", 21: "cam_lookat_tan_start",
-    22: "cam_lookat_tan_end", 23: "cam_lookat_bezier", 24: "cam_up_start",
-    25: "cam_up_end", 26: "cam_up_tan_start", 27: "cam_up_tan_end",
-    28: "cam_up_bezier", 29: "bg_vm1", 30: "bg_vm2", 31: "wait_label",
+    0: "set_pos",
+    1: "set_fog",
+    2: "fog_interp",
+    3: "stop",
+    4: "jump",
+    5: "cam_pos",
+    6: "cam_pos_interp",
+    7: "cam_lookat",
+    8: "cam_lookat_interp",
+    9: "cam_up",
+    10: "cam_up_interp",
+    11: "cam_fov",
+    12: "cam_fov_interp",
+    13: "clear_color",
+    14: "cam_pos_start",
+    15: "cam_pos_end",
+    16: "cam_pos_tan_start",
+    17: "cam_pos_tan_end",
+    18: "cam_pos_bezier",
+    19: "cam_lookat_start",
+    20: "cam_lookat_end",
+    21: "cam_lookat_tan_start",
+    22: "cam_lookat_tan_end",
+    23: "cam_lookat_bezier",
+    24: "cam_up_start",
+    25: "cam_up_end",
+    26: "cam_up_tan_start",
+    27: "cam_up_tan_end",
+    28: "cam_up_bezier",
+    29: "bg_vm1",
+    30: "bg_vm2",
+    31: "wait_label",
 }
 
 
@@ -72,7 +95,7 @@ class StdObject(msgspec.Struct, frozen=True):
     """一个场景物件(StdRawObject): 一组 quad + 剔除参数。"""
 
     id: int
-    z_level: int                 # 0..3, 两个渲染 pass(0/1 高, 2/3 低)
+    z_level: int  # 0..3, 两个渲染 pass(0/1 高, 2/3 低)
     pos: tuple[float, float, float]
     size: tuple[float, float, float]
     quads: tuple[StdQuad, ...]
@@ -131,10 +154,17 @@ class Stage(msgspec.Struct):
         if len(data) < _HEADER_SIZE:
             raise ValueError("std 过短")
         objects_count, quad_count, faces_off, script_off = struct.unpack_from(
-            "<hhII", data, 0)
+            "<hhII", data, 0
+        )
         name = _sjis(data[16:144].split(b"\x00")[0])
-        bgm_names = tuple(_sjis(data[144 + i * 128: 144 + i * 128 + 128].split(b"\x00")[0]) for i in range(4))
-        bgm_paths = tuple(_sjis(data[656 + i * 128: 656 + i * 128 + 128].split(b"\x00")[0]) for i in range(4))
+        bgm_names = tuple(
+            _sjis(data[144 + i * 128 : 144 + i * 128 + 128].split(b"\x00")[0])
+            for i in range(4)
+        )
+        bgm_paths = tuple(
+            _sjis(data[656 + i * 128 : 656 + i * 128 + 128].split(b"\x00")[0])
+            for i in range(4)
+        )
         st = cls(index, name, bgm_names, bgm_paths, [])
         st.quad_count = quad_count
         st.objects = cls._objects(data, objects_count)

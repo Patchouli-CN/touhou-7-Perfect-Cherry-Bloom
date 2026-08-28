@@ -1,4 +1,4 @@
-""" 对话渲染 —— 对照 GuiImpl::DrawDialogue (Gui.cpp:1063-1165)。
+"""对话渲染 —— 对照 GuiImpl::DrawDialogue (Gui.cpp:1063-1165)。
 
 - 对话框: y=384 起, 高 48, 前 60 帧渐高(timer*48/60); 黑色半透明,
   顶 alpha 0xd0 → 底 alpha 0x90; x 范围 16..368(arcade 区左右各留 16)。
@@ -33,18 +33,26 @@ CHARACTER_FACE = ("face_rm00.anm", "face_mr00.anm", "face_sk00.anm")
 
 # 立绘缩放/位置(视觉近似: 原版坐标在 face anm 脚本里, 未逐条还原)
 PORTRAIT_SCALE = 0.75
-PORTRAIT_X = (8, 384 - 8)      # 左/右立绘锚点 x(右侧为右缘)
-PORTRAIT_BOTTOM = 448          # 底缘对齐屏幕底
+PORTRAIT_X = (8, 384 - 8)  # 左/右立绘锚点 x(右侧为右缘)
+PORTRAIT_BOTTOM = 448  # 底缘对齐屏幕底
 
-BOX_X0, BOX_X1 = 16, 368       # arcadeTopLeft(32) 相对游戏面原点, 即 16..368
+BOX_X0, BOX_X1 = 16, 368  # arcadeTopLeft(32) 相对游戏面原点, 即 16..368
 BOX_Y, BOX_H = 384, 48
 BOX_FADEIN_FRAMES = 60
 TEXT_X, TEXT_Y0, TEXT_LINE_H = 24, 388, 18
 INTRO_RIGHT_X, INTRO_Y0, INTRO_LINE_H = 360, 336, 20
 
-_FONT_CANDIDATES = ("msgothic", "ms gothic", "msmincho", "meiryo",
-                    "yu gothic", "hiragino sans", "noto sans cjk jp",
-                    "microsoft yahei", "simhei")
+_FONT_CANDIDATES = (
+    "msgothic",
+    "ms gothic",
+    "msmincho",
+    "meiryo",
+    "yu gothic",
+    "hiragino sans",
+    "noto sans cjk jp",
+    "microsoft yahei",
+    "simhei",
+)
 _FONT_SIZE = 15
 
 
@@ -91,7 +99,7 @@ class _FaceBook:
         for _ in anm.entries:
             bases.append(off)
             off += struct.unpack_from("<i", raw, off + 56)[0]
-        base = 0   # 全局 sprite 号起点(C 的 spriteIdxOffset 累加)
+        base = 0  # 全局 sprite 号起点(C 的 spriteIdxOffset 累加)
         for entry_idx, entry in enumerate(anm.entries):
             eb = bases[entry_idx]
             ns, nsc = struct.unpack_from("<2i", raw, eb)
@@ -106,7 +114,8 @@ class _FaceBook:
                 except KeyError:
                     continue
                 self._faces[base + sid] = pygame.image.frombuffer(
-                    rgba, (w, h), "RGBA").copy()  # copy: 脱离 bytes 且无需显示模式
+                    rgba, (w, h), "RGBA"
+                ).copy()  # copy: 脱离 bytes 且无需显示模式
             base += max_id + 1
 
     def get(self, face_idx: int) -> pygame.Surface | None:
@@ -128,8 +137,9 @@ class _FaceBook:
 class DialogueView:
     """把一个 MsgVm 的当前状态画到游戏面上。"""
 
-    def __init__(self, data_path: str | Path, *, character: int = 0,
-                 stage: int = 1) -> None:
+    def __init__(
+        self, data_path: str | Path, *, character: int = 0, stage: int = 1
+    ) -> None:
         self._font = _load_font()
         self._text_cache: dict = {}
         self._faces: list[_FaceBook | None] = [None, None]
@@ -174,8 +184,15 @@ class DialogueView:
             self._text_cache[key] = surf
         return surf
 
-    def _blit_text(self, surf: pygame.Surface, text: str, color: int,
-                   pos: tuple[int, int], *, right: bool = False) -> None:
+    def _blit_text(
+        self,
+        surf: pygame.Surface,
+        text: str,
+        color: int,
+        pos: tuple[int, int],
+        *,
+        right: bool = False,
+    ) -> None:
         img = self._text(text, color)
         if img is not None:
             rect = img.get_rect()
@@ -191,11 +208,13 @@ class DialogueView:
         if right:
             x -= w * len(text)
         for i, _ in enumerate(text):
-            pygame.draw.rect(surf, (200, 200, 220, 160),
-                             (x + i * w, y, w - 2, _FONT_SIZE))
+            pygame.draw.rect(
+                surf, (200, 200, 220, 160), (x + i * w, y, w - 2, _FONT_SIZE)
+            )
 
-    def _blit_portrait(self, surf: pygame.Surface, side: int,
-                       face_idx: int, *, speaking: bool) -> None:
+    def _blit_portrait(
+        self, surf: pygame.Surface, side: int, face_idx: int, *, speaking: bool
+    ) -> None:
         book = self._faces[side]
         if book is None:
             return
@@ -223,35 +242,51 @@ class DialogueView:
             if p.visible and not p.exited:
                 self._blit_portrait(surf, side, p.face, speaking=p.speaking)
         # 对话框(前 60 帧渐高)
-        height = BOX_H if vm.timer >= BOX_FADEIN_FRAMES \
+        height = (
+            BOX_H
+            if vm.timer >= BOX_FADEIN_FRAMES
             else vm.timer * BOX_H // BOX_FADEIN_FRAMES
+        )
         if height > 0:
-            box = pygame.transform.scale(self._grad.subsurface(
-                (0, 0, 1, height)), (BOX_X1 - BOX_X0, height))
+            box = pygame.transform.scale(
+                self._grad.subsurface((0, 0, 1, height)), (BOX_X1 - BOX_X0, height)
+            )
             surf.blit(box, (BOX_X0, BOX_Y))
         # 对话两行 + 打字机 reveal
         for i, line in enumerate(vm.dialogue_lines):
             if line.visible and line.shown_text:
                 color = TEXT_COLORS_A[line.color & 3]
-                self._blit_text(surf, line.shown_text, color,
-                                (TEXT_X, TEXT_Y0 + i * TEXT_LINE_H))
+                self._blit_text(
+                    surf, line.shown_text, color, (TEXT_X, TEXT_Y0 + i * TEXT_LINE_H)
+                )
         # Boss 名(TEXT_INTRODUCE), 右对齐在对话框上方
         for i, line in enumerate(vm.intro_lines):
             if line.visible and line.shown_text:
                 color = TEXT_COLORS_A[line.color & 3]
-                self._blit_text(surf, line.shown_text, color,
-                                (INTRO_RIGHT_X, INTRO_Y0 + i * INTRO_LINE_H),
-                                right=True)
+                self._blit_text(
+                    surf,
+                    line.shown_text,
+                    color,
+                    (INTRO_RIGHT_X, INTRO_Y0 + i * INTRO_LINE_H),
+                    right=True,
+                )
         # 推进提示: 停在 PAUSE 且当前行已全部显示时, 右下角画闪烁箭头
         if vm.active and vm.instr_idx < len(vm.msg_file.messages[vm.current_msg_idx]):
-            if vm.msg_file.messages[vm.current_msg_idx][vm.instr_idx].opcode \
-                    == MsgOpcode.PAUSE:
+            if (
+                vm.msg_file.messages[vm.current_msg_idx][vm.instr_idx].opcode
+                == MsgOpcode.PAUSE
+            ):
                 lines_done = all(
                     (not l.visible) or l.reveal >= len(l.text)
-                    for l in vm.dialogue_lines)
+                    for l in vm.dialogue_lines
+                )
                 if lines_done and (vm.timer // 16) % 2 == 0:
                     pygame.draw.polygon(
-                        surf, (255, 255, 255),
-                        [(BOX_X1 - 14, BOX_Y + BOX_H - 12),
-                         (BOX_X1 - 6, BOX_Y + BOX_H - 12),
-                         (BOX_X1 - 10, BOX_Y + BOX_H - 5)])
+                        surf,
+                        (255, 255, 255),
+                        [
+                            (BOX_X1 - 14, BOX_Y + BOX_H - 12),
+                            (BOX_X1 - 6, BOX_Y + BOX_H - 12),
+                            (BOX_X1 - 10, BOX_Y + BOX_H - 5),
+                        ],
+                    )

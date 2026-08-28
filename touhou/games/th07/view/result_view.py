@@ -1,4 +1,4 @@
-""" 结算画面渲染(pygame) —— 对照 ResultScreen.cpp 的成绩结算段(简化)。
+"""结算画面渲染(pygame) —— 对照 ResultScreen.cpp 的成绩结算段(简化)。
 
 原版结算画面用 result00.anm 的 41 个 VM 逐行动画 + 8 字符 ascii 名字输入;
 本期简化:
@@ -20,20 +20,28 @@ import pygame
 
 from ....schema.archive import GameArchive
 from ....engine.score_store import ScoreStore
-from .screens import (CHARACTERS, DIFFICULTIES, NAME_ALPHABET,
-                      NAME_ALPHABET_COLS, NAME_LEN)
+from .screens import (
+    CHARACTERS,
+    DIFFICULTIES,
+    NAME_ALPHABET,
+    NAME_ALPHABET_COLS,
+    NAME_LEN,
+)
 from ....engine.view.sprite_bank import SpriteBank
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
 
 _RATING_COLORS = [
-    (100, 200, 255), (120, 255, 160), (255, 240, 140), (255, 160, 120),
+    (100, 200, 255),
+    (120, 255, 160),
+    (255, 240, 140),
+    (255, 160, 120),
 ]
 
 _ASCII_ANM = "ascii.anm"
 # 名字输入字表网格布局 (对照 OnDraw :2385-2430 的 6x16 网格, 适配本面板行距)
 _GRID_POS = (160, 380)
 _GRID_PITCH = (20, 16)
-_NAME_POS = (180, 356)      # 名字槽起点
+_NAME_POS = (180, 356)  # 名字槽起点
 _NAME_STEP = 16
 _CELL_SPRITE = {94: 127, 95: 128}  # 末行两格: ascii.anm 0x80(空格)/0x81(END)
 # 选中字 0xffffffc0 脉动放大, 未选中 0xc0c0c0c0 (:2392-2413)
@@ -66,20 +74,19 @@ class ResultScreen:
         self._bank = SpriteBank(data_path)  # ascii.anm 字表贴字(懒加载)
         self._tint: dict[tuple[int, tuple[int, int, int]], pygame.Surface] = {}
 
-    def _text(self, surf, font, s: str, x: int, y: int,
-              color=(240, 240, 240)) -> None:
+    def _text(self, surf, font, s: str, x: int, y: int, color=(240, 240, 240)) -> None:
         t = font.render(s, True, color)
         surf.blit(t, (x, y))
 
     # ---- ascii.anm 贴字(同 hud_view: c → sprite ord(c)-1) ----
-    def _glyph(self, ch: str, color: tuple[int, int, int]
-               ) -> pygame.Surface | None:
+    def _glyph(self, ch: str, color: tuple[int, int, int]) -> pygame.Surface | None:
         if ch == " ":
             return None
         return self._sprite_glyph(ord(ch) - 1, color)
 
-    def _sprite_glyph(self, sid: int, color: tuple[int, int, int]
-                      ) -> pygame.Surface | None:
+    def _sprite_glyph(
+        self, sid: int, color: tuple[int, int, int]
+    ) -> pygame.Surface | None:
         base = self._bank.sprite(_ASCII_ANM, sid)
         if base is None:
             return None
@@ -91,9 +98,14 @@ class ResultScreen:
             self._tint[key] = out
         return out
 
-    def render(self, surf: pygame.Surface, result: dict, frame: int,
-               store: ScoreStore | None = None,
-               name_entry=None) -> None:
+    def render(
+        self,
+        surf: pygame.Surface,
+        result: dict,
+        frame: int,
+        store: ScoreStore | None = None,
+        name_entry=None,
+    ) -> None:
         if self._bg is not None:
             surf.blit(pygame.transform.scale(self._bg, (TITLE_W, TITLE_H)), (0, 0))
         else:
@@ -105,8 +117,14 @@ class ResultScreen:
 
         f, fb = self._font, self._font_big
         title = "STAGE CLEAR!!" if result.get("cleared") else "GAME OVER"
-        self._text(surf, fb, title, 90, 50,
-                   (255, 230, 130) if result.get("cleared") else (255, 120, 120))
+        self._text(
+            surf,
+            fb,
+            title,
+            90,
+            50,
+            (255, 230, 130) if result.get("cleared") else (255, 120, 120),
+        )
 
         diff = result.get("difficulty", 1)
         char = result.get("character", 0)
@@ -139,26 +157,38 @@ class ResultScreen:
             self._text(surf, fb, f"Rank  {rating:.1f}", 100, y + 2, color)
             rank = result.get("rank", -1)
             if rank >= 0:
-                self._text(surf, f, f"Hi-Score 入榜: 第 {rank + 1} 名",
-                           100, y + 36, (150, 255, 180))
+                self._text(
+                    surf,
+                    f,
+                    f"Hi-Score 入榜: 第 {rank + 1} 名",
+                    100,
+                    y + 36,
+                    (150, 255, 180),
+                )
             self._render_name_entry(surf, name_entry, frame)
             return
         self._text(surf, fb, f"Rank  {rating:.1f}", 100, y + 4, color)
         rank = result.get("rank", -1)
         if rank >= 0:
-            self._text(surf, f, f"Hi-Score 入榜: 第 {rank + 1} 名",
-                       100, y + 44, (150, 255, 180))
+            self._text(
+                surf,
+                f,
+                f"Hi-Score 入榜: 第 {rank + 1} 名",
+                100,
+                y + 44,
+                (150, 255, 180),
+            )
         else:
             self._text(surf, f, "未入榜", 100, y + 44, (150, 150, 170))
         if frame % 60 < 40:  # 闪烁提示
-            self._text(surf, f, "Z/Enter: 保存并返回标题", 100, TITLE_H - 36,
-                       (255, 255, 255))
+            self._text(
+                surf, f, "Z/Enter: 保存并返回标题", 100, TITLE_H - 36, (255, 255, 255)
+            )
 
     # ---- 名字输入态(HandleResultKeyboard + OnDraw :2385-2430) ----
     def _render_name_entry(self, surf, entry, frame: int) -> None:
         # 名字槽: 8 字符, 光标槽闪烁 '_' (:2231-2241 name[cursor]='_')
-        self._text(surf, self._font, "NAME", 100, _NAME_POS[1],
-                   (190, 190, 220))
+        self._text(surf, self._font, "NAME", 100, _NAME_POS[1], (190, 190, 220))
         cur = min(entry.cursor, NAME_LEN - 1)
         for i in range(NAME_LEN):
             x = _NAME_POS[0] + i * _NAME_STEP
@@ -179,9 +209,11 @@ class ResultScreen:
             row, col = divmod(idx, NAME_ALPHABET_COLS)
             cx, cy = gx + col * px, gy + row * py
             if idx == entry.selected:
-                img = self._sprite_glyph(_CELL_SPRITE.get(idx, ord(ch) - 1),
-                                         _SEL_COLOR) \
-                    if idx in _CELL_SPRITE else self._glyph(ch, _SEL_COLOR)
+                img = (
+                    self._sprite_glyph(_CELL_SPRITE.get(idx, ord(ch) - 1), _SEL_COLOR)
+                    if idx in _CELL_SPRITE
+                    else self._glyph(ch, _SEL_COLOR)
+                )
                 if img is None:
                     continue
                 w = max(1, int(img.get_width() * scale))

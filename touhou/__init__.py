@@ -6,17 +6,21 @@ touhou/registry.py 的 decorator 注册接入; import 本包即完成 th07 的
 
 窗口版游戏入口: ``python -m touhou`` 或安装后的 ``touhou07`` 命令。
 """
+
 from __future__ import annotations
 
-from .games.th07 import data as _th07_data    # noqa: F401  (登记 th07 数值表)
+from .games.th07 import data as _th07_data  # noqa: F401  (登记 th07 数值表)
 from .games.th07 import world as _th07_world  # noqa: F401  (触发 th07 注册:
-                                              #  world/ecl_host; ecl 经 world→ecl_vm,
-                                              #  anm 经 world→…→schema.anm 链)
-from .games.th07 import view as _th07_view    # noqa: F401  (登记 th07 窗口 App 与
-                                              #  pygame 渲染后端; apis 不 import
-                                              #  games.* 后, 注册触发点在本模块)
-from .games.th07 import mods as _th07_mods    # noqa: F401  (登记 th07 mod 能力
-                                              #  提供者 Th07Mods)
+
+#  world/ecl_host; ecl 经 world→ecl_vm,
+#  anm 经 world→…→schema.anm 链)
+from .games.th07 import view as _th07_view  # noqa: F401  (登记 th07 窗口 App 与
+
+#  pygame 渲染后端; apis 不 import
+#  games.* 后, 注册触发点在本模块)
+from .games.th07 import mods as _th07_mods  # noqa: F401  (登记 th07 mod 能力
+
+#  提供者 Th07Mods)
 from .apis.basic import (
     BossSnapshot,
     BulletSnapshot,

@@ -5,6 +5,7 @@
 资源消耗 hook(_tick_resource_cost)、清弹/伤害盒判定几何。
 th07 的 12 套机体炸弹与樱点 drain 不在本文件(见 test_bomb.py)。
 """
+
 from __future__ import annotations
 
 import sys
@@ -57,9 +58,15 @@ CTX = BombContext(player_pos=Vec2(100.0, 300.0))
 
 
 def _start(**overrides) -> StubBomb:
-    kw = dict(focus=False, bombs_remaining=3.0, respawn_timer=30,
-              initial_respawn_timer=30, border_invulnerability_time=0,
-              bomb_pressed=True, spellcard_active=False)
+    kw = dict(
+        focus=False,
+        bombs_remaining=3.0,
+        respawn_timer=30,
+        initial_respawn_timer=30,
+        border_invulnerability_time=0,
+        bomb_pressed=True,
+        spellcard_active=False,
+    )
     kw.update(overrides)
     b = StubBomb()
     b.start_pos = CTX.player_pos
@@ -71,21 +78,37 @@ def _start(**overrides) -> StubBomb:
 # ---- 触发门槛 (try_start_bomb) ----
 def test_start_gating() -> None:
     b = StubBomb()
-    base = dict(focus=False, bombs_remaining=3.0, respawn_timer=30,
-                initial_respawn_timer=30, border_invulnerability_time=0,
-                bomb_pressed=True, spellcard_active=False)
+    base = dict(
+        focus=False,
+        bombs_remaining=3.0,
+        respawn_timer=30,
+        initial_respawn_timer=30,
+        border_invulnerability_time=0,
+        bomb_pressed=True,
+        spellcard_active=False,
+    )
     assert not try_start_bomb(b, CTX, **{**base, "bomb_pressed": False}).started
     assert not try_start_bomb(b, CTX, **{**base, "bombs_remaining": 0.0}).started
     assert not try_start_bomb(b, CTX, **{**base, "respawn_timer": 0}).started
-    assert not try_start_bomb(b, CTX, **{**base, "border_invulnerability_time": 5}).started
+    assert not try_start_bomb(
+        b, CTX, **{**base, "border_invulnerability_time": 5}
+    ).started
     assert not b.is_in_use  # 全部拒绝, 未触发
 
 
 def test_start_success_events() -> None:
     b = StubBomb()
-    r = try_start_bomb(b, CTX, focus=True, bombs_remaining=3.0, respawn_timer=30,
-                       initial_respawn_timer=30, border_invulnerability_time=0,
-                       bomb_pressed=True, spellcard_active=True)
+    r = try_start_bomb(
+        b,
+        CTX,
+        focus=True,
+        bombs_remaining=3.0,
+        respawn_timer=30,
+        initial_respawn_timer=30,
+        border_invulnerability_time=0,
+        bomb_pressed=True,
+        spellcard_active=True,
+    )
     assert r.started and b.is_in_use and b.is_focus
     assert r.bombs_used_delta == 1 and r.bombs_remaining_delta == -1
     assert r.subrank_delta == -BOMB_SUBRANK_PENALTY
@@ -98,17 +121,25 @@ def test_start_success_events() -> None:
 
 def test_no_double_start_while_in_use() -> None:
     b = _start()
-    r = try_start_bomb(b, CTX, focus=False, bombs_remaining=3.0, respawn_timer=30,
-                       initial_respawn_timer=30, border_invulnerability_time=0,
-                       bomb_pressed=True, spellcard_active=False)
+    r = try_start_bomb(
+        b,
+        CTX,
+        focus=False,
+        bombs_remaining=3.0,
+        respawn_timer=30,
+        initial_respawn_timer=30,
+        border_invulnerability_time=0,
+        bomb_pressed=True,
+        spellcard_active=False,
+    )
     assert not r.started
 
 
 # ---- 每帧盒推进 (UpdateBombProjectiles) ----
 def test_tick_clears_damage_box_width_each_frame() -> None:
     b = _start()
-    assert b.damage_boxes[0].size.x == 40.0   # start 当帧 calc 布置
-    b.tick(CTX)                                # 帧首清零; stub calc 仅首帧布置
+    assert b.damage_boxes[0].size.x == 40.0  # start 当帧 calc 布置
+    b.tick(CTX)  # 帧首清零; stub calc 仅首帧布置
     assert b.damage_boxes[0].size.x == 0.0
 
 
@@ -124,8 +155,7 @@ def test_bomb_ends_after_duration_and_hook_called() -> None:
 
 
 def test_clear_box_tick_and_growth() -> None:
-    c = ClearBox(Vec2(100, 100), Vec2(0.0, 16.0), 3, ITEM_POINT_BULLET,
-                 growth=2.0)
+    c = ClearBox(Vec2(100, 100), Vec2(0.0, 16.0), 3, ITEM_POINT_BULLET, growth=2.0)
     assert c.active
     c.tick()
     assert c.lifetime == 2 and c.size.y == 18.0
@@ -155,8 +185,7 @@ def test_check_bomb_graze_circle_and_segment() -> None:
     assert b.item_type == 6  # 透出命中盒的掉落类型
     assert b.check_bomb_graze(Vec2(200, 100), Vec2(4, 4)) == 0
     # 线性段: 宽=pos_z, 高=size.x
-    b.clear_boxes.append(ClearBox(Vec2(300, 100), Vec2(20.0, 0.0), 5, 8,
-                                  pos_z=40.0))
+    b.clear_boxes.append(ClearBox(Vec2(300, 100), Vec2(20.0, 0.0), 5, 8, pos_z=40.0))
     assert b.check_bomb_graze(Vec2(310, 100), Vec2(4, 4)) == 2
     assert b.item_type == 8
     assert b.check_bomb_graze(Vec2(310, 200), Vec2(4, 4)) == 0

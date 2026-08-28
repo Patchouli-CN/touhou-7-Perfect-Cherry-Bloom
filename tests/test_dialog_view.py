@@ -5,6 +5,7 @@ th07 全部脸图都是 126×510 → 跨关必撞: 先打过 2 面再进 3 面, 
 说话(对侧压暗)时爱丽丝立绘闪成琪露诺。修复后压暗缓存收进 _FaceBook
 按书隔离。
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,8 +34,9 @@ def test_dimmed_portrait_isolated_across_stages() -> None:
     # 轮到自机说话: boss 侧(side=1)压暗 —— BUG 的触发姿态
     v2._blit_portrait(s2, 1, 0, speaking=False)
     v3._blit_portrait(s3, 1, 0, speaking=False)
-    assert pygame.image.tobytes(s2, "RGBA") != pygame.image.tobytes(s3, "RGBA"), \
+    assert pygame.image.tobytes(s2, "RGBA") != pygame.image.tobytes(s3, "RGBA"), (
         "压暗立绘跨关串台(缓存键缺关卡/角色维度)"
+    )
 
 
 @NEEDS_DAT

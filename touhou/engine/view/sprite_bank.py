@@ -8,6 +8,7 @@ games/th07/view/sprite_view.py; 本模块不 import 任何作品包。
 AnmFile 解码走 schema.anm.parse_cached 的进程级缓存: 每个视图各持一个
 SpriteBank(各自开包), 同一 anm 的纹理解码全进程只做一次 (BUGS.md 增量#3)。
 """
+
 import struct
 import time
 from pathlib import Path
@@ -23,8 +24,7 @@ from ...schema.archive import GameArchive
 _SLOW_LOAD_MS = 30.0
 
 
-def _sprite_rgba(anm: AnmFile, sprite_id: int, entry: int
-                 ) -> tuple[int, int, bytes]:
+def _sprite_rgba(anm: AnmFile, sprite_id: int, entry: int) -> tuple[int, int, bytes]:
     """取 sprite 图像 (w, h, rgba); 区域超出纹理时按 WRAP 平铺。
 
     D3D 采样默认 WRAP (AnmManager::DrawInner 的 uvEnd 可超 1.0; d3dx_render
@@ -35,8 +35,7 @@ def _sprite_rgba(anm: AnmFile, sprite_id: int, entry: int
     spr = e.sprites[sprite_id]
     if spr.x + spr.w <= e.tex_width and spr.y + spr.h <= e.tex_height:
         return anm.sprite_image(sprite_id, entry=entry)
-    tex = np.frombuffer(e.rgba, dtype=np.uint8).reshape(
-        e.tex_height, e.tex_width, 4)
+    tex = np.frombuffer(e.rgba, dtype=np.uint8).reshape(e.tex_height, e.tex_width, 4)
     ys = (spr.y + np.arange(spr.h)) % e.tex_height
     xs = (spr.x + np.arange(spr.w)) % e.tex_width
     return spr.w, spr.h, tex[ys][:, xs].tobytes()
@@ -140,8 +139,9 @@ class SpriteBank:
             return None
         return self._raws[name]
 
-    def sprite(self, name: str, sprite_id: int, entry: int = 0
-               ) -> pygame.Surface | None:
+    def sprite(
+        self, name: str, sprite_id: int, entry: int = 0
+    ) -> pygame.Surface | None:
         """取 sprite Surface(缓存); 不存在返回 None。"""
         key = (name, entry, sprite_id)
         if key in self._surfs:
@@ -149,8 +149,10 @@ class SpriteBank:
         surf = None
         if self._load(name):
             anm = self._anms[name]
-            if 0 <= entry < len(anm.entries) \
-                    and sprite_id in anm.entries[entry].sprites:
+            if (
+                0 <= entry < len(anm.entries)
+                and sprite_id in anm.entries[entry].sprites
+            ):
                 w, h, rgba = _sprite_rgba(anm, sprite_id, entry)
                 surf = pygame.image.fromstring(rgba, (w, h), "RGBA")
                 try:
@@ -160,8 +162,7 @@ class SpriteBank:
         self._surfs[key] = surf
         return surf
 
-    def script_sprite(self, name: str, script_id: int, entry: int = 0
-                      ) -> int | None:
+    def script_sprite(self, name: str, script_id: int, entry: int = 0) -> int | None:
         """script 首帧 sprite 的局部 id; 未知返回 None。"""
         if not self._load(name):
             return None
@@ -169,8 +170,9 @@ class SpriteBank:
             return self._first[name][entry].get(script_id)
         return None
 
-    def global_to_local(self, name: str, global_id: int, anm_offset: int
-                        ) -> tuple[int, int] | None:
+    def global_to_local(
+        self, name: str, global_id: int, anm_offset: int
+    ) -> tuple[int, int] | None:
         """全局 sprite/script idx → (entry, 局部 id)(链式偏移反查)。"""
         if not self._load(name):
             return None

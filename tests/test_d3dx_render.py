@@ -1,4 +1,5 @@
 """D3DX 复刻接口(engine/render/d3dx_render)测试: 矩阵对照 D3DX 公式手算值。"""
+
 from __future__ import annotations
 
 import math
@@ -33,18 +34,20 @@ def test_look_at_lh_axis_aligned() -> None:
     手算: z=(0,0,1); x=normalize(up×z)=(1,0,0); y=z×x=(0,1,0);
     cam_right=normalize(z×up)=(-1,0,0)(= view 的 -x 轴)。
     """
-    view, cam_right = look_at_lh(np.array([1.0, 2.0, 3.0]),
-                                 np.array([0.0, 0.0, 1.0]),
-                                 np.array([0.0, 1.0, 0.0]))
-    assert np.allclose(view, [[1, 0, 0, 0], [0, 1, 0, 0],
-                              [0, 0, 1, 0], [-1, -2, -3, 1]])
+    view, cam_right = look_at_lh(
+        np.array([1.0, 2.0, 3.0]), np.array([0.0, 0.0, 1.0]), np.array([0.0, 1.0, 0.0])
+    )
+    assert np.allclose(
+        view, [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1, -2, -3, 1]]
+    )
     assert np.allclose(cam_right, [-1.0, 0.0, 0.0])
 
 
 def test_look_at_lh_normalizes_direction() -> None:
     """lookAt 是方向向量(UpdateCamera 语义), 非单位也按单位化处理。"""
-    view, _ = look_at_lh(np.zeros(3), np.array([0.0, 0.0, 2.0]),
-                         np.array([0.0, 1.0, 0.0]))
+    view, _ = look_at_lh(
+        np.zeros(3), np.array([0.0, 0.0, 2.0]), np.array([0.0, 1.0, 0.0])
+    )
     assert np.allclose(view, np.identity(4))
 
 
@@ -66,9 +69,7 @@ def test_perspective_fov_lh_hand_value() -> None:
 
 def test_rotation_xyz_zero_is_exact_identity() -> None:
     """零角跳过优化: 返回精确单位阵(cos=1/sin=0 与跳过等价)。"""
-    assert rotation_xyz(np.zeros(3)) == (1.0, 0.0, 0.0,
-                                         0.0, 1.0, 0.0,
-                                         0.0, 0.0, 1.0)
+    assert rotation_xyz(np.zeros(3)) == (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
 
 
 def test_rotation_xyz_matches_d3dx_matrix_product() -> None:
@@ -86,8 +87,19 @@ def test_rotation_xyz_matches_d3dx_matrix_product() -> None:
 
 def test_quad_corner_offsets_zero_rotation() -> None:
     assert quad_corner_offsets(64.0, 32.0, np.zeros(3)) == (
-        -64.0, -32.0, 0.0, 64.0, -32.0, 0.0,
-        -64.0, 32.0, 0.0, 64.0, 32.0, 0.0)
+        -64.0,
+        -32.0,
+        0.0,
+        64.0,
+        -32.0,
+        0.0,
+        -64.0,
+        32.0,
+        0.0,
+        64.0,
+        32.0,
+        0.0,
+    )
 
 
 def test_quad_corner_offsets_rotated() -> None:
@@ -95,8 +107,9 @@ def test_quad_corner_offsets_rotated() -> None:
     rot = np.array([0.2, 0.4, -0.1])
     coff = quad_corner_offsets(64.0, 32.0, rot)
     r = np.array(rotation_xyz(rot)).reshape(3, 3)
-    base = np.array([[-64.0, -32.0, 0.0], [64.0, -32.0, 0.0],
-                     [-64.0, 32.0, 0.0], [64.0, 32.0, 0.0]])
+    base = np.array(
+        [[-64.0, -32.0, 0.0], [64.0, -32.0, 0.0], [-64.0, 32.0, 0.0], [64.0, 32.0, 0.0]]
+    )
     assert np.allclose(np.asarray(coff).reshape(4, 3), base @ r)
 
 
@@ -139,8 +152,7 @@ def test_project_straight_ahead() -> None:
     assert pr is not None
     assert pr.x == 288.0 and pr.y == 224.0
     assert pr.clip_w == 100.0
-    assert math.isclose(pr.clip_z, 100.0 * 1800.0 / 1770.0
-                        - 30.0 * 1800.0 / 1770.0)
+    assert math.isclose(pr.clip_z, 100.0 * 1800.0 / 1770.0 - 30.0 * 1800.0 / 1770.0)
     assert 0.0 < pr.ndc_z < 1.0
 
 
@@ -173,12 +185,11 @@ def test_project_points_vec_matches_scalar() -> None:
     d3.update_camera()
     rng = np.random.default_rng(7)
     pts = rng.uniform(-500.0, 500.0, size=(17, 3))
-    pts[:, 2] += 900.0                        # 保证在相机前方(w≥1)
+    pts[:, 2] += 900.0  # 保证在相机前方(w≥1)
     sx, sy, w = d3.project_points(pts[:, 0], pts[:, 1], pts[:, 2])
     zv = d3.view_z_points(pts[:, 0], pts[:, 1], pts[:, 2])
     for i in range(pts.shape[0]):
         pr = d3.project(float(pts[i, 0]), float(pts[i, 1]), float(pts[i, 2]))
         assert pr is not None
         assert pr.x == sx[i] and pr.y == sy[i] and pr.clip_w == w[i]
-        assert d3.view_z(float(pts[i, 0]), float(pts[i, 1]),
-                         float(pts[i, 2])) == zv[i]
+        assert d3.view_z(float(pts[i, 0]), float(pts[i, 1]), float(pts[i, 2])) == zv[i]

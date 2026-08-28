@@ -1,4 +1,5 @@
 """Touhou: 射击数据 .sht 解析测试(用真实 th07 资源)。"""
+
 from __future__ import annotations
 
 import sys

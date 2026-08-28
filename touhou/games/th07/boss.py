@@ -1,4 +1,4 @@
-""" Boss 战状态机(th07) —— 移植自 EnemyManager.cpp / EclManager.cpp / 规格 §B。
+"""Boss 战状态机(th07) —— 移植自 EnemyManager.cpp / EclManager.cpp / 规格 §B。
 
 通用框架(生命阈值切阶段/符卡 Begin·End/捕获分衰减/受击结算)已上移到引擎层
 基座 engine/boss_base.py 的 BossBase; 本模块只留 th07 专属:
@@ -29,8 +29,9 @@ class Boss(BossBase):
         return self.spellcard_scores or SPELLCARD_SCORE
 
     # ---- B.5 超时状态机(th07: 含樱点惩罚) ----
-    def handle_timer_callback(self, *, cherry_above_start: int = 0,
-                              clear_field_cb=None) -> dict:
+    def handle_timer_callback(
+        self, *, cherry_above_start: int = 0, clear_field_cb=None
+    ) -> dict:
         """HandleTimerCallback (EnemyManager.cpp:432-525)。
 
         返回事件 dict:
@@ -38,13 +39,17 @@ class Boss(BossBase):
           cherry_penalty(=(cherry-cherryStart)*0.25 向下取整 10, 上层 cherry 自减) /
           remove_all_bullets(RemoveAllBullets(10) 信号) / clear_field。
         """
-        ev = {"fired": False, "callback": 0, "cherry_penalty": 0,
-              "remove_all_bullets": False, "clear_field": False}
+        ev = {
+            "fired": False,
+            "callback": 0,
+            "cherry_penalty": 0,
+            "remove_all_bullets": False,
+            "clear_field": False,
+        }
         if self.timer_callback_threshold < 0:
             return ev
         if self.boss_id == 0:
-            self.seconds_remaining = (
-                self.timer_callback_threshold - self.timer) // 60
+            self.seconds_remaining = (self.timer_callback_threshold - self.timer) // 60
         if self.timer < self.timer_callback_threshold:
             return ev
         # 若有更高的生命阈值, 先钉生命并清掉(不触发其回调)
@@ -53,7 +58,8 @@ class Boss(BossBase):
             top = max(pending)
             self.life = top
             self.life_thresholds.remove(
-                next(pair for pair in self.life_thresholds if pair[0] == top))
+                next(pair for pair in self.life_thresholds if pair[0] == top)
+            )
         ev["fired"] = True
         ev["callback"] = self.timer_callback_sub
         ev["clear_field"] = True
@@ -64,13 +70,13 @@ class Boss(BossBase):
             self.capture_score = 0
             self.is_capturing = False
             if self.is_active:
-                self.is_active += 1              # 2 = 超时失败
+                self.is_active += 1  # 2 = 超时失败
             ev["remove_all_bullets"] = True
             penalty = int(cherry_above_start * 0.25)
             penalty -= penalty % 10
             ev["cherry_penalty"] = penalty
         if clear_field_cb:
-            clear_field_cb()                     # 清场(非 boss 敌 life=0)
+            clear_field_cb()  # 清场(非 boss 敌 life=0)
         return ev
 
     def add_graze_bonus(self, cherry_above_start: int) -> None:

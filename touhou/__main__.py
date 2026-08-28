@@ -3,6 +3,7 @@
 运行:  touhou07 (安装后)  或  uv run python -m touhou
 日志:  控制台 + 仓库根 touhou.log (默认 TRACE, TOUHOU_LOG_LEVEL 可改)
 """
+
 from __future__ import annotations
 
 import os
@@ -39,8 +40,7 @@ def _print_banner() -> None:
         color = _RED if i % 3 == 1 else _WHITE
         print(f"{color}{line}{_RESET}", file=sys.stderr)
         time.sleep(0.035)
-    print(f"{_DIM}{'─' * max(len(l) for l in lines)}{_RESET}",
-          file=sys.stderr)
+    print(f"{_DIM}{'─' * max(len(l) for l in lines)}{_RESET}", file=sys.stderr)
     time.sleep(0.05)
 
 

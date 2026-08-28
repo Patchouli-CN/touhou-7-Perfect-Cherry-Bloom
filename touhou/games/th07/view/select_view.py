@@ -1,4 +1,4 @@
-""" 选人/选难度/Extra 选关界面 —— 对照 MainMenu.cpp + title01.anm 脚本稳态布局。
+"""选人/选难度/Extra 选关界面 —— 对照 MainMenu.cpp + title01.anm 脚本稳态布局。
 
 布局数值(640x480)来自 title01.anm 脚本静态求值
 (工具 scratch_dbg/anm_layout.py; interrupt 7/9/10/22 = 滑入段终值,
@@ -71,7 +71,7 @@ class SelectView:
         self._extra_sprites: list[tuple[pygame.Surface, pygame.Surface]] = []
         self._headers: list[pygame.Surface] = []
         self._portraits: list[pygame.Surface] = []
-        self._shot_blocks: list[tuple] = []   # per char: (A亮, A暗, B亮, B暗)
+        self._shot_blocks: list[tuple] = []  # per char: (A亮, A暗, B亮, B暗)
         self._font: pygame.font.Font | None = None
         self._font_mid: pygame.font.Font | None = None
 
@@ -81,8 +81,7 @@ class SelectView:
             return
         arc = GameArchive.open(self._data_path)
         raw = None
-        for key in ("select00.jpg", "title/select00.jpg",
-                    "data/title/select00.jpg"):
+        for key in ("select00.jpg", "title/select00.jpg", "data/title/select00.jpg"):
             try:
                 raw = arc.load(key)
                 break
@@ -104,10 +103,12 @@ class SelectView:
 
         # entry2=select01(难度), entry3-5=sl_pl00-02(立绘/机型块),
         # entry7=sl_text(页头), entry9=select02(Extra)
-        self._diff_sprites = [(_surf(s, 2), _surf(s + 1, 2))
-                              for s, _x, _y in _DIFF_ITEMS]
-        self._extra_sprites = [(_surf(s, 9), _surf(s + 1, 9))
-                               for s, _x, _y in _EXTRA_ITEMS]
+        self._diff_sprites = [
+            (_surf(s, 2), _surf(s + 1, 2)) for s, _x, _y in _DIFF_ITEMS
+        ]
+        self._extra_sprites = [
+            (_surf(s, 9), _surf(s + 1, 9)) for s, _x, _y in _EXTRA_ITEMS
+        ]
         self._headers = [_surf(i, 7) for i in range(2)]
         for ch in range(3):
             self._portraits.append(_surf(0, 3 + ch))
@@ -124,17 +125,18 @@ class SelectView:
 
     # ---- 工具 ----
     @staticmethod
-    def _blit_center(surf: pygame.Surface, img: pygame.Surface | None,
-                     x: float, y: float) -> None:
+    def _blit_center(
+        surf: pygame.Surface, img: pygame.Surface | None, x: float, y: float
+    ) -> None:
         """中心锚 blit(默认 anchor=0; 立绘/名字/说明/页头用)。"""
         if img is None:
             return
-        surf.blit(img, (int(x) - img.get_width() // 2,
-                        int(y) - img.get_height() // 2))
+        surf.blit(img, (int(x) - img.get_width() // 2, int(y) - img.get_height() // 2))
 
     @staticmethod
-    def _blit(surf: pygame.Surface, img: pygame.Surface | None,
-              x: float, y: float) -> None:
+    def _blit(
+        surf: pygame.Surface, img: pygame.Surface | None, x: float, y: float
+    ) -> None:
         """左上锚 blit(ANM_22, anchor=3; 难度项/机型块/Extra 项用)。"""
         if img is None:
             return
@@ -160,7 +162,8 @@ class SelectView:
         """难度选择页; cursor 0..3 = Easy..Lunatic。"""
         self._begin(surf, header=0)
         for i, ((_s, x, y), (lit, dim)) in enumerate(
-                zip(_DIFF_ITEMS, self._diff_sprites)):
+            zip(_DIFF_ITEMS, self._diff_sprites)
+        ):
             self._blit(surf, lit if i == cursor else dim, x, y)
         self._hint(surf)
 
@@ -183,13 +186,20 @@ class SelectView:
         """Extra/Phantasm 选关页(简化, 见 screens.py EXTRA_STAGES 注释)。"""
         self._begin(surf, header=0)
         for i, ((_s, x, y), (lit, dim)) in enumerate(
-                zip(_EXTRA_ITEMS, self._extra_sprites)):
+            zip(_EXTRA_ITEMS, self._extra_sprites)
+        ):
             self._blit(surf, lit if i == cursor else dim, x, y)
         self._hint(surf)
 
-    def render_practice_stage(self, surf: pygame.Surface, cursor: int,
-                              max_stage: int, *, difficulty: str = "",
-                              character: str = "") -> None:
+    def render_practice_stage(
+        self,
+        surf: pygame.Surface,
+        cursor: int,
+        max_stage: int,
+        *,
+        difficulty: str = "",
+        character: str = "",
+    ) -> None:
         """Practice 选关页(DrawPracticeMenu): 文字列 Stage1..6,
         未解锁(>= max_stage)暗灰不可选; cursor/max_stage 语义见
         screens.practice_max_stage。"""
@@ -197,16 +207,17 @@ class SelectView:
         self.ensure_loaded()
         if self._font_mid is not None:
             t = self._font_mid.render(
-                f"Practice  {difficulty} / {character}", True, (255, 255, 255))
+                f"Practice  {difficulty} / {character}", True, (255, 255, 255)
+            )
             surf.blit(t, t.get_rect(center=(320, 96)))
             y = 160
             for i, name in enumerate(PRACTICE_STAGE_ITEMS):
                 if i == cursor:
-                    color = (255, 255, 255)      # 光标行白
+                    color = (255, 255, 255)  # 光标行白
                 elif i < max_stage:
-                    color = (160, 160, 160)      # 已解锁 0xa0a0a0
+                    color = (160, 160, 160)  # 已解锁 0xa0a0a0
                 else:
-                    color = (64, 64, 64)         # 未解锁 0x404040
+                    color = (64, 64, 64)  # 未解锁 0x404040
                 row = self._font_mid.render(name, True, color)
                 surf.blit(row, row.get_rect(center=(320, y)))
                 y += 40

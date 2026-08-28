@@ -1,4 +1,5 @@
 """3D 背景(.std 场景 + bg3d_view 软件渲染)测试: 真实 th07 数据。"""
+
 from __future__ import annotations
 
 import os
@@ -19,7 +20,10 @@ from touhou.schema.archive import GameArchive  # noqa: E402
 from touhou.schema.stage import Stage  # noqa: E402
 from touhou.schema.anm import parse_scripts  # noqa: E402
 from touhou.engine.view.bg3d_view import (  # noqa: E402
-    StageScene, GAME_W, GAME_H)
+    StageScene,
+    GAME_W,
+    GAME_H,
+)
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 
@@ -30,6 +34,7 @@ def arc() -> GameArchive:
 
 
 # ---- .std 解析(schema/stage.py) ----
+
 
 def test_std_parse_all_stages(arc: GameArchive) -> None:
     """8 关全部解析: quad 数与头一致, 实例引用合法, 脚本指令非空。"""
@@ -55,11 +60,11 @@ def test_std_instr_distribution(arc: GameArchive) -> None:
     for n in range(1, 9):
         st = Stage.read(arc.load(f"stage{n}.std"), n)
         ops[n] = {i.opcode for i in st.instrs}
-        assert 5 in ops[n]      # cam_pos
-        assert 6 in ops[n]      # cam_pos_interp
+        assert 5 in ops[n]  # cam_pos
+        assert 6 in ops[n]  # cam_pos_interp
         assert 1 in ops[n] or n in (4, 5, 6)  # set_fog(4/5/6 面例外查表)
-    assert {24, 25, 26, 27, 28} <= ops[4]     # cam up 贝塞尔(魔法森林翻转)
-    assert {14, 15, 16, 17, 18} <= ops[5]     # cam pos 贝塞尔
+    assert {24, 25, 26, 27, 28} <= ops[4]  # cam up 贝塞尔(魔法森林翻转)
+    assert {14, 15, 16, 17, 18} <= ops[5]  # cam pos 贝塞尔
     assert 31 in ops[6] and (29 in ops[6] or 30 in ops[6])  # 冥界阶梯
     # 帧轴单调不减(除 jump 目标外顺序解析保持原序)
     st1 = Stage.read(arc.load("stage1.std"), 1)
@@ -73,12 +78,13 @@ def test_anm_parse_scripts(arc: GameArchive) -> None:
     assert len(scripts) == 1
     assert sorted(scripts[0].keys()) == [0, 1, 2]
     for sid, instrs in scripts[0].items():
-        assert instrs[0].opcode == 3          # SET_ACTIVE_SPRITE
-        assert instrs[0].args_i[0] == sid     # sprite id 与 script id 对应
-        assert instrs[-1].opcode == 2         # EXIT
+        assert instrs[0].opcode == 3  # SET_ACTIVE_SPRITE
+        assert instrs[0].args_i[0] == sid  # sprite id 与 script id 对应
+        assert instrs[-1].opcode == 2  # EXIT
 
 
 # ---- 渲染 smoke(bg3d_view) ----
+
 
 def _render_frames(scene: StageScene, frames: int) -> np.ndarray:
     fb = None
@@ -142,7 +148,7 @@ def test_bg3d_perf(arc: GameArchive) -> None:
         scene = StageScene.load(arc, stage_no)
         assert scene is not None
         surf = pygame.Surface((GAME_W, GAME_H))
-        for _ in range(60):      # 预热(纹理/脚本稳定)
+        for _ in range(60):  # 预热(纹理/脚本稳定)
             scene.tick(0)
             scene.render_into(surf)
         t0 = time.perf_counter()
@@ -159,9 +165,10 @@ def test_gameview_bg_fallback() -> None:
     """GameView: 3D 背景加载失败/渲染异常时退回 2D 平铺, 不中断渲染。"""
     pygame.init()
     from touhou.games.th07.view.sprite_view import GameView
+
     view = GameView(DAT, character=0, stage=1)
     view._ensure_stage(1)
-    assert view._bg3d is not None          # 正常加载
+    assert view._bg3d is not None  # 正常加载
     surf = pygame.Surface((GAME_W, GAME_H))
 
     class _Game:
@@ -179,4 +186,4 @@ def test_gameview_bg_fallback() -> None:
     assert view._bg3d_broken is False
     # 渲染期异常 → 永久 fallback
     view._bg3d = None
-    view._render_bg(surf, g)               # 2D 平铺路径不炸
+    view._render_bg(surf, g)  # 2D 平铺路径不炸

@@ -16,6 +16,7 @@
 - MSG_MUSIC 事件 (frame_bgm ("music", idx)) 重触发 BGM 行
   (Gui.cpp:938-958, script 2052 + sprite 2051+musicIdx)。
 """
+
 from __future__ import annotations
 
 import os
@@ -37,8 +38,13 @@ def _mk_game_and_view():
     import pygame
 
     from touhou.games.th07.world import PerfectCherryBloom
-    from touhou.games.th07.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
-                                                GameView)
+    from touhou.games.th07.view.sprite_view import (
+        GAME_H,
+        GAME_W,
+        WIN_H,
+        WIN_W,
+        GameView,
+    )
 
     pygame.init()
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1)
@@ -48,7 +54,7 @@ def _mk_game_and_view():
     view._bg3d = None
     view._bg3d_broken = True
     surf = pygame.Surface((GAME_W, GAME_H))
-    win = pygame.Surface((WIN_W, WIN_H))     # GUI 层渲染目标 (640x480 窗口层)
+    win = pygame.Surface((WIN_W, WIN_H))  # GUI 层渲染目标 (640x480 窗口层)
     return g, view, surf, win
 
 
@@ -123,7 +129,7 @@ def test_spellcard_portrait_boss_face_and_path() -> None:
     st.life = st.max_life = 500
     st.timer_callback_threshold = 1800
     g._ecl_on_begin_spellcard(st, 0, 5, "寒符「リンガリングコールド」")
-    _render_frame(view, g, surf, win)          # 触发 _start
+    _render_frame(view, g, surf, win)  # 触发 _start
     assert sv._cutin, "宣言立绘 VM 未启动"
     portrait = sv._cutin[0][0]
     # sprite 来源: face_01_00.anm 全局 1197+0 (SpriteBank 缓存 → 同对象)
@@ -131,16 +137,16 @@ def test_spellcard_portrait_boss_face_and_path() -> None:
     sb = sv._sbanks[("face_01_00.anm", 0x4AD)]
     assert portrait.vm.active_sprite_idx == 0x4AD + 0
     assert portrait.surf is sb.sprite_surf(0), "立绘不是本关 boss 脸"
-    assert portrait.vm.anchor == 3             # ANM_22: pos = quad 左上
+    assert portrait.vm.anchor == 3  # ANM_22: pos = quad 左上
     # 轨迹端点 (脚本 1187 SET_POS + INTERP_POS): 起点 (272,-144)
     assert abs(portrait.vm.pos[0] - 272.0) < 1.0
     assert -144.0 - 3.0 < portrait.vm.pos[1] < -130.0
-    for _ in range(59):                        # → begin+60: alpha 淡入满 224
+    for _ in range(59):  # → begin+60: alpha 淡入满 224
         _render_frame(view, g, surf, win)
     assert portrait.vm.color[3] == 224
     y60 = portrait.vm.pos[1]
-    assert -144.0 < y60 < 0.0                  # 下滑途中
-    for _ in range(100):                       # → begin+160: t=150 EXIT_HIDE2
+    assert -144.0 < y60 < 0.0  # 下滑途中
+    for _ in range(100):  # → begin+160: t=150 EXIT_HIDE2
         _render_frame(view, g, surf, win)
     assert all(vm is not portrait for vm, _ in sv._cutin), "立绘未按脚本收场"
 
@@ -156,7 +162,7 @@ def test_spellcard_portrait_multiboss_stage4() -> None:
     view._ensure_stage(4)
     g.enter_stage(4)
     sv = view._spellcard_view
-    for gui_id in (0, 3, 6, 9):                # ecldata4 实参 (静态解析核实)
+    for gui_id in (0, 3, 6, 9):  # ecldata4 实参 (静态解析核实)
         st = EclEnemyState()
         st.boss_id = 0
         st.is_boss = True
@@ -169,10 +175,11 @@ def test_spellcard_portrait_multiboss_stage4() -> None:
         portrait = sv._cutin[0][0]
         sb = sv._sbanks[("face_04_00.anm", 0x4AD)]
         assert portrait.vm.active_sprite_idx == 0x4AD + gui_id
-        assert portrait.surf is sb.sprite_surf(gui_id), \
+        assert portrait.surf is sb.sprite_surf(gui_id), (
             f"gui_id={gui_id} 立绘不是 face_04_00 的对应 sprite"
+        )
         g._ecl_on_end_spellcard(st)
-        for _ in range(200):                   # 收场后再下一张
+        for _ in range(200):  # 收场后再下一张
             _render_frame(view, g, surf, win)
 
 
@@ -194,13 +201,13 @@ def test_capture_bonus_digits() -> None:
     sv = view._spellcard_view
     assert sv._indicator is not None and sv._ascii_sb is not None
     base = sv.gui_draws
-    assert base >= 6          # 底条+名+指示+个位+历史 2 位 (attempts 已记 1)
+    assert base >= 6  # 底条+名+指示+个位+历史 2 位 (attempts 已记 1)
     # 非捕获中剩余分归 0 (Gui.cpp:1739-1742): 只剩个位 0, 绘制数减少
     assert g.boss is not None
     g.boss.capture_score = 87654321
     g.boss.is_capturing = True
     _render_frame(view, g, surf, win)
-    assert sv.gui_draws > base   # 8 位全亮 → 更多数字 blit
+    assert sv.gui_draws > base  # 8 位全亮 → 更多数字 blit
     g.boss.is_capturing = False
     _render_frame(view, g, surf, win)
     assert sv.gui_draws < base + 8
@@ -224,10 +231,10 @@ def test_stage_title_shows_and_fades() -> None:
 def test_stage_title_retriggered_on_enter_stage() -> None:
     g, view, surf, win = _mk_game_and_view()
     title = view._stage_title
-    for _ in range(520):                     # 1 面标题跑完
+    for _ in range(520):  # 1 面标题跑完
         _render_frame(view, g, surf, win)
     assert title.title_draws == 0
-    g.enter_stage(2)                          # 换关 → std2txt.anm 标题
+    g.enter_stage(2)  # 换关 → std2txt.anm 标题
     for _ in range(180):
         _render_frame(view, g, surf, win)
     assert title.title_draws > 0
@@ -239,18 +246,18 @@ def test_bgm_line_retriggered_on_msg_music() -> None:
     sprite 换成 2051+musicIdx 的曲名图。"""
     g, view, surf, win = _mk_game_and_view()
     title = view._stage_title
-    for _ in range(520):                     # 标题全部退场
+    for _ in range(520):  # 标题全部退场
         _render_frame(view, g, surf, win)
     assert title.title_draws == 0 and title._music_vm is None
-    g.frame_bgm = [("music", 1)]             # 对话切 boss 曲
+    g.frame_bgm = [("music", 1)]  # 对话切 boss 曲
     _render_frame(view, g, surf, win)
     mv = title._music_vm
     assert mv is not None and mv.alive, "MSG_MUSIC 未重触发 BGM 行"
-    assert mv.vm.active_sprite_idx == 4      # 2051+1 的链空间 key
+    assert mv.vm.active_sprite_idx == 4  # 2051+1 的链空间 key
     g.frame_bgm = []
     seen = 0
-    for _ in range(500):                     # 曲名行自时序淡入/退场
+    for _ in range(500):  # 曲名行自时序淡入/退场
         _render_frame(view, g, surf, win)
         seen = max(seen, title.title_draws)
     assert seen > 0
-    assert title._music_vm is None           # 脚本收场后槽位清空
+    assert title._music_vm is None  # 脚本收场后槽位清空

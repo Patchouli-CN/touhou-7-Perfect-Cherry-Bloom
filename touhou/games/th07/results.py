@@ -1,4 +1,4 @@
-""" 结算与评级 —— 移植自 ResultScreen.cpp / 规格 §F。
+"""结算与评级 —— 移植自 ResultScreen.cpp / 规格 §F。
 
 ScoreKeeper 累计一局(或一个 playthrough)的运行时统计,
 到结束(通关/结算)时用 rating() 算出综合评价, 并可插入 Top10 榜。
@@ -19,16 +19,16 @@ class RunStats(msgspec.Struct):
     """一局的运行时累计统计。"""
 
     score: int = 0
-    difficulty: int = 1          # 0..5
-    deaths: float = 0.0          # Miss 数
+    difficulty: int = 1  # 0..5
+    deaths: float = 0.0  # Miss 数
     bombs_used: float = 0.0
-    retries: int = 0             # Continue 数
+    retries: int = 0  # Continue 数
     spellcards_captured: int = 0
     graze_total: int = 0
     point_items_collected: int = 0
     cleared: bool = False
-    clear_percent: float = 0.0   # 通关率(未通关时 <1)
-    play_time_frames: int = 0    # 帧计时(用于 slow%)
+    clear_percent: float = 0.0  # 通关率(未通关时 <1)
+    play_time_frames: int = 0  # 帧计时(用于 slow%)
 
     # ---- 运行时累加 ----
     def add_score(self, points: int) -> None:
@@ -44,8 +44,9 @@ class RunStats(msgspec.Struct):
         self.spellcards_captured += n
 
 
-def rating(stats: RunStats, *, slow_percent: float = 0.0,
-           total_play_frames: int = 180621) -> float:
+def rating(
+    stats: RunStats, *, slow_percent: float = 0.0, total_play_frames: int = 180621
+) -> float:
     """综合评价 `rankingProbably`。slow_percent 为减速百分比(0..100)。"""
     d = min(stats.difficulty, 4)  # Phantasm 复用 Extra 权重
     score = stats.score
@@ -80,12 +81,16 @@ def rating(stats: RunStats, *, slow_percent: float = 0.0,
         return -999.0
 
     # 点道具/擦弹
-    r += (0.01 * stats.point_items_collected) if stats.point_items_collected < 800 else 8
+    r += (
+        (0.01 * stats.point_items_collected) if stats.point_items_collected < 800 else 8
+    )
     r += (0.0025 * stats.graze_total) if stats.graze_total < 5000 else 12.5
     return r
 
 
-def clear_percent(stage_seconds: float, *, extra: bool = False, phantasm: bool = False) -> float:
+def clear_percent(
+    stage_seconds: float, *, extra: bool = False, phantasm: bool = False
+) -> float:
     """由通关用时换算通关率(基于规格中的时间基准)。"""
     if phantasm:
         base = 85000.0
@@ -119,7 +124,9 @@ class TopList:
         self._size = size
         # 默认"空榜"分数: 100000 - k*10000
         self._records = [
-            ScoreRecord(score=max(0, 100000 - k * 10000), character=0, difficulty=1, stage=1)
+            ScoreRecord(
+                score=max(0, 100000 - k * 10000), character=0, difficulty=1, stage=1
+            )
             for k in range(size)
         ]
 

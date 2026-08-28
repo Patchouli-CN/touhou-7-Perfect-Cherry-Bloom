@@ -1,4 +1,4 @@
-""" 玩家(自机, th07) —— 基于真实 .sht 射击数据的完整实现。
+"""玩家(自机, th07) —— 基于真实 .sht 射击数据的完整实现。
 
 通用骨架(状态机五态/移动/判定·擦弹 AABB/死亡重生流程/事件结构)已上移到
 引擎层基座 engine/player_base.py(PlayerBase/PlayerState/PlayerEventKind/
@@ -54,49 +54,59 @@ from ...utils import Vec2, normalize_angle_diff
 _DOWN = Vec2(0, 1)
 
 # ---- §A.7 关键常量(Player.cpp; 通用骨架常量在 engine/player_base.py 并再导出) ----
-GRAZE_SCORE_DISPLAY = 200    # 擦弹显示分(代码值 AddScore(2000))
-GRAZE_SUBRANK = 6            # 擦弹 subrank 增量
+GRAZE_SCORE_DISPLAY = 200  # 擦弹显示分(代码值 AddScore(2000))
+GRAZE_SUBRANK = 6  # 擦弹 subrank 增量
 GRAZE_STAGE_CAP = 9999
 GRAZE_TOTAL_CAP = 999999
 DEATH_SUBRANK_PENALTY = 1600
 DEATH_POWER_LOSS = 16
-CHERRY_PENALTY_CAP = 100000        # 非咲夜
+CHERRY_PENALTY_CAP = 100000  # 非咲夜
 CHERRY_PENALTY_CAP_SAKUYA = 60000
-FOCUS_TRANSITION_FRAMES = 8        # 子机 focus/unfocus 过渡帧数
-OPTION_FOCUS_ANGLE = 0.22439948    # 咲夜B focus 子机夹角半宽
+FOCUS_TRANSITION_FRAMES = 8  # 子机 focus/unfocus 过渡帧数
+OPTION_FOCUS_ANGLE = 0.22439948  # 咲夜B focus 子机夹角半宽
 OPTION_ANGLE_MIN = -2.1991148
 OPTION_ANGLE_MAX = -0.9424778
-OPTION_ANGLE_CENTER = -1.5707964   # -pi/2
+OPTION_ANGLE_CENTER = -1.5707964  # -pi/2
 OPTION_ANGLE_RETURN_STEP = 0.06283186
 OPTION_ANGLE_RETURN_EPS = 0.03141593
 
 # ---- §A.1/A.2 自机弹回调索引(对照 g_ShtFireFuncs/g_ShtUpdateFuncs/g_ShtHitFuncs) ----
 # 注意: 各数组 0 号位是 NULL, 所以具名回调从 1 起(与真实 .sht 数据核对一致)。
-FIRE_DEFAULT = 1        # fire_cb 0(NULL) 也回落到这里
+FIRE_DEFAULT = 1  # fire_cb 0(NULL) 也回落到这里
 FIRE_ORB_UNFOCUSED = 2  # 占 timers[fire_offset] 槽的持续弹(要求 optionState==UNFOCUSED)
-FIRE_ORB_FOCUSED = 3    # 同上(要求 FOCUSED, 槽计时 999, trail_length=fire_interval)
-FIRE_HOMING = 4         # 咲夜A: default 发射后朝 sakuya_target_position 重定向, 速度×1.5
-FIRE_ROTATING_ORB = 5   # 咲夜B: 发射角 = option_angle + entry.angle + pi/2
+FIRE_ORB_FOCUSED = 3  # 同上(要求 FOCUSED, 槽计时 999, trail_length=fire_interval)
+FIRE_HOMING = 4  # 咲夜A: default 发射后朝 sakuya_target_position 重定向, 速度×1.5
+FIRE_ROTATING_ORB = 5  # 咲夜B: 发射角 = option_angle + entry.angle + pi/2
 
-UPDATE_HOMING = 1          # 40 帧内朝 position_of_last_enemy_hit 转向, 速度 cap 10, 否则 +0.3333
+UPDATE_HOMING = (
+    1  # 40 帧内朝 position_of_last_enemy_hit 转向, 速度 cap 10, 否则 +0.3333
+)
 UPDATE_HOMING_FOCUSED = 2  # 同上, cap 18 / +0.6
-UPDATE_UPWARD_ACCEL = 3    # velocity.y -= rand(0..0.1) + 0.27
-UPDATE_ORB_LASER = 4       # 弹跟随子机 options[option_id-1]+offset, hitbox 高=pos.y, pos.y/=2
-UPDATE_PLAYER_LASER = 5    # 弹跟随本体, pos_history 每帧右移, trail_length=fire_interval
+UPDATE_UPWARD_ACCEL = 3  # velocity.y -= rand(0..0.1) + 0.27
+UPDATE_ORB_LASER = (
+    4  # 弹跟随子机 options[option_id-1]+offset, hitbox 高=pos.y, pos.y/=2
+)
+UPDATE_PLAYER_LASER = 5  # 弹跟随本体, pos_history 每帧右移, trail_length=fire_interval
 
-HIT_MISSILE = 1     # 魔理沙A 导弹: 首中爆炸变形(大判定盒+随机上向速度), 之后隔帧伤害
-HIT_PARTICLES = 2   # 视觉粒子(SpawnHitParticles), 逻辑上空壳
+HIT_MISSILE = 1  # 魔理沙A 导弹: 首中爆炸变形(大判定盒+随机上向速度), 之后隔帧伤害
+HIT_PARTICLES = 2  # 视觉粒子(SpawnHitParticles), 逻辑上空壳
 
-BULLET_POOL_SIZE = 96      # Player.bullets[96]
-LASER_HISTORY = 16         # posHistory[16]
-HOMING_STEER_FRAMES = 40   # homing 转向窗口(timer < 40)
-PERSIST_DIALOG_BOMB_CAP = 20   # 对话框/炸弹中持续弹剩余计时压到 20
-PERSIST_RELEASE_CAP = 50       # 松开射击(fireBulletTimer<0)时槽计时压到 50
+BULLET_POOL_SIZE = 96  # Player.bullets[96]
+LASER_HISTORY = 16  # posHistory[16]
+HOMING_STEER_FRAMES = 40  # homing 转向窗口(timer < 40)
+PERSIST_DIALOG_BOMB_CAP = 20  # 对话框/炸弹中持续弹剩余计时压到 20
+PERSIST_RELEASE_CAP = 50  # 松开射击(fireBulletTimer<0)时槽计时压到 50
 
 # OnMissileHit: anmFileIdx → (爆炸后判定盒全宽/全高, 爆炸速度)
 MISSILE_BLAST = {
-    1089: (32.0, 4.0), 1090: (42.0, 4.0), 1091: (48.0, 4.0), 1092: (56.0, 4.0),
-    1093: (48.0, 6.0), 1094: (64.0, 6.0), 1095: (80.0, 6.0), 1096: (96.0, 6.0),
+    1089: (32.0, 4.0),
+    1090: (42.0, 4.0),
+    1091: (48.0, 4.0),
+    1092: (56.0, 4.0),
+    1093: (48.0, 6.0),
+    1094: (64.0, 6.0),
+    1095: (80.0, 6.0),
+    1096: (96.0, 6.0),
 }
 
 
@@ -105,6 +115,7 @@ MISSILE_BLAST = {
 # 从引擎 import 并再导出, 保持 ``games.th07.player.*`` 引用兼容(测试与
 # world.py 仍经本模块取)。DeathSettle/DeathContext 在此子类化追加 th07 专属
 # 字段(樱点惩罚/subrank/咲夜判定)。
+
 
 class OptionState(IntEnum):
     """子机状态(Player.hpp OptionState)。"""
@@ -120,7 +131,7 @@ class DeathSettle(_DeathSettleBase):
     """死亡倒计时归 0 的结算(UpdateDeath, th07 扩展: 樱罚/subrank)。
     通用字段(has_lives/new_power/掉 P/重撒)在基类。"""
 
-    cherry_penalty: int = 0     # 已 cap + 向下取整 10
+    cherry_penalty: int = 0  # 已 cap + 向下取整 10
     subrank_delta: int = -DEATH_SUBRANK_PENALTY
 
 
@@ -144,20 +155,21 @@ class PlayerBullet(msgspec.Struct):
 
     pos: Vec2 = msgspec.field(default_factory=Vec2.zero)
     velocity: Vec2 = msgspec.field(default_factory=Vec2.zero)
-    offset: Vec2 = msgspec.field(default_factory=Vec2.zero)   # orb/laser 相对发射点偏移
+    offset: Vec2 = msgspec.field(default_factory=Vec2.zero)  # orb/laser 相对发射点偏移
     pos_history: list[Vec2] = msgspec.field(
-        default_factory=lambda: [_HISTORY_SENTINEL] * LASER_HISTORY)
-    hitbox: tuple[float, float] = (6.0, 6.0)          # 全宽/全高(C++ hitboxSize.x/y)
+        default_factory=lambda: [_HISTORY_SENTINEL] * LASER_HISTORY
+    )
+    hitbox: tuple[float, float] = (6.0, 6.0)  # 全宽/全高(C++ hitboxSize.x/y)
     speed: float = 0.0
     angle: float = 0.0
-    timer: int = 0                 # 存活帧数(ZunTimer)
+    timer: int = 0  # 存活帧数(ZunTimer)
     damage: int = 1
-    bullet_state: int = 0          # 0=死 1=活 2=命中爆炸(仍可能继续判定, 见 iter_hits)
-    bullet_state2: int = 0         # 3=穿透(命中不减速) 4/5=激光型(奇偶帧减半伤害)
-    timer_idx: int = 0             # 占用的 timers 槽(0/1/2)
-    option_id: int = 0             # 发射该弹的 option(0=本体 1/2=子机)
-    trail_length: int = 0          # 拖尾长度(playerLaser 的 fire_interval)
-    anm_file_idx: int = 0          # missile 爆炸变形查 MISSILE_BLAST 用
+    bullet_state: int = 0  # 0=死 1=活 2=命中爆炸(仍可能继续判定, 见 iter_hits)
+    bullet_state2: int = 0  # 3=穿透(命中不减速) 4/5=激光型(奇偶帧减半伤害)
+    timer_idx: int = 0  # 占用的 timers 槽(0/1/2)
+    option_id: int = 0  # 发射该弹的 option(0=本体 1/2=子机)
+    trail_length: int = 0  # 拖尾长度(playerLaser 的 fire_interval)
+    anm_file_idx: int = 0  # missile 爆炸变形查 MISSILE_BLAST 用
     update_cb: int = 0
     draw_cb: int = 0
     hit_cb: int = 0
@@ -205,15 +217,17 @@ class Player(PlayerBase[DeathContext]):
             hitbox_radius=shot_data.hitbox_radius / 2,
             graze_radius=shot_data.grab_item_radius / 2,
             initial_respawn_timer=shot_data.initial_respawn_timer,
-            pos=pos, bounds=bounds)
+            pos=pos,
+            bounds=bounds,
+        )
         self.shot_data = shot_data
         self.shot_data_focus = shot_data_focus or shot_data
         self.power = power
         # 咲夜B: 子机绕 optionAngle 旋转(§A.4)
         self.rotating_options = rotating_options
 
-        self.fire_time = -1       # fireBulletTimer: -1=未射击, 0..29 滚动
-        self._firing = False      # 是否按住射击
+        self.fire_time = -1  # fireBulletTimer: -1=未射击, 0..29 滚动
+        self._firing = False  # 是否按住射击
         self._fire_active = False
         # 子机(A.4): optionState 状态机 + focusMovementTimer 8 帧过渡
         self.option_state = OptionState.UNFOCUSED
@@ -223,17 +237,18 @@ class Player(PlayerBase[DeathContext]):
 
         # ---- §A.1 自机弹池 / 持续弹槽 ----
         self.bullet_pool: list[PlayerBullet] = [
-            PlayerBullet() for _ in range(BULLET_POOL_SIZE)]
+            PlayerBullet() for _ in range(BULLET_POOL_SIZE)
+        ]
         self.timers: list[PlayerBulletTimer] = [PlayerBulletTimer() for _ in range(3)]
         # 各槽当前生效的 ShtEntry(C++ shtEntries[4], 换 entry 时中断旧持续弹)
         self.sht_entries: list[ShotEntry | None] = [None, None, None, None]
 
         # ---- 上层设置的外部状态(纯逻辑, 不 import globals/enemies) ----
-        self.sakuya_target_position = Vec2(-999.0, -999.0)   # 咲夜索敌目标
+        self.sakuya_target_position = Vec2(-999.0, -999.0)  # 咲夜索敌目标
         self.position_of_last_enemy_hit = Vec2(-999.0, -999.0)  # homing 更新目标
-        self.bomb_active = False     # 炸弹使用中(持续弹压计时/伤害 /3)
-        self.dialog_active = False   # 对话框中(持续弹压计时)
-        self.is_marisa_b = False     # MarisaB: 炸弹中不发射(UpdateFireBulletTimer)
+        self.bomb_active = False  # 炸弹使用中(持续弹压计时/伤害 /3)
+        self.dialog_active = False  # 对话框中(持续弹压计时)
+        self.is_marisa_b = False  # MarisaB: 炸弹中不发射(UpdateFireBulletTimer)
         # 随机数注入点: rand_float(r) 返回 [0, r) 的浮点
         self.rand_float: Callable[[float], float] = lambda r: random.random() * r
 
@@ -267,7 +282,9 @@ class Player(PlayerBase[DeathContext]):
     def _on_graze(self) -> None:
         """擦弹结算: 音效 + GRAZE 事件(显示分 200, subrank+6 由上层接)。"""
         self._play_sound(30)  # SOUND_GRAZE (Player.cpp:1210, ScoreGraze)
-        self.events.append(PlayerEvent(PlayerEventKind.GRAZE, value=GRAZE_SCORE_DISPLAY))
+        self.events.append(
+            PlayerEvent(PlayerEventKind.GRAZE, value=GRAZE_SCORE_DISPLAY)
+        )
 
     # ---- 死亡结算(th07: power 罚/掉 P/樱罚/重撒; 骨架在基类) ----
     def _settle_death(self, ctx: DeathContext | None) -> DeathSettle:
@@ -278,14 +295,22 @@ class Player(PlayerBase[DeathContext]):
                 new_power = 0.0
             else:
                 new_power = self.power - DEATH_POWER_LOSS
-            penalty = int((ctx.cherry - ctx.cherry_start)
-                          * self.shot_data.cherry_penalty_multiplier)
+            penalty = int(
+                (ctx.cherry - ctx.cherry_start)
+                * self.shot_data.cherry_penalty_multiplier
+            )
             cap = CHERRY_PENALTY_CAP_SAKUYA if ctx.is_sakuya else CHERRY_PENALTY_CAP
             if penalty > cap:
                 penalty = cap
             penalty -= int(math.fmod(penalty, 10))  # C++ i32 % 10(向零截断)
-            settle = DeathSettle(True, new_power, drop_power_big=1, drop_power_small=5,
-                                 cherry_penalty=penalty, activate_all_items=True)
+            settle = DeathSettle(
+                True,
+                new_power,
+                drop_power_big=1,
+                drop_power_small=5,
+                cherry_penalty=penalty,
+                activate_all_items=True,
+            )
         else:
             # 无残机: power 归 0, 掉 5 个 FULL_POWER
             settle = DeathSettle(False, 0.0, drop_full_power=5)
@@ -364,8 +389,10 @@ class Player(PlayerBase[DeathContext]):
                 t = self.focus_movement_timer / 8.0
                 if self.focus_movement_timer >= FOCUS_TRANSITION_FRAMES:
                     self.option_state = OptionState.FOCUSED
-                self.options = [self.pos + (-base).lerp(tgt0, t),
-                                self.pos + base.lerp(tgt1, t)]
+                self.options = [
+                    self.pos + (-base).lerp(tgt0, t),
+                    self.pos + base.lerp(tgt1, t),
+                ]
                 return
         if self.option_state == OptionState.FOCUSED:
             self.focus_movement_timer = 0
@@ -383,8 +410,10 @@ class Player(PlayerBase[DeathContext]):
                 t = 1.0 - self.focus_movement_timer / 8.0
                 if self.focus_movement_timer >= FOCUS_TRANSITION_FRAMES:
                     self.option_state = OptionState.UNFOCUSED
-                self.options = [self.pos + (-base).lerp(tgt0, t),
-                                self.pos + base.lerp(tgt1, t)]
+                self.options = [
+                    self.pos + (-base).lerp(tgt0, t),
+                    self.pos + base.lerp(tgt1, t),
+                ]
 
     def _update_option_angle(self) -> None:
         """optionAngle 随横向速度摆动/回中(C++ 仅射击且非 focus 时更新)。"""
@@ -409,16 +438,23 @@ class Player(PlayerBase[DeathContext]):
     def _update_fire_timer(self) -> None:
         """fireBulletTimer: 按住射击从 -1 置 0 启动, 每帧推进, 30 帧滚动;
         到 30 或 DEAD/SPAWNING 归 -1(下次按下从 0 重启)。MarisaB 炸弹中不发射。"""
-        if self._firing and self.fire_time < 0 \
-                and self.state not in (PlayerState.DEAD, PlayerState.SPAWNING):
-            self.fire_time = 0    # StartFireBulletTimer(HandlePlayerInputs, 死亡/出生时不调)
+        if (
+            self._firing
+            and self.fire_time < 0
+            and self.state not in (PlayerState.DEAD, PlayerState.SPAWNING)
+        ):
+            self.fire_time = (
+                0  # StartFireBulletTimer(HandlePlayerInputs, 死亡/出生时不调)
+            )
         if self.fire_time < 0:
             return
         if not (self.bomb_active and self.is_marisa_b):
             self._spawn_bullets()
         self.fire_time += 1
-        if (self.fire_time >= self.FIRE_CYCLE
-                or self.state in (PlayerState.DEAD, PlayerState.SPAWNING)):
+        if self.fire_time >= self.FIRE_CYCLE or self.state in (
+            PlayerState.DEAD,
+            PlayerState.SPAWNING,
+        ):
             self.fire_time = -1
 
     def _spawn_bullets(self) -> None:
@@ -427,7 +463,7 @@ class Player(PlayerBase[DeathContext]):
         level = sd.level_for_power(self.power)
         entries = [e for e in level.entries if not e.is_sentinel]
         ei = 0
-        for bullet in self.bullet_pool:      # 找第一个 bullet_state==0 的空位
+        for bullet in self.bullet_pool:  # 找第一个 bullet_state==0 的空位
             if ei >= len(entries):
                 return
             if bullet.bullet_state != 0:
@@ -476,7 +512,9 @@ class Player(PlayerBase[DeathContext]):
             # 自机弹发弹音 (Player.cpp:116-119, SpawnBullets 的 shtEntry->soundIdx)
             self._play_sound(entry.sound_idx)
 
-    def _fire_orb(self, entry: ShotEntry, bullet: PlayerBullet, *, focused: bool) -> bool:
+    def _fire_orb(
+        self, entry: ShotEntry, bullet: PlayerBullet, *, focused: bool
+    ) -> bool:
         """FireOrbBulletUnfocused/Focused: 占 timers[fire_offset] 槽的持续弹。
         槽被占且 entry 变了 → 中断旧弹本帧不发射; 要求 optionState 匹配。"""
         slot = entry.fire_offset
@@ -515,7 +553,9 @@ class Player(PlayerBase[DeathContext]):
         if tgt.x > -100.0:
             angle = normalize_angle_diff(
                 math.atan2(tgt.y - bullet.pos.y, tgt.x - bullet.pos.x)
-                + entry.angle + math.pi / 2)
+                + entry.angle
+                + math.pi / 2
+            )
             bullet.velocity = Vec2.from_angle(angle, entry.speed * 1.5)
             bullet.angle = angle
         return True
@@ -534,7 +574,10 @@ class Player(PlayerBase[DeathContext]):
     def _update_shots(self) -> None:
         # 槽位状态清理: focus 弹(槽2)在非 FOCUSED 时立即消;
         # 非 focus 弹(槽0/1)在非 UNFOCUSED 时中断(C++ 为 pendingInterrupt, 逻辑层直接消)
-        if self.option_state != OptionState.FOCUSED and self.timers[2].bullet is not None:
+        if (
+            self.option_state != OptionState.FOCUSED
+            and self.timers[2].bullet is not None
+        ):
             self.timers[2].bullet.bullet_state = 0
             self.timers[2].bullet = None
         if self.option_state != OptionState.UNFOCUSED:
@@ -603,7 +646,7 @@ class Player(PlayerBase[DeathContext]):
             y = y / length + bullet.velocity.y
             length = math.hypot(x, y)
             if length == 0.0:
-                return 0    # C++ 此处产生 nan; 逻辑层直接保持原速
+                return 0  # C++ 此处产生 nan; 逻辑层直接保持原速
             bullet.speed = min(max(length, 1.0), cap)
             bullet.velocity = Vec2(x * bullet.speed / length, y * bullet.speed / length)
         elif bullet.speed < cap:
@@ -617,7 +660,9 @@ class Player(PlayerBase[DeathContext]):
         """UpdateOrbLaser: 弹跟随子机 options[option_id-1]+offset(仅 x);
         hitbox 高 = pos.y(从子机到版顶), pos.y /= 2; 槽计时归 0 结束。"""
         ts = self.timers[bullet.timer_idx]
-        if (self.dialog_active or self.bomb_active) and ts.timer > PERSIST_DIALOG_BOMB_CAP:
+        if (
+            self.dialog_active or self.bomb_active
+        ) and ts.timer > PERSIST_DIALOG_BOMB_CAP:
             ts.timer = PERSIST_DIALOG_BOMB_CAP
         if ts.timer <= 0:
             ts.timer = 0
@@ -636,7 +681,9 @@ class Player(PlayerBase[DeathContext]):
         """UpdatePlayerLaser: 弹跟随本体; pos_history 每帧右移(历史段伤害见 iter_hits);
         hitbox 高 = 本体 y+64, pos.y = y/2-32; 槽计时归 0 结束。"""
         ts = self.timers[bullet.timer_idx]
-        if (self.dialog_active or self.bomb_active) and ts.timer > PERSIST_DIALOG_BOMB_CAP:
+        if (
+            self.dialog_active or self.bomb_active
+        ) and ts.timer > PERSIST_DIALOG_BOMB_CAP:
             ts.timer = PERSIST_DIALOG_BOMB_CAP
         if ts.timer <= 0:
             ts.timer = 0
@@ -680,9 +727,13 @@ class Player(PlayerBase[DeathContext]):
         return 0
 
     # ---- 命中敌人(CalcDamageToEnemy, §A.6) ----
-    def iter_hits(self, enemy_center: Vec2, enemy_size: tuple[float, float],
-                  *, bomb_active: bool | None = None
-                  ) -> Iterator[tuple[PlayerBullet, int]]:
+    def iter_hits(
+        self,
+        enemy_center: Vec2,
+        enemy_size: tuple[float, float],
+        *,
+        bomb_active: bool | None = None,
+    ) -> Iterator[tuple[PlayerBullet, int]]:
         """对一个敌人(center ± size/2)逐发结算本帧伤害, 产出 (bullet, damage)。
 
         有副作用, 每帧每敌人至多调用一次:
@@ -705,8 +756,14 @@ class Player(PlayerBase[DeathContext]):
             # 只结算活弹; 爆炸(state==2)后仅穿透弹(bs2==3)继续判定
             if bullet.bullet_state != 1 and bullet.bullet_state2 != 3:
                 continue
-            if not _aabb_intersect(bullet.pos, bullet.hitbox[0] / 2, bullet.hitbox[1] / 2,
-                                   enemy_center, ex, ey):
+            if not _aabb_intersect(
+                bullet.pos,
+                bullet.hitbox[0] / 2,
+                bullet.hitbox[1] / 2,
+                enemy_center,
+                ex,
+                ey,
+            ):
                 continue
             if bullet.bullet_state2 in (4, 5) and bullet.timer % 2 != 0:
                 continue
@@ -726,22 +783,37 @@ class Player(PlayerBase[DeathContext]):
                 hp = bullet.pos_history[i]
                 if hp.x < -900.0:
                     break
-                if _aabb_intersect(hp, bullet.hitbox[0] / 2, bullet.hitbox[1] / 2,
-                                   enemy_center, ex, ey):
+                if _aabb_intersect(
+                    hp, bullet.hitbox[0] / 2, bullet.hitbox[1] / 2, enemy_center, ex, ey
+                ):
                     yield bullet, 1
 
-    def calc_damage_to_enemy(self, enemy_center: Vec2, enemy_size: tuple[float, float],
-                             *, bomb_active: bool | None = None) -> int:
+    def calc_damage_to_enemy(
+        self,
+        enemy_center: Vec2,
+        enemy_size: tuple[float, float],
+        *,
+        bomb_active: bool | None = None,
+    ) -> int:
         """iter_hits 的求和封装(一帧对一个敌人的总伤害)。"""
-        return sum(d for _, d in self.iter_hits(enemy_center, enemy_size,
-                                                bomb_active=bomb_active))
+        return sum(
+            d
+            for _, d in self.iter_hits(
+                enemy_center, enemy_size, bomb_active=bomb_active
+            )
+        )
 
 
 # _aabb_intersect 已上移到 engine/player_base.py(顶部 import 再导出)。
+
 
 def _bullet_out_of_bounds(b: PlayerBullet) -> bool:
     """弹中心±半宽完全离开 [0,384]x[0,448] 版面(GameManager::IsInBounds)。
     C++ 用精灵像素宽高做边距, 纯逻辑层用判定盒全宽/全高近似。"""
     hx, hy = b.hitbox[0] / 2, b.hitbox[1] / 2
-    return (b.pos.x + hx < 0.0 or b.pos.x - hx > SCREEN.x
-            or b.pos.y + hy < 0.0 or b.pos.y - hy > SCREEN.y)
+    return (
+        b.pos.x + hx < 0.0
+        or b.pos.x - hx > SCREEN.x
+        or b.pos.y + hy < 0.0
+        or b.pos.y - hy > SCREEN.y
+    )

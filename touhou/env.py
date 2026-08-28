@@ -2,6 +2,7 @@
 
 叶子模块: 只依赖标准库 + paths/registry(均为叶子)。
 """
+
 from __future__ import annotations
 
 import platform
@@ -59,8 +60,12 @@ def log_environment(log, data_path: str | Path | None = None) -> None:
     """把环境探测结果写进 INFO 日志。"""
     info = detect_environment(data_path)
     log.info("作品: {}", info["title"])
-    log.info("环境: Python {} | pygame {} | {}",
-             info["python"], info["pygame"], info["platform"])
+    log.info(
+        "环境: Python {} | pygame {} | {}",
+        info["python"],
+        info["pygame"],
+        info["platform"],
+    )
     log.info("资源包: {} ({} 个条目)", info["res_dat"], info["res_entries"])
     log.info("BGM 包: {}", info["bgm_dat"])
     log.info("注册作品: {} | 渲染后端: {}", info["games"], info["renderers"])

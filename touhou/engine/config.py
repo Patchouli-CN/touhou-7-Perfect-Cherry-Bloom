@@ -1,4 +1,4 @@
-""" config.json 设置持久化 —— 对照 MainMenu.cpp OnUpdateOptionsMenu / Supervisor.cfg。
+"""config.json 设置持久化 —— 对照 MainMenu.cpp OnUpdateOptionsMenu / Supervisor.cfg。
 
 原版 Option 9 项 (MainMenu.cpp:503-848, 说明文字 g_OptionsStrings:132):
   Player(初始残机 lifeCount 0-4, 默认 2 = 3 架) / Graphic(16/32Bit) /
@@ -28,13 +28,12 @@ LIVES_MIN, LIVES_MAX = 2, 5
 # 每个动作一组 pygame 键名(pygame.key.name 的格式), 多键 = 任一生效。
 # 小键盘键("[0]"/"[1]")是中文 IME 吞字母键时的备用(实锤过), 默认保留。
 # 默认值 = 改造前的硬编码键位(原 engine/view/view.py, 现 games/th07/view/impl.py)。
-KEYMAP_ACTIONS = ("shoot", "bomb", "focus", "skip",
-                  "up", "down", "left", "right")
+KEYMAP_ACTIONS = ("shoot", "bomb", "focus", "skip", "up", "down", "left", "right")
 DEFAULT_KEYMAP: dict[str, list[str]] = {
-    "shoot": ["z", "[0]"],                      # Z / 小键盘0(IME 备用)
-    "bomb": ["x", "[1]", "j"],                  # X / 小键盘1 / J
+    "shoot": ["z", "[0]"],  # Z / 小键盘0(IME 备用)
+    "bomb": ["x", "[1]", "j"],  # X / 小键盘1 / J
     "focus": ["left shift", "right shift"],
-    "skip": ["left ctrl", "right ctrl"],        # 对话快进
+    "skip": ["left ctrl", "right ctrl"],  # 对话快进
     "up": ["up", "w"],
     "down": ["down", "s"],
     "left": ["left", "a"],
@@ -46,6 +45,7 @@ _FORBIDDEN_KEYS = ("escape",)
 
 def _default_keymap() -> dict[str, list[str]]:
     return {a: list(keys) for a, keys in DEFAULT_KEYMAP.items()}
+
 
 # exe 同目录语义 → 仓库根(config.py 在 touhou/engine/ 下, 上两级 = 仓库根)
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config.json"
@@ -64,8 +64,11 @@ def _parse_keymap(data, fallback: dict) -> dict:
     合法值 = 非空字符串列表; 滤掉空串/非字符串/Esc(防锁死);
     过滤后为空 → 该动作回退默认。未知动作忽略, 缺失动作用默认。
     """
-    out = _default_keymap() if not isinstance(fallback, dict) else \
-        {a: list(fallback.get(a, DEFAULT_KEYMAP[a])) for a in KEYMAP_ACTIONS}
+    out = (
+        _default_keymap()
+        if not isinstance(fallback, dict)
+        else {a: list(fallback.get(a, DEFAULT_KEYMAP[a])) for a in KEYMAP_ACTIONS}
+    )
     if not isinstance(data, dict):
         return out
     for action in KEYMAP_ACTIONS:
@@ -74,8 +77,7 @@ def _parse_keymap(data, fallback: dict) -> dict:
             continue
         keys = []
         for k in v:
-            if isinstance(k, str) and k and k not in _FORBIDDEN_KEYS \
-                    and k not in keys:
+            if isinstance(k, str) and k and k not in _FORBIDDEN_KEYS and k not in keys:
                 keys.append(k)
         if keys:
             out[action] = keys
@@ -85,11 +87,11 @@ def _parse_keymap(data, fallback: dict) -> dict:
 class GameConfig(msgspec.Struct):
     """游戏设置。纯逻辑, 不依赖 pygame。"""
 
-    bgm_volume: int = 100      # 0-100
-    se_volume: int = 100       # 0-100
-    bgm_source: str = "wav"    # "wav"(thbgm.dat 优先) / "midi"(强制 MIDI)
-    window_scale: int = 2      # 窗口缩放倍率 1-3
-    initial_lives: int = 3     # 初始残机数 2-5 (原版默认 3)
+    bgm_volume: int = 100  # 0-100
+    se_volume: int = 100  # 0-100
+    bgm_source: str = "wav"  # "wav"(thbgm.dat 优先) / "midi"(强制 MIDI)
+    window_scale: int = 2  # 窗口缩放倍率 1-3
+    initial_lives: int = 3  # 初始残机数 2-5 (原版默认 3)
     # 键位映射: 动作 → pygame 键名列表(多键任一生效), 见模块顶部 KEYMAP_ACTIONS
     keymap: dict = msgspec.field(default_factory=_default_keymap)
 
@@ -103,8 +105,12 @@ class GameConfig(msgspec.Struct):
 
         Esc 不允许(防锁死); 未知动作/非法键名忽略。返回是否改动。
         """
-        if action not in KEYMAP_ACTIONS or not isinstance(key_name, str) \
-                or not key_name or key_name in _FORBIDDEN_KEYS:
+        if (
+            action not in KEYMAP_ACTIONS
+            or not isinstance(key_name, str)
+            or not key_name
+            or key_name in _FORBIDDEN_KEYS
+        ):
             return False
         old = self.keymap.get(action, [])
         self.keymap[action] = [key_name] + [k for k in old if k != key_name]
@@ -119,15 +125,17 @@ class GameConfig(msgspec.Struct):
             "bgm_source": self.bgm_source,
             "window_scale": self.window_scale,
             "initial_lives": self.initial_lives,
-            "keymap": {a: list(self.keymap.get(a, DEFAULT_KEYMAP[a]))
-                       for a in KEYMAP_ACTIONS},
+            "keymap": {
+                a: list(self.keymap.get(a, DEFAULT_KEYMAP[a])) for a in KEYMAP_ACTIONS
+            },
         }
 
     def save(self, path: str | Path) -> None:
         path = Path(path)
         tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=1),
-                       encoding="utf-8")
+        tmp.write_text(
+            json.dumps(self.to_dict(), ensure_ascii=False, indent=1), encoding="utf-8"
+        )
         tmp.replace(path)  # 原子替换, 避免半截文件
 
     @classmethod
@@ -136,17 +144,21 @@ class GameConfig(msgspec.Struct):
         cfg = cls()
         if not isinstance(data, dict):
             return cfg
-        cfg.bgm_volume = _clamp_int(data.get("bgm_volume"),
-                                    VOLUME_MIN, VOLUME_MAX, cfg.bgm_volume)
-        cfg.se_volume = _clamp_int(data.get("se_volume"),
-                                   VOLUME_MIN, VOLUME_MAX, cfg.se_volume)
+        cfg.bgm_volume = _clamp_int(
+            data.get("bgm_volume"), VOLUME_MIN, VOLUME_MAX, cfg.bgm_volume
+        )
+        cfg.se_volume = _clamp_int(
+            data.get("se_volume"), VOLUME_MIN, VOLUME_MAX, cfg.se_volume
+        )
         src = data.get("bgm_source")
         if src in BGM_SOURCES:
             cfg.bgm_source = src
-        cfg.window_scale = _clamp_int(data.get("window_scale"),
-                                      SCALE_MIN, SCALE_MAX, cfg.window_scale)
-        cfg.initial_lives = _clamp_int(data.get("initial_lives"),
-                                       LIVES_MIN, LIVES_MAX, cfg.initial_lives)
+        cfg.window_scale = _clamp_int(
+            data.get("window_scale"), SCALE_MIN, SCALE_MAX, cfg.window_scale
+        )
+        cfg.initial_lives = _clamp_int(
+            data.get("initial_lives"), LIVES_MIN, LIVES_MAX, cfg.initial_lives
+        )
         cfg.keymap = _parse_keymap(data.get("keymap"), cfg.keymap)
         return cfg
 

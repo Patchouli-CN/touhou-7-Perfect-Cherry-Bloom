@@ -1,4 +1,5 @@
 """公共 API(touhou/apis/basic.py)门面行为 + 打包/import 隔离测试。"""
+
 from __future__ import annotations
 
 import ast
@@ -19,8 +20,7 @@ from touhou.apis.basic import (
 )
 from touhou.paths import DEFAULT_DATA, ENV_DATA, resolve_data_path
 
-pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(),
-                                reason="需要真实 th07.dat")
+pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
 
 
 def _run(game: Game, frames: int, inp: Input = Input.none()) -> list[GameEvent]:
@@ -57,8 +57,18 @@ def test_game_start_and_step() -> None:
 
 def test_properties_are_readonly() -> None:
     game = Game()
-    for prop in ("score", "lives", "bombs", "power", "cherry", "graze",
-                 "frame", "phase", "stage", "result"):
+    for prop in (
+        "score",
+        "lives",
+        "bombs",
+        "power",
+        "cherry",
+        "graze",
+        "frame",
+        "phase",
+        "stage",
+        "result",
+    ):
         with pytest.raises(AttributeError):
             setattr(game, prop, 0)
 
@@ -167,8 +177,11 @@ def test_env_var_drives_game(monkeypatch, tmp_path) -> None:
 def _run_blocking_imports(code: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-c", code],
-        capture_output=True, text=True, timeout=120,
-        cwd=Path(__file__).resolve().parent.parent)
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=Path(__file__).resolve().parent.parent,
+    )
 
 
 def test_top_level_exports_complete() -> None:
@@ -181,7 +194,8 @@ def test_top_level_exports_complete() -> None:
         "missing = [n for n in names if not hasattr(touhou, n)]; "
         "assert not missing, missing; "
         "assert touhou.__all__ and isinstance(touhou.__version__, str); "
-        "print('ok')")
+        "print('ok')"
+    )
     r = _run_blocking_imports(code)
     assert r.returncode == 0, r.stderr
     assert "ok" in r.stdout
@@ -209,14 +223,18 @@ def test_logic_layer_has_no_pygame_dependency() -> None:
     pkg = Path(__file__).resolve().parent.parent / "touhou"
     files = [*pkg.glob("*.py")]
     for sub in (pkg / "engine", pkg / "schema", pkg / "games"):
-        files += [f for f in sub.rglob("*.py")
-                  if "view" not in f.parts and "__pycache__" not in f.parts]
+        files += [
+            f
+            for f in sub.rglob("*.py")
+            if "view" not in f.parts and "__pycache__" not in f.parts
+        ]
     for f in files:
         tree = ast.parse(f.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                assert not [a.name for a in node.names
-                            if a.name.split(".")[0] == "pygame"], f
+                assert not [
+                    a.name for a in node.names if a.name.split(".")[0] == "pygame"
+                ], f
             elif isinstance(node, ast.ImportFrom) and node.module:
                 assert node.module.split(".")[0] != "pygame", f
 
@@ -228,8 +246,9 @@ def _type_checking_node_ids(tree: ast.AST) -> set[int]:
         if not isinstance(node, ast.If):
             continue
         t = node.test
-        if (isinstance(t, ast.Name) and t.id == "TYPE_CHECKING") or \
-                (isinstance(t, ast.Attribute) and t.attr == "TYPE_CHECKING"):
+        if (isinstance(t, ast.Name) and t.id == "TYPE_CHECKING") or (
+            isinstance(t, ast.Attribute) and t.attr == "TYPE_CHECKING"
+        ):
             ids.update(id(s) for s in ast.walk(node))
     return ids
 
@@ -251,9 +270,10 @@ def test_apis_and_engine_do_not_import_games() -> None:
                 if id(node) in exempt:
                     continue
                 if isinstance(node, ast.Import):
-                    hit = any(a.name == "touhou.games"
-                              or a.name.startswith("touhou.games.")
-                              for a in node.names)
+                    hit = any(
+                        a.name == "touhou.games" or a.name.startswith("touhou.games.")
+                        for a in node.names
+                    )
                 elif isinstance(node, ast.ImportFrom):
                     mod = node.module or ""
                     if node.level == 0:
@@ -283,6 +303,7 @@ def test_world_data_resolution(tmp_path) -> None:
 
 def test_character_is_shottype_alias() -> None:
     from touhou.apis.basic import Character
+
     assert Character is ShotType
     assert Character.REIMU_A.value == 0
 
@@ -290,19 +311,24 @@ def test_character_is_shottype_alias() -> None:
 def test_touhou_world_headless_stream() -> None:
     from touhou.apis.basic import TouhouWorld, WorldData
 
-    tw = TouhouWorld(wd=WorldData(res_dat=DEFAULT_DATA),
-                     character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL,
-                     lives=3, headless=True, seed=7)
+    tw = TouhouWorld(
+        wd=WorldData(res_dat=DEFAULT_DATA),
+        character=ShotType.REIMU_A,
+        difficulty=Difficulty.NORMAL,
+        lives=3,
+        headless=True,
+        seed=7,
+    )
     assert tw.game.lives == 3
     events = []
-    for ev in tw.events:             # 流式事件(终局自动收尾: GameOver→结算)
+    for ev in tw.events:  # 流式事件(终局自动收尾: GameOver→结算)
         events.append(ev)
-        if tw.game.frame >= 7000:    # 有界截断: 不跑完整关
+        if tw.game.frame >= 7000:  # 有界截断: 不跑完整关
             break
-    assert tw.game.frame > 600       # 世界确实在推进
+    assert tw.game.frame > 600  # 世界确实在推进
     assert all(isinstance(e, GameEvent) for e in events)
     if tw.game.phase == GamePhase.RESULT:
-        assert tw.game.result is not None   # 提前 GameOver 也已自动进结算
+        assert tw.game.result is not None  # 提前 GameOver 也已自动进结算
 
 
 def test_touhou_world_custom_policy() -> None:
@@ -314,15 +340,15 @@ def test_touhou_world_custom_policy() -> None:
         seen.append(ev)
         if i > 50 or tw.game.frame >= 300:
             break
-    assert tw.game.frame >= 300     # policy 驱动的帧数在走
+    assert tw.game.frame >= 300  # policy 驱动的帧数在走
 
 
 def test_touhou_world_lazy_game() -> None:
     from touhou.apis.basic import TouhouWorld
 
-    tw = TouhouWorld(headless=False)   # 非 headless 不预建对局
+    tw = TouhouWorld(headless=False)  # 非 headless 不预建对局
     assert tw._game is None
-    g = tw.game                        # 首次访问才建
+    g = tw.game  # 首次访问才建
     assert g is tw.game
 
 
@@ -332,14 +358,14 @@ def test_touhou_world_run_returns_event_stream() -> None:
     tw = TouhouWorld(headless=True, difficulty=Difficulty.NORMAL, seed=3)
     stream = tw.run()
     assert isinstance(stream, TouhouWorldEventStream)
-    assert stream.game is tw.game          # 流驱动的就是这局
+    assert stream.game is tw.game  # 流驱动的就是这局
     n = 0
     for ev in stream:
         assert isinstance(ev, GameEvent)
         n += 1
         if tw.game.frame >= 800:
-            break                          # 有界截断
-    assert tw.game.frame >= 600            # 迭代在驱动世界推进
+            break  # 有界截断
+    assert tw.game.frame >= 600  # 迭代在驱动世界推进
 
 
 def test_event_stream_policy_takeover() -> None:
@@ -347,7 +373,7 @@ def test_event_stream_policy_takeover() -> None:
 
     tw = TouhouWorld(headless=True, difficulty=Difficulty.NORMAL, seed=5)
     stream = tw.run()
-    stream.policy = lambda g: Input.none()   # 中途接管输入
+    stream.policy = lambda g: Input.none()  # 中途接管输入
     frames0 = tw.game.frame
     for _ in stream:
         if tw.game.frame > frames0 + 120:
@@ -364,23 +390,36 @@ def test_touhou_world_run_typing_narrows_on_headless(tmp_path) -> None:
         "from touhou import TouhouWorld\n"
         "tw = TouhouWorld(headless=True)\n"
         "for ev in tw.run():\n"
-        "    print(ev.kind)\n", encoding="utf-8")
+        "    print(ev.kind)\n",
+        encoding="utf-8",
+    )
     err_src = tmp_path / "err.py"
     err_src.write_text(
         "from touhou import TouhouWorld\n"
         "tw = TouhouWorld(headless=False)\n"
         "for ev in tw.run():\n"
-        "    print(ev.kind)\n", encoding="utf-8")
+        "    print(ev.kind)\n",
+        encoding="utf-8",
+    )
     root = Path(__file__).resolve().parent.parent
     r_ok = subprocess.run(
         [sys.executable, "-m", "mypy", str(ok_src)],
-        capture_output=True, text=True, timeout=300, cwd=root)
+        capture_output=True,
+        text=True,
+        timeout=300,
+        cwd=root,
+    )
     assert "no issues found" in r_ok.stdout, r_ok.stdout + r_ok.stderr
     r_err = subprocess.run(
         [sys.executable, "-m", "mypy", str(err_src)],
-        capture_output=True, text=True, timeout=300, cwd=root)
-    assert "not iterable" in r_err.stdout or "has no attribute" in r_err.stdout, \
+        capture_output=True,
+        text=True,
+        timeout=300,
+        cwd=root,
+    )
+    assert "not iterable" in r_err.stdout or "has no attribute" in r_err.stdout, (
         r_err.stdout + r_err.stderr
+    )
 
 
 def test_environment_detection() -> None:
@@ -388,8 +427,17 @@ def test_environment_detection() -> None:
     from touhou.env import detect_environment
 
     info = detect_environment()
-    for key in ("python", "platform", "pygame", "res_dat", "res_entries",
-                "bgm_dat", "games", "renderers", "title"):
+    for key in (
+        "python",
+        "platform",
+        "pygame",
+        "res_dat",
+        "res_entries",
+        "bgm_dat",
+        "games",
+        "renderers",
+        "title",
+    ):
         assert key in info and isinstance(info[key], str)
     assert info["title"] == "東方妖々夢 〜 Perfect Cherry Blossom"
     assert "th07" in info["games"]
@@ -444,9 +492,9 @@ def test_bullets_array_matches_snapshot() -> None:
 def test_bullets_array_empty_and_lasers_array() -> None:
     game = Game(seed=1)
     game._impl.bullets.clear()
-    assert game.bullets_array().shape == (0, 6)   # 空场形状正确
+    assert game.bullets_array().shape == (0, 6)  # 空场形状正确
     la = game.lasers_array()
-    assert la.ndim == 2 and la.shape[1] == 5      # 开局无激光 → (0, 5)
+    assert la.ndim == 2 and la.shape[1] == 5  # 开局无激光 → (0, 5)
 
 
 def test_player_hitbox_capability_fallback() -> None:
@@ -457,17 +505,29 @@ def test_player_hitbox_capability_fallback() -> None:
     from touhou.utils import Vec2
 
     impl = SimpleNamespace(
-        frame=0, stage_no=1, lives=3.0, game_over=False, cleared=False,
-        result=None, stage_results=None, ending=None, boss=None,
-        globals=SimpleNamespace(deaths=0, bombs_used=0.0,
-                                spell_cards_captured=0, score=0),
-        player=SimpleNamespace(pos=Vec2(192, 400),
-                               state=SimpleNamespace(name="ALIVE"),
-                               focus=False, invulnerability_timer=0),
+        frame=0,
+        stage_no=1,
+        lives=3.0,
+        game_over=False,
+        cleared=False,
+        result=None,
+        stage_results=None,
+        ending=None,
+        boss=None,
+        globals=SimpleNamespace(
+            deaths=0, bombs_used=0.0, spell_cards_captured=0, score=0
+        ),
+        player=SimpleNamespace(
+            pos=Vec2(192, 400),
+            state=SimpleNamespace(name="ALIVE"),
+            focus=False,
+            invulnerability_timer=0,
+        ),
         bullets=SimpleNamespace(alive=list),
         host=SimpleNamespace(alive=list),
         items=SimpleNamespace(alive=list),
-        lasers=SimpleNamespace(lasers=[]))
+        lasers=SimpleNamespace(lasers=[]),
+    )
     game = Game._from_impl(impl, get_game("th07"), "stub")
     snap = game.snapshot()
     assert snap.player.hitbox is None

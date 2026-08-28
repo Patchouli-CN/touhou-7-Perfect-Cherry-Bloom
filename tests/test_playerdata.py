@@ -1,4 +1,5 @@
 """Touhou: Player Data(Result 画面)导航与数据装配测试。"""
+
 from __future__ import annotations
 
 import sys
@@ -19,6 +20,7 @@ from touhou.games.th07.view.screens import (  # noqa: E402
 # ---------------------------------------------------------------------------
 # TitleFlow 入口
 # ---------------------------------------------------------------------------
+
 
 def _goto(flow, item):
     while flow.cursor.current != item:
@@ -41,6 +43,7 @@ def test_flow_practice_emits() -> None:
 # PlayerDataFlow 翻页导航
 # ---------------------------------------------------------------------------
 
+
 def test_playerdata_difficulty_wrap() -> None:
     f = PlayerDataFlow()
     assert f.difficulty == 1  # 默认 Normal
@@ -55,7 +58,7 @@ def test_playerdata_difficulty_wrap() -> None:
 def test_playerdata_character_wrap() -> None:
     f = PlayerDataFlow()
     assert f.handle(MenuAction.LEFT) is None
-    assert f.character == 5   # 回绕到 SakuyaB
+    assert f.character == 5  # 回绕到 SakuyaB
     f.handle(MenuAction.RIGHT)
     assert f.character == 0
 
@@ -72,17 +75,18 @@ def test_playerdata_section_cycle_and_quit() -> None:
 # practice_max_stage(MainMenu.cpp:1912-1926 clrd 解锁)
 # ---------------------------------------------------------------------------
 
+
 def test_practice_max_stage_clamp() -> None:
     s = ScoreStore()
-    assert practice_max_stage(s, 0, 1) == 1       # 无记录 → 只能 Stage 1
-    s.record_clear(0, 1, 3, 0)                    # 无续关到过 3 面
+    assert practice_max_stage(s, 0, 1) == 1  # 无记录 → 只能 Stage 1
+    s.record_clear(0, 1, 3, 0)  # 无续关到过 3 面
     assert practice_max_stage(s, 0, 1) == 3
-    assert practice_max_stage(s, 0, 0) == 1       # 别的难度不受影响
-    assert practice_max_stage(s, 2, 1) == 1       # 别的机体不受影响
+    assert practice_max_stage(s, 0, 0) == 1  # 别的难度不受影响
+    assert practice_max_stage(s, 2, 1) == 1  # 别的机体不受影响
     s.clrd[1]["without_retries"][1] = 99
-    assert practice_max_stage(s, 1, 1) == 6       # >=99 → 6
+    assert practice_max_stage(s, 1, 1) == 6  # >=99 → 6
     s.clrd[3]["without_retries"][2] = 8
-    assert practice_max_stage(s, 3, 2) == 6       # 超 6 截断
+    assert practice_max_stage(s, 3, 2) == 6  # 超 6 截断
 
 
 def test_practice_max_stage_bad_input() -> None:
@@ -94,10 +98,11 @@ def test_practice_max_stage_bad_input() -> None:
 # 数据装配(games/th07/playerdata.py, 空记录不炸)
 # ---------------------------------------------------------------------------
 
+
 def test_highscore_rows_defaults_when_empty() -> None:
     rows = playerdata.highscore_rows(ScoreStore(), 1, 0)
     assert len(rows) == 10
-    assert rows[0]["score"] == 100000             # GetHighScore 底线
+    assert rows[0]["score"] == 100000  # GetHighScore 底线
     assert rows[9]["score"] == 10000
     assert all(r["name"] == "--------" for r in rows)
 
@@ -108,7 +113,7 @@ def test_highscore_rows_real_records_first() -> None:
     s.insert_score(make_highscore_record(200000, 0, 1, 2))
     rows = playerdata.highscore_rows(s, 1, 0)
     assert [r["score"] for r in rows[:2]] == [500000, 200000]
-    assert rows[2]["score"] == 80000              # 默认空位补齐
+    assert rows[2]["score"] == 80000  # 默认空位补齐
 
 
 def test_spellcard_page_empty() -> None:
@@ -122,12 +127,12 @@ def test_spellcard_page_counts_and_total() -> None:
     s.record_spellcard_attempt(0, "霜符「Frost Columns」", 0)
     s.record_spellcard_attempt(0, "霜符「Frost Columns」", 0)
     s.record_spellcard_success(0, 0, 123456)
-    s.record_spellcard_attempt(5, "Test Card", 1)   # 别的机体
+    s.record_spellcard_attempt(5, "Test Card", 1)  # 别的机体
     page = playerdata.spellcard_page(s, 0)
     assert page["attempted"] == 1 and page["captured"] == 1
     assert (page["attempts"], page["successes"]) == (2, 1)
     assert page["cards"][0]["name"].startswith("霜符")
-    total = playerdata.spellcard_page(s, 6)         # 合计页
+    total = playerdata.spellcard_page(s, 6)  # 合计页
     assert total["attempted"] == 2 and total["attempts"] == 3
 
 

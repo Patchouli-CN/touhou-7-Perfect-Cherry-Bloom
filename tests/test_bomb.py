@@ -2,6 +2,7 @@
 
 数值权威来源: th07/src/th07/BombData.cpp 与 Player.cpp。
 """
+
 from __future__ import annotations
 
 import math
@@ -41,8 +42,12 @@ from touhou.games.th07.bomb import (  # noqa: E402
 from touhou.games.th07.globals import ZunGlobals  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
 
-CTX = BombContext(player_pos=Vec2(100.0, 300.0), cherry=101000.0,
-                  cherry_start=1000.0, difficulty=DIFF_NORMAL)
+CTX = BombContext(
+    player_pos=Vec2(100.0, 300.0),
+    cherry=101000.0,
+    cherry_start=1000.0,
+    difficulty=DIFF_NORMAL,
+)
 
 
 def _started_bomb(**kwargs) -> Bomb:
@@ -53,61 +58,92 @@ def _started_bomb(**kwargs) -> Bomb:
 
 # ---- §D.3 参数表抽样 (BombData.cpp 各 *Calc 首帧) ----
 
+
 def test_bomb_params_table_spot_check() -> None:
-    assert BOMB_PARAMS[(CHAR_REIMU_A, False)].duration == 140      # BombData.cpp:137
+    assert BOMB_PARAMS[(CHAR_REIMU_A, False)].duration == 140  # BombData.cpp:137
     assert BOMB_PARAMS[(CHAR_REIMU_A, False)].invulnerability == 200
     assert BOMB_PARAMS[(CHAR_REIMU_A, False)].drain_min_cost == 4000
     assert BOMB_PARAMS[(CHAR_REIMU_A, False)].drain_scale == pytest.approx(0.20)
-    p = BOMB_PARAMS[(CHAR_MARISA_B, True)]                          # BombData.cpp:1107-1120
+    p = BOMB_PARAMS[(CHAR_MARISA_B, True)]  # BombData.cpp:1107-1120
     assert (p.duration, p.invulnerability, p.drain_min_cost) == (340, 390, 10000)
     assert p.drain_scale == pytest.approx(0.41)
-    p = BOMB_PARAMS[(CHAR_SAKUYA_B, True)]                          # BombData.cpp:1633-1659
+    p = BOMB_PARAMS[(CHAR_SAKUYA_B, True)]  # BombData.cpp:1633-1659
     assert (p.duration, p.invulnerability, p.drain_min_cost) == (300, 420, 6000)
-    p = BOMB_PARAMS[(CHAR_MARISA_A, False)]                         # BombData.cpp:723-739
+    p = BOMB_PARAMS[(CHAR_MARISA_A, False)]  # BombData.cpp:723-739
     assert (p.duration, p.invulnerability, p.drain_min_cost) == (200, 250, 8000)
 
 
 # ---- ComputeBombCherryDrain (BombData.cpp:87-112) ----
 
+
 def test_cherry_drain_normal() -> None:
     # drain=int(100000*0.2)=20000; /140=142→140; minCost=4000/140=28→20; max=140
-    d = compute_bomb_cherry_drain(cherry=101000, cherry_start=1000,
-                                  difficulty=DIFF_NORMAL, bomb_duration=140,
-                                  min_cost=4000, scale=0.20)
+    d = compute_bomb_cherry_drain(
+        cherry=101000,
+        cherry_start=1000,
+        difficulty=DIFF_NORMAL,
+        bomb_duration=140,
+        min_cost=4000,
+        scale=0.20,
+    )
     assert d == 140
 
 
 def test_cherry_drain_difficulty_divisors() -> None:
-    base = dict(cherry=101000, cherry_start=1000, bomb_duration=140,
-                min_cost=4000, scale=0.20)
-    assert compute_bomb_cherry_drain(difficulty=DIFF_HARD, **base) == 70      # 20000/2/140=71→70
-    assert compute_bomb_cherry_drain(difficulty=DIFF_LUNATIC, **base) == 30   # 20000/4/140=35→30
-    assert compute_bomb_cherry_drain(difficulty=DIFF_EXTRA, **base) == 40     # 6666/140=47→40
+    base = dict(
+        cherry=101000, cherry_start=1000, bomb_duration=140, min_cost=4000, scale=0.20
+    )
+    assert (
+        compute_bomb_cherry_drain(difficulty=DIFF_HARD, **base) == 70
+    )  # 20000/2/140=71→70
+    assert (
+        compute_bomb_cherry_drain(difficulty=DIFF_LUNATIC, **base) == 30
+    )  # 20000/4/140=35→30
+    assert (
+        compute_bomb_cherry_drain(difficulty=DIFF_EXTRA, **base) == 40
+    )  # 6666/140=47→40
     assert compute_bomb_cherry_drain(difficulty=DIFF_PHANTASM, **base) == 40
 
 
 def test_cherry_drain_min_cost_floor() -> None:
     # drain=0 (cherry==cherryStart) → minCost=4000/140=28→20 生效
-    d = compute_bomb_cherry_drain(cherry=1000, cherry_start=1000,
-                                  difficulty=DIFF_NORMAL, bomb_duration=140,
-                                  min_cost=4000, scale=0.20)
+    d = compute_bomb_cherry_drain(
+        cherry=1000,
+        cherry_start=1000,
+        difficulty=DIFF_NORMAL,
+        bomb_duration=140,
+        min_cost=4000,
+        scale=0.20,
+    )
     assert d == 20
 
 
 def test_cherry_drain_float_truncation() -> None:
     # (i32)(f32) 向零截断: int(149*0.2)=int(29.8)=29 → /10=2 → 2-2%10=0; minCost=0 → 0
-    d = compute_bomb_cherry_drain(cherry=1149, cherry_start=1000,
-                                  difficulty=DIFF_NORMAL, bomb_duration=10,
-                                  min_cost=0, scale=0.20)
+    d = compute_bomb_cherry_drain(
+        cherry=1149,
+        cherry_start=1000,
+        difficulty=DIFF_NORMAL,
+        bomb_duration=10,
+        min_cost=0,
+        scale=0.20,
+    )
     assert d == 0
 
 
 # ---- 触发条件 (Player.cpp:1719-1755) ----
 
+
 def _try(bomb=None, **kw) -> "object":
-    args = dict(focus=False, bombs_remaining=3.0, respawn_timer=30,
-                initial_respawn_timer=60, border_invulnerability_time=0,
-                bomb_pressed=True, spellcard_active=True)
+    args = dict(
+        focus=False,
+        bombs_remaining=3.0,
+        respawn_timer=30,
+        initial_respawn_timer=60,
+        border_invulnerability_time=0,
+        bomb_pressed=True,
+        spellcard_active=True,
+    )
     args.update(kw)
     return try_start_bomb(bomb or Bomb(), CTX, **args)
 
@@ -118,7 +154,7 @@ def test_start_bomb_success() -> None:
     assert r.started
     assert r.bombs_used_delta == 1 and r.bombs_remaining_delta == -1
     assert r.subrank_delta == -200
-    assert r.respawn_timer == 36            # 30+6
+    assert r.respawn_timer == 36  # 30+6
     assert r.spellcard_capture_reset and r.spellcard_used_bomb
     # 首帧初始化已在当帧 calc 里完成 (ReimuA)
     assert b.is_in_use and not b.is_focus
@@ -142,9 +178,13 @@ def test_start_bomb_rejections() -> None:
 
 def test_all_twelve_bombs_dispatch() -> None:
     """12 套 (character, focus) 全部可分派, 首帧初始化与参数表一致。"""
-    ctx = BombContext(player_pos=Vec2(100.0, 300.0), cherry=101000.0,
-                      cherry_start=1000.0, difficulty=DIFF_NORMAL,
-                      rng_float=lambda: 0.5)
+    ctx = BombContext(
+        player_pos=Vec2(100.0, 300.0),
+        cherry=101000.0,
+        cherry_start=1000.0,
+        difficulty=DIFF_NORMAL,
+        rng_float=lambda: 0.5,
+    )
     for character in range(6):
         for focus in (False, True):
             b = Bomb(character=character)
@@ -153,13 +193,18 @@ def test_all_twelve_bombs_dispatch() -> None:
             assert b.is_in_use and b.duration == params.duration
             assert b.invulnerability_timer == params.invulnerability
             assert b.cherry_drain == compute_bomb_cherry_drain(
-                cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-                difficulty=ctx.difficulty, bomb_duration=params.duration,
-                min_cost=params.drain_min_cost, scale=params.drain_scale)
+                cherry=ctx.cherry,
+                cherry_start=ctx.cherry_start,
+                difficulty=ctx.difficulty,
+                bomb_duration=params.duration,
+                min_cost=params.drain_min_cost,
+                scale=params.drain_scale,
+            )
             assert b.invulnerable and b.timer == 1
 
 
 # ---- ReimuA 非集中: 珠弹节奏 (BombData.cpp:116-256) ----
+
 
 def test_reimu_a_orb_spawn_rhythm() -> None:
     b = _started_bomb()
@@ -170,7 +215,7 @@ def test_reimu_a_orb_spawn_rhythm() -> None:
     b.tick(CTX)  # 处理 timer==12
     sub = b.sub_info[0]
     assert sub.state == 1
-    assert sub.speed == pytest.approx(14.6)     # 15 - 0.4 (当帧即衰减)
+    assert sub.speed == pytest.approx(14.6)  # 15 - 0.4 (当帧即衰减)
     # 角度 0: -pi/2 → 向上, 位置当帧移动
     assert sub.pos.x == pytest.approx(CTX.player_pos.x, abs=1e-4)
     assert sub.pos.y == pytest.approx(300.0 - 14.6)
@@ -178,7 +223,7 @@ def test_reimu_a_orb_spawn_rhythm() -> None:
     while b.timer <= 18:
         b.tick(CTX)
     assert b.sub_info[1].state == 1
-    assert b.damage_boxes[0].size.x == 48.0     # 飞行中伤害盒 48×48
+    assert b.damage_boxes[0].size.x == 48.0  # 飞行中伤害盒 48×48
     assert b.damage_boxes[0].lifetime == 8
 
 
@@ -216,7 +261,7 @@ def test_reimu_a_lifecycle_and_drain() -> None:
         b.tick(CTX)
         ticks += 1
         assert b.drain_applied == b.cherry_drain  # 每帧扣 (Player.cpp:1705-1708)
-        assert b.invulnerable                     # bomb 期间 INVULNERABLE
+        assert b.invulnerable  # bomb 期间 INVULNERABLE
     assert ticks == 140  # duration=140: start 处理 timer0, 再 140 帧后 timer==140 结束
     assert EVENT_END_PLAYER_SPELLCARD in b.events
     # 樱点封底 cherryStart (ZunGlobals.subtract_cherry_drain)
@@ -230,10 +275,15 @@ def test_reimu_a_lifecycle_and_drain() -> None:
 
 # ---- ReimuA 集中: 追踪珠 (BombData.cpp:310-474) ----
 
+
 def test_reimu_a_focused() -> None:
-    ctx = BombContext(player_pos=Vec2(100.0, 300.0), cherry=101000.0,
-                      cherry_start=1000.0, difficulty=DIFF_NORMAL,
-                      rng_float=lambda: 0.5)
+    ctx = BombContext(
+        player_pos=Vec2(100.0, 300.0),
+        cherry=101000.0,
+        cherry_start=1000.0,
+        difficulty=DIFF_NORMAL,
+        rng_float=lambda: 0.5,
+    )
     b = _started_bomb(focus=True, ctx=ctx)
     assert b.duration == 300 and b.invulnerability_timer == 360
     assert b.move_speed_multiplier == pytest.approx(0.6)
@@ -256,13 +306,14 @@ def test_reimu_a_focused() -> None:
 
 # ---- 伤害盒 / 清弹盒判定 ----
 
+
 def test_damage_box_hits_enemy_and_accumulates() -> None:
     b = _started_bomb()
     box = b.damage_boxes[0]
     box.pos, box.size, box.lifetime = Vec2(100, 100), Vec2(50, 50), 8
     # size 为全宽: 盒 75..125, 敌 (110,110)±10 → 相交
     assert b.damage_to(Vec2(110, 110), Vec2(10, 10)) == 8
-    assert box.damage == 8                       # 累计 (Player.cpp:926)
+    assert box.damage == 8  # 累计 (Player.cpp:926)
     assert b.damage_to(Vec2(110, 110), Vec2(10, 10)) == 8
     assert box.damage == 16
     assert b.damage_to(Vec2(500, 500), Vec2(10, 10)) == 0
@@ -271,10 +322,10 @@ def test_damage_box_hits_enemy_and_accumulates() -> None:
 def test_clear_box_circle() -> None:
     b = _started_bomb()
     b.clear_boxes = [ClearBox(Vec2(100, 100), Vec2(0, 40), 10, 6)]
-    assert b.check_bomb_graze(Vec2(120, 120), Vec2(4, 4)) == 2   # dist²=800 < 1600
+    assert b.check_bomb_graze(Vec2(120, 120), Vec2(4, 4)) == 2  # dist²=800 < 1600
     assert b.item_type == 6
     # 圆判定不看弹盒 size, 且严格小于
-    assert b.check_bomb_graze(Vec2(140, 100), Vec2(4, 4)) == 0   # dist²=1600 不 <
+    assert b.check_bomb_graze(Vec2(140, 100), Vec2(4, 4)) == 0  # dist²=1600 不 <
     assert b.check_bomb_graze(Vec2(300, 300), Vec2(4, 4)) == 0
 
 
@@ -282,9 +333,9 @@ def test_clear_box_linear_segment() -> None:
     # pos_z!=0 → 线性段 AABB: 宽=pos_z=40, 高=size.x=20 (Player.cpp:967-980)
     seg = ClearBox(Vec2(100, 100), Vec2(20, 0), 10, 8, pos_z=40.0)
     assert seg.active
-    assert seg.hits(Vec2(123, 100), Vec2(8, 8))     # 23 <= (40+8)/2
+    assert seg.hits(Vec2(123, 100), Vec2(8, 8))  # 23 <= (40+8)/2
     assert not seg.hits(Vec2(125, 100), Vec2(8, 8))  # 25 > 24
-    assert seg.hits(Vec2(100, 113), Vec2(8, 8))     # 13 <= (20+8)/2
+    assert seg.hits(Vec2(100, 113), Vec2(8, 8))  # 13 <= (20+8)/2
     assert not seg.hits(Vec2(100, 115), Vec2(8, 8))
 
 
@@ -297,6 +348,7 @@ def test_clear_box_tick_and_expiry() -> None:
 
 
 # ---- 樱之结界 (§D.5 / Player.cpp) ----
+
 
 def test_border_ready_and_activate() -> None:
     br = Border()
@@ -316,10 +368,10 @@ def test_border_tick_cherry_plus_display() -> None:
     br.activate_border()
     plus, res = br.tick(cherry=5000, cherry_start=1000, cherry_max=999999)
     assert res is None
-    assert plus == 1000 + 540 * 50000 // 540   # 满格 51000 (先算后减)
+    assert plus == 1000 + 540 * 50000 // 540  # 满格 51000 (先算后减)
     assert br.invulnerability_timer == 539
     plus, _ = br.tick(cherry=5000, cherry_start=1000, cherry_max=999999)
-    assert plus == 1000 + 539 * 50000 // 540   # 50907
+    assert plus == 1000 + 539 * 50000 // 540  # 50907
 
 
 def test_border_natural_break() -> None:
@@ -373,13 +425,21 @@ def test_aabb_overlap() -> None:
 
 # ---- 确定性随机 ctx (rng_float 恒 0.5) ----
 
-CTX_RNG = BombContext(player_pos=Vec2(100.0, 300.0), cherry=101000.0,
-                      cherry_start=1000.0, difficulty=DIFF_NORMAL,
-                      rng_float=lambda: 0.5)
-CTX_RNG_ENEMY = BombContext(player_pos=Vec2(100.0, 300.0), cherry=101000.0,
-                            cherry_start=1000.0, difficulty=DIFF_NORMAL,
-                            last_enemy_hit=Vec2(276.0, 300.0),
-                            rng_float=lambda: 0.5)
+CTX_RNG = BombContext(
+    player_pos=Vec2(100.0, 300.0),
+    cherry=101000.0,
+    cherry_start=1000.0,
+    difficulty=DIFF_NORMAL,
+    rng_float=lambda: 0.5,
+)
+CTX_RNG_ENEMY = BombContext(
+    player_pos=Vec2(100.0, 300.0),
+    cherry=101000.0,
+    cherry_start=1000.0,
+    difficulty=DIFF_NORMAL,
+    last_enemy_hit=Vec2(276.0, 300.0),
+    rng_float=lambda: 0.5,
+)
 
 
 def _tick_through(b: Bomb, ctx: BombContext, timer: int) -> None:
@@ -389,6 +449,7 @@ def _tick_through(b: Bomb, ctx: BombContext, timer: int) -> None:
 
 
 # ---- ReimuB 非集中: 结界光束 (BombData.cpp:512-601) ----
+
 
 def test_reimu_b_unfocused_init() -> None:
     b = _started_bomb(character=CHAR_REIMU_B)
@@ -411,8 +472,9 @@ def test_reimu_b_unfocused_beams() -> None:
     # SpawnBombProjectile: 62×448 竖 / 384×62 横, lifetime=0
     assert [c.pos_z for c in b.clear_boxes] == [62.0, 384.0, 62.0, 384.0]
     assert [c.size.x for c in b.clear_boxes] == [448.0, 62.0, 448.0, 62.0]
-    assert all(c.lifetime == 0 and c.item_type == ITEM_POINT_BULLET
-               for c in b.clear_boxes)
+    assert all(
+        c.lifetime == 0 and c.item_type == ITEM_POINT_BULLET for c in b.clear_boxes
+    )
     assert b.clear_boxes[0].pos == Vec2(100.0, 224.0)  # 竖束锚点
     assert b.clear_boxes[1].pos == Vec2(192.0, 300.0)  # 横束锚点
     # 伤害盒 size=(段宽,段高), lifetime=16
@@ -439,6 +501,7 @@ def test_reimu_b_unfocused_lifecycle() -> None:
 
 
 # ---- ReimuB 集中: 大结界圆 (BombData.cpp:645-694) ----
+
 
 def test_reimu_b_focused() -> None:
     b = _started_bomb(character=CHAR_REIMU_B, focus=True)
@@ -471,6 +534,7 @@ def test_reimu_b_focused() -> None:
 
 # ---- MarisaA 非集中: 星尘 (BombData.cpp:690-770) ----
 
+
 def test_marisa_a_unfocused() -> None:
     b = _started_bomb(character=CHAR_MARISA_A)
     assert b.duration == 200 and b.invulnerability_timer == 250
@@ -500,6 +564,7 @@ def test_marisa_a_unfocused() -> None:
 
 
 # ---- MarisaA 集中: 银河 (BombData.cpp:779-891) ----
+
 
 def test_marisa_a_focused_spawn() -> None:
     b = _started_bomb(character=CHAR_MARISA_A, focus=True, ctx=CTX_RNG)
@@ -543,6 +608,7 @@ def test_marisa_a_focused_damage_cap_and_despawn() -> None:
 
 # ---- MarisaB 非集中: 旋转激光 (BombData.cpp:952-1048) ----
 
+
 def test_marisa_b_unfocused() -> None:
     b = _started_bomb(character=CHAR_MARISA_B)
     assert b.duration == 300 and b.invulnerability_timer == 300
@@ -571,8 +637,12 @@ def test_marisa_b_unfocused() -> None:
     lasers = [c for c in b.clear_boxes if c.size.y == pytest.approx(64.0)]
     assert len(lasers) == 18  # 每盒一个 SpawnBombEffect(64, 0, 0)
     # startPos 在右半 → 反转
-    ctx_r = BombContext(player_pos=Vec2(300.0, 300.0), cherry=101000.0,
-                        cherry_start=1000.0, difficulty=DIFF_NORMAL)
+    ctx_r = BombContext(
+        player_pos=Vec2(300.0, 300.0),
+        cherry=101000.0,
+        cherry_start=1000.0,
+        difficulty=DIFF_NORMAL,
+    )
     b2 = _started_bomb(character=CHAR_MARISA_B, ctx=ctx_r)
     b2.tick(ctx_r)
     assert b2.sub_info[0].accel == pytest.approx(-math.pi / 2 - d)
@@ -585,6 +655,7 @@ def test_marisa_b_unfocused() -> None:
 
 # ---- MarisaB 集中: Master Spark (BombData.cpp:1104-1170) ----
 
+
 def test_marisa_b_focused() -> None:
     b = _started_bomb(character=CHAR_MARISA_B, focus=True)
     assert b.duration == 340 and b.invulnerability_timer == 390
@@ -593,7 +664,7 @@ def test_marisa_b_focused() -> None:
     b.tick(CTX)  # timer==1 (%4!=0): 全屏纵束
     box = b.damage_boxes[0]
     assert box.size == Vec2(384.0, 300.0)  # 宽 384 × 高 player.y
-    assert box.pos == Vec2(192.0, 150.0)   # (192, player.y/2)
+    assert box.pos == Vec2(192.0, 150.0)  # (192, player.y/2)
     assert box.lifetime == 23
     # SpawnBombProjectile: 线性段 宽 384 高 300 @ (192,150), lifetime=0
     seg = b.clear_boxes[0]
@@ -610,6 +681,7 @@ def test_marisa_b_focused() -> None:
 
 
 # ---- SakuyaA 非集中: 无差别飞刀 (BombData.cpp:1201-1290) ----
+
 
 def test_sakuya_a_unfocused_spawn() -> None:
     b = _started_bomb(character=CHAR_SAKUYA_A, ctx=CTX_RNG)
@@ -661,6 +733,7 @@ def test_sakuya_a_unfocused_pin_and_despawn() -> None:
 
 
 # ---- SakuyaA 集中: 杀人玩偶 停时悬停 (BombData.cpp:1333-1473) ----
+
 
 def test_sakuya_a_focused_spawn() -> None:
     b = _started_bomb(character=CHAR_SAKUYA_A, focus=True, ctx=CTX_RNG_ENEMY)
@@ -724,6 +797,7 @@ def test_sakuya_a_focused_pin_and_lifecycle() -> None:
 
 # ---- SakuyaB 非集中: 完美方阵 停时 (BombData.cpp:1502-1598) ----
 
+
 def test_sakuya_b_unfocused() -> None:
     b = _started_bomb(character=CHAR_SAKUYA_B)
     assert b.duration == 160 and b.invulnerability_timer == 260
@@ -757,6 +831,7 @@ def test_sakuya_b_unfocused() -> None:
 
 # ---- SakuyaB 集中: 私人方阵 追踪领域 (BombData.cpp:1633-1724) ----
 
+
 def test_sakuya_b_focused_init_and_track() -> None:
     b = _started_bomb(character=CHAR_SAKUYA_B, focus=True)
     assert b.duration == 300 and b.invulnerability_timer == 420
@@ -769,8 +844,12 @@ def test_sakuya_b_focused_init_and_track() -> None:
     assert box.size == Vec2(160.0, 160.0) and box.lifetime == 1
     assert box.pos == CTX.player_pos
     # 追踪: 玩家移开后领域以 (playerPos-pos)/1700 加速 (伤害盒慢一拍, 取移动前 pos)
-    ctx2 = BombContext(player_pos=Vec2(200.0, 200.0), cherry=101000.0,
-                       cherry_start=1000.0, difficulty=DIFF_NORMAL)
+    ctx2 = BombContext(
+        player_pos=Vec2(200.0, 200.0),
+        cherry=101000.0,
+        cherry_start=1000.0,
+        difficulty=DIFF_NORMAL,
+    )
     b.tick(ctx2)
     accel = Vec2(100.0 / 1700.0, -100.0 / 1700.0)
     sub = b.sub_info[0]
@@ -799,7 +878,7 @@ def test_sakuya_b_focused_end_clear_box_quirk() -> None:
     assert box0.lifetime == 0
     # pos_z != 0 → 判定走线性段 (448×512), 而非 800 圆
     assert box0.hits(Vec2(192.0, 224.0), Vec2(8.0, 8.0))
-    assert box0.hits(Vec2(192.0 + 227.0, 224.0), Vec2(8.0, 8.0))   # 227<228
+    assert box0.hits(Vec2(192.0 + 227.0, 224.0), Vec2(8.0, 8.0))  # 227<228
     assert not box0.hits(Vec2(192.0 + 300.0, 224.0), Vec2(8.0, 8.0))  # 圆内段外
     # 下一帧 UpdateBombProjectiles 清零 (lifetime<=0)
     b.tick(CTX)

@@ -1,4 +1,5 @@
 """Touhou: 子弹命令系统测试。"""
+
 from __future__ import annotations
 
 import math
@@ -16,8 +17,9 @@ from touhou.utils import Vec2  # noqa: E402
 
 
 def _mk(angle: float = -math.pi / 2, speed: float = 3.0) -> BulletState:
-    return BulletState(pos=Vec2(100, 100), angle=angle, speed=speed,
-                       vel=Vec2.from_angle(angle, speed))
+    return BulletState(
+        pos=Vec2(100, 100), angle=angle, speed=speed, vel=Vec2.from_angle(angle, speed)
+    )
 
 
 def test_burst_speeds_up_then_settles() -> None:

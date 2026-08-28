@@ -7,6 +7,7 @@
 构造契约(registry.register_renderer): ``PygameRenderer(data_path=None)``。
 单个画面渲染失败不拖垮应用(降级为底色填充, 沿用原 GameApp 容错)。
 """
+
 from __future__ import annotations
 
 import time
@@ -47,22 +48,26 @@ _BASE_MENU_KEYS = {
     pygame.K_w: MenuAction.UP,
     pygame.K_DOWN: MenuAction.DOWN,
     pygame.K_s: MenuAction.DOWN,
-    pygame.K_LEFT: MenuAction.LEFT,    # Option 调值(游戏内移动走 keys 元组, 不冲突)
+    pygame.K_LEFT: MenuAction.LEFT,  # Option 调值(游戏内移动走 keys 元组, 不冲突)
     pygame.K_a: MenuAction.LEFT,
     pygame.K_RIGHT: MenuAction.RIGHT,
     pygame.K_d: MenuAction.RIGHT,
     pygame.K_RETURN: MenuAction.CONFIRM,  # Enter 硬编码保留(防锁死)
-    pygame.K_ESCAPE: MenuAction.BACK,     # Esc 菜单语义不动
+    pygame.K_ESCAPE: MenuAction.BACK,  # Esc 菜单语义不动
 }
 
 # 手写 config.json 的键名别名(pygame 规范名: 小键盘 "[0]"、修饰键
 # "left shift" 等 —— pygame.key.name 的输出格式)
 _KEY_ALIASES = {
     **{f"kp{i}": f"[{i}]" for i in range(10)},
-    "lshift": "left shift", "rshift": "right shift",
-    "lctrl": "left ctrl", "rctrl": "right ctrl",
-    "lalt": "left alt", "ralt": "right alt",
-    "enter": "return", "esc": "escape",
+    "lshift": "left shift",
+    "rshift": "right shift",
+    "lctrl": "left ctrl",
+    "rctrl": "right ctrl",
+    "lalt": "left alt",
+    "ralt": "right alt",
+    "enter": "return",
+    "esc": "escape",
 }
 
 
@@ -92,8 +97,8 @@ class PygameRenderer:
             pygame.init()  # key_code/key.name 需要(未 init 会告警); open() 再 init 幂等
         self._data_path = resolve_data_path(data_path)
         self._caption = caption
-        self._scr = None        # 窗口 surface(open/resize 时建; 测试可仅 set_mode)
-        self._clock = None      # 帧调度(open 时建)
+        self._scr = None  # 窗口 surface(open/resize 时建; 测试可仅 set_mode)
+        self._clock = None  # 帧调度(open 时建)
         self._scale = 1
         # 常驻菜单场景渲染器(资源懒加载, 各 view 自带容错)
         self._title = TitleScreen(self._data_path)
@@ -145,14 +150,12 @@ class PygameRenderer:
     def resize(self, screen: Screen, scale: int) -> None:
         """按当前场景尺寸 × 缩放重设窗口(测试 headless 无窗口时跳过)。"""
         self._scale = scale
-        if not (pygame.display.get_init()
-                and pygame.display.get_surface() is not None):
+        if not (pygame.display.get_init() and pygame.display.get_surface() is not None):
             return
         if screen == Screen.PLAYING:
             self._scr = pygame.display.set_mode((WIN_W * scale, WIN_H * scale))
         else:
-            self._scr = pygame.display.set_mode((TITLE_W * scale,
-                                                 TITLE_H * scale))
+            self._scr = pygame.display.set_mode((TITLE_W * scale, TITLE_H * scale))
 
     def present(self) -> None:
         if pygame.display.get_init():
@@ -168,13 +171,15 @@ class PygameRenderer:
         WARNING 一次; 节流 5s 防刷屏, 告警后清零重新累计。"""
         self._behind_ms = max(0.0, self._behind_ms + elapsed_ms - 1000 / 60)
         now = time.time()
-        if self._behind_ms > 20000 / 60 \
-                and now - self._behind_warned_at > 5.0:
+        if self._behind_ms > 20000 / 60 and now - self._behind_warned_at > 5.0:
             self._behind_warned_at = now
             ticks = self._behind_ms / (1000 / 60)
-            log.warning("Can't keep up! Is the renderer overloaded? "
-                        "Running {:.0f}ms ({:.1f} ticks) behind",
-                        self._behind_ms, ticks)
+            log.warning(
+                "Can't keep up! Is the renderer overloaded? "
+                "Running {:.0f}ms ({:.1f} ticks) behind",
+                self._behind_ms,
+                ticks,
+            )
             self._behind_ms = 0.0
 
     # ---- 输入采集 ----
@@ -205,8 +210,10 @@ class PygameRenderer:
     def held_actions(self, pressed) -> frozenset[str]:
         """按键状态面(pygame.key.get_pressed() 同构) → 按住的动作名集合。"""
         return frozenset(
-            a for a in ACTION_NAMES
-            if any(pressed[c] for c in self._action_codes.get(a, ())))
+            a
+            for a in ACTION_NAMES
+            if any(pressed[c] for c in self._action_codes.get(a, ()))
+        )
 
     def poll_input(self, *, capturing: bool = False) -> FrameInput:
         menu_actions: list[MenuAction] = []
@@ -233,9 +240,14 @@ class PygameRenderer:
                 log.debug("窗口焦点变化: {}", pygame.event.event_name(ev.type))
             elif ev.type == pygame.ACTIVEEVENT and ev.gain == 0:
                 log.debug("窗口失去激活 (ACTIVEEVENT gain=0)")
-        return FrameInput(quit=quit_req, menu_actions=tuple(menu_actions),
-                          advance=advance, esc=esc, captured_key=captured,
-                          held=self.held_actions(pygame.key.get_pressed()))
+        return FrameInput(
+            quit=quit_req,
+            menu_actions=tuple(menu_actions),
+            advance=advance,
+            esc=esc,
+            captured_key=captured,
+            held=self.held_actions(pygame.key.get_pressed()),
+        )
 
     # ---- 合成辅助 ----
     def _target(self):
@@ -263,56 +275,55 @@ class PygameRenderer:
         self._blit_scaled(surf)
 
     # ---- 菜单系场景 ----
-    def render_title(self, cursor: int, frame: int, *,
-                     show_unimplemented: bool = False) -> None:
+    def render_title(
+        self, cursor: int, frame: int, *, show_unimplemented: bool = False
+    ) -> None:
         surf = pygame.Surface((TITLE_W, TITLE_H))
-        self._title.render(surf, cursor, frame,
-                           show_unimplemented=show_unimplemented)
+        self._title.render(surf, cursor, frame, show_unimplemented=show_unimplemented)
         self._blit_scaled(surf)
 
     def render_difficulty(self, cursor: int) -> None:
-        self._render_menu_surf(
-            lambda s: self._select_view.render_difficulty(s, cursor))
+        self._render_menu_surf(lambda s: self._select_view.render_difficulty(s, cursor))
 
     def render_character(self, cursor: int) -> None:
-        self._render_menu_surf(
-            lambda s: self._select_view.render_character(s, cursor))
+        self._render_menu_surf(lambda s: self._select_view.render_character(s, cursor))
 
-    def render_practice_stage(self, cursor: int, max_stage: int, *,
-                              difficulty: str, character: str) -> None:
+    def render_practice_stage(
+        self, cursor: int, max_stage: int, *, difficulty: str, character: str
+    ) -> None:
         self._render_menu_surf(
             lambda s: self._select_view.render_practice_stage(
-                s, cursor, max_stage, difficulty=difficulty,
-                character=character))
+                s, cursor, max_stage, difficulty=difficulty, character=character
+            )
+        )
 
     def render_extra(self, cursor: int) -> None:
-        self._render_menu_surf(
-            lambda s: self._select_view.render_extra(s, cursor))
+        self._render_menu_surf(lambda s: self._select_view.render_extra(s, cursor))
 
     def render_option(self, flow) -> None:
         self._render_menu_surf(lambda s: self._option_view.render(s, flow))
 
     def render_keyconfig(self, flow) -> None:
-        self._render_menu_surf(
-            lambda s: self._option_view.render_keyconfig(s, flow))
+        self._render_menu_surf(lambda s: self._option_view.render_keyconfig(s, flow))
 
     def render_player_data(self, flow, store, frame: int) -> None:
         self._render_menu_surf(
-            lambda s: self._playerdata_view.render(s, flow, store, frame))
+            lambda s: self._playerdata_view.render(s, flow, store, frame)
+        )
 
     def render_music_room(self, flow, frame: int) -> None:
-        self._render_menu_surf(
-            lambda s: self._mr_view.render(s, flow, frame))
+        self._render_menu_surf(lambda s: self._mr_view.render(s, flow, frame))
 
     def render_replay_menu(self, flow, frame: int) -> None:
-        self._render_menu_surf(
-            lambda s: self._rp_view.render(s, flow, frame))
+        self._render_menu_surf(lambda s: self._rp_view.render(s, flow, frame))
 
-    def render_result(self, result: dict, frame: int, *,
-                      store, name_entry, replay_save=None) -> None:
+    def render_result(
+        self, result: dict, frame: int, *, store, name_entry, replay_save=None
+    ) -> None:
         surf = pygame.Surface((TITLE_W, TITLE_H))
-        self._result_view.render(surf, result, frame,
-                                 store=store, name_entry=name_entry)
+        self._result_view.render(
+            surf, result, frame, store=store, name_entry=name_entry
+        )
         if replay_save is not None:
             # Save Replay 覆盖层(ResultScreen.cpp HandleReplaySaveKeyboard 简化)
             try:
@@ -322,17 +333,17 @@ class PygameRenderer:
                 pygame.draw.rect(box, (200, 200, 220, 255), box.get_rect(), 1)
                 font = _load_font(24)
                 if mode == "ask":
-                    box.blit(font.render("Save Replay?", True, (255, 255, 255)),
-                             (120, 16))
+                    box.blit(
+                        font.render("Save Replay?", True, (255, 255, 255)), (120, 16)
+                    )
                     for j, yn in enumerate(("Yes", "No")):
                         color = (255, 255, 255) if j == cursor else (140, 140, 150)
-                        box.blit(font.render(yn, True, color),
-                                 (110 + j * 110, 64))
+                        box.blit(font.render(yn, True, color), (110 + j * 110, 64))
                 else:  # "saved": 已存确认
-                    box.blit(font.render(f"Saved {msg}", True, (150, 255, 180)),
-                             (24, 32))
-                    box.blit(font.render("Z: OK", True, (200, 200, 220)),
-                             (150, 72))
+                    box.blit(
+                        font.render(f"Saved {msg}", True, (150, 255, 180)), (24, 32)
+                    )
+                    box.blit(font.render("Z: OK", True, (200, 200, 220)), (150, 72))
                 surf.blit(box, ((TITLE_W - 360) // 2, (TITLE_H - 120) // 2))
             except Exception:
                 pass  # 渲染失败不拖垮游戏循环
@@ -354,17 +365,18 @@ class PygameRenderer:
         stage = getattr(game, "stage_no", 1)
         # 对话渲染器(角色立绘按 character//2, Boss 立绘按关卡)
         try:
-            self._dialog_view = DialogueView(self._data_path,
-                                             character=character // 2,
-                                             stage=stage)
+            self._dialog_view = DialogueView(
+                self._data_path, character=character // 2, stage=stage
+            )
             self._dialog_stage = stage
         except Exception:
             log.exception("对话渲染器初始化失败(降级为无对话渲染)")
             self._dialog_view = None
         # 战斗贴图渲染器(与对话渲染器同风格: 失败不拖垮游戏)
         try:
-            self._game_view = GameView(self._data_path, character=character,
-                                       stage=stage)
+            self._game_view = GameView(
+                self._data_path, character=character, stage=stage
+            )
         except Exception:
             log.exception("战斗贴图渲染器初始化失败(降级为简笔渲染)")
             self._game_view = None
@@ -406,12 +418,14 @@ class PygameRenderer:
         else:
             surf.fill((8, 12, 30))
         # 对话覆盖层(DrawDialogue: 立绘 → 对话框 → 文本); 换关时按新关重建
-        if self._dialog_view is not None \
-                and getattr(game, "stage_no", 0) != self._dialog_stage:
+        if (
+            self._dialog_view is not None
+            and getattr(game, "stage_no", 0) != self._dialog_stage
+        ):
             try:
                 self._dialog_view = DialogueView(
-                    self._data_path, character=game.character // 2,
-                    stage=game.stage_no)
+                    self._data_path, character=game.character // 2, stage=game.stage_no
+                )
                 self._dialog_stage = game.stage_no
             except Exception:
                 self._dialog_view = None  # 渲染失败不拖垮游戏
@@ -487,22 +501,32 @@ class PygameRenderer:
         """
         for cmd in cmds:
             if isinstance(cmd, overlay_mod.OverlayLine):
-                pygame.draw.line(surf, cmd.color, (cmd.x1, cmd.y1),
-                                 (cmd.x2, cmd.y2), cmd.width)
+                pygame.draw.line(
+                    surf, cmd.color, (cmd.x1, cmd.y1), (cmd.x2, cmd.y2), cmd.width
+                )
             elif isinstance(cmd, overlay_mod.OverlayCircle):
-                pygame.draw.circle(surf, cmd.color, (cmd.x, cmd.y),
-                                   cmd.radius, cmd.width)
+                pygame.draw.circle(
+                    surf, cmd.color, (cmd.x, cmd.y), cmd.radius, cmd.width
+                )
             elif isinstance(cmd, overlay_mod.OverlayPolyline):
                 if len(cmd.points) >= 2:
-                    pygame.draw.lines(surf, cmd.color, cmd.closed,
-                                      cmd.points, cmd.width)
+                    pygame.draw.lines(
+                        surf, cmd.color, cmd.closed, cmd.points, cmd.width
+                    )
             elif isinstance(cmd, overlay_mod.OverlayText):
-                surf.blit(self._overlay_font(cmd.size).render(
-                    cmd.content, True, cmd.color), (cmd.x, cmd.y))
+                surf.blit(
+                    self._overlay_font(cmd.size).render(cmd.content, True, cmd.color),
+                    (cmd.x, cmd.y),
+                )
 
-    def render_pause(self, game, cursor: int, *,
-                     hint: "str | None" = None,
-                     confirm: "tuple[str, int] | None" = None) -> None:
+    def render_pause(
+        self,
+        game,
+        cursor: int,
+        *,
+        hint: "str | None" = None,
+        confirm: "tuple[str, int] | None" = None,
+    ) -> None:
         """暂停: 冻结画面(未 tick, 画面静止) + 半透明暂停面板 + 瞬态提示。"""
         self.render_game(game)
         overlay = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
@@ -514,8 +538,10 @@ class PygameRenderer:
             # Save Replay 反馈提示(瞬态)
             try:
                 font = _load_font(20)
-                overlay.blit(font.render(hint, True, (150, 255, 180)),
-                             (WIN_W // 2 - 150, WIN_H // 2 + 120))
+                overlay.blit(
+                    font.render(hint, True, (150, 255, 180)),
+                    (WIN_W // 2 - 150, WIN_H // 2 + 120),
+                )
             except Exception:
                 pass  # 提示渲染失败不拖垮游戏循环
         self._blit_scaled(overlay)

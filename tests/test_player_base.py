@@ -4,6 +4,7 @@
 边界钳制、判定/擦弹 AABB、死亡→结算→重生流程、清弹期事件。th07 专属结算
 (樱点/subrank)不在本文件(见 test_player.py)。
 """
+
 from __future__ import annotations
 
 import sys

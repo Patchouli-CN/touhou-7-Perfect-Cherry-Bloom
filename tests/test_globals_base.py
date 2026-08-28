@@ -4,6 +4,7 @@
 基类钉住: add_score 代码值//10 入账、guiScore 逐帧追赶(最小 1 / 上限
 578910 / 追上归零)、snap 对齐、SCORE_MAX 封顶。
 """
+
 from __future__ import annotations
 
 import sys
@@ -11,7 +12,10 @@ import sys
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.engine.globals_base import (  # noqa: E402
-    GUI_SCORE_INCREMENT_MAX, SCORE_MAX, GlobalsBase)
+    GUI_SCORE_INCREMENT_MAX,
+    SCORE_MAX,
+    GlobalsBase,
+)
 
 
 def test_add_score_divides_by_10() -> None:

@@ -1,4 +1,4 @@
-""" 敌人与伤害管线 —— Pythonic。
+"""敌人与伤害管线 —— Pythonic。
 
 收录敌人侧的通用机制(对照 EnemyManager.cpp):
 - 伤害结算(settle_damage/DamageResult, §A.6 下半: 樱点/封顶/符卡缩放)
@@ -26,11 +26,13 @@ from ..utils import Vec2, angle_to
 
 # ---- 敌人侧伤害结算 (EnemyManager::OnUpdate / 规格 §A.6 下半) ----
 
+
 class DamageResult(msgspec.Struct):
     """一次伤害结算的产出(透出给上层, 由整合层接到 globals)。"""
-    damage: int = 0        # 实际扣血(全部缩放/封顶之后)
-    cherry_gain: int = 0   # 樱点增量(0 = 不加; 上层走 ZunGlobals.add_cherry_plus)
-    score_code: int = 0    # 伤害得分, 代码值(=显示分*10, 上层走 ZunGlobals.add_score)
+
+    damage: int = 0  # 实际扣血(全部缩放/封顶之后)
+    cherry_gain: int = 0  # 樱点增量(0 = 不加; 上层走 ZunGlobals.add_cherry_plus)
+    score_code: int = 0  # 伤害得分, 代码值(=显示分*10, 上层走 ZunGlobals.add_score)
 
 
 def stage_factor(stage: int) -> int:
@@ -38,12 +40,22 @@ def stage_factor(stage: int) -> int:
     return 10 if stage >= 5 else stage * 2
 
 
-def settle_damage(damage: int, *, is_boss: bool, is_focus: bool,
-                  bomb_in_use: bool = False, bomb_damage: bool = False,
-                  stage: int = 1, spellcard_active: bool = False,
-                  used_bomb: bool = False, invincibility_timer: int = 0,
-                  enemy_timer: int = 0, can_be_damaged: bool = True,
-                  graze_damage: int = 0, is_reimu_a: bool = False) -> DamageResult:
+def settle_damage(
+    damage: int,
+    *,
+    is_boss: bool,
+    is_focus: bool,
+    bomb_in_use: bool = False,
+    bomb_damage: bool = False,
+    stage: int = 1,
+    spellcard_active: bool = False,
+    used_bomb: bool = False,
+    invincibility_timer: int = 0,
+    enemy_timer: int = 0,
+    can_be_damaged: bool = True,
+    graze_damage: int = 0,
+    is_reimu_a: bool = False,
+) -> DamageResult:
     """敌人受击后处理, 数值以 EnemyManager.cpp:782-890 为准(C++ int 截断语义)。
 
     顺序: grazeSize 额外伤害 → cherryGain(用未封顶的原始伤害, 含 ReimuA 机型
@@ -110,8 +122,9 @@ def _target_in_bounds(pos: Vec2, full_size: tuple[float, float]) -> bool:
     敌人及时退场, 本移植未实现该 despawn, 飞出/未进版的敌人会一直被
     "最靠下"准则选中, 追踪弹因此锁到版外杂鱼。"""
     hw, hh = full_size[0] / 2.0, full_size[1] / 2.0
-    return not (hw + pos.x < 0.0 or pos.x - hw > 384.0
-                or hh + pos.y < 0.0 or pos.y - hh > 448.0)
+    return not (
+        hw + pos.x < 0.0 or pos.x - hw > 384.0 or hh + pos.y < 0.0 or pos.y - hh > 448.0
+    )
 
 
 class Targeting(msgspec.Struct):
@@ -120,8 +133,11 @@ class Targeting(msgspec.Struct):
     按敌人顺序 update, 扫完由上层写回 player 字段。"""
 
     position_of_last_enemy_hit: Vec2 = msgspec.field(
-        default_factory=lambda: Vec2(-999.0, -999.0))
-    sakuya_target_position: Vec2 = msgspec.field(default_factory=lambda: Vec2(-999.0, -999.0))
+        default_factory=lambda: Vec2(-999.0, -999.0)
+    )
+    sakuya_target_position: Vec2 = msgspec.field(
+        default_factory=lambda: Vec2(-999.0, -999.0)
+    )
     targeting: bool = False
 
     def reset(self) -> None:
@@ -129,8 +145,9 @@ class Targeting(msgspec.Struct):
         self.sakuya_target_position = Vec2(-999.0, -999.0)
         self.targeting = False
 
-    def update(self, enemy_pos: Vec2, player_pos: Vec2, *, is_boss: bool,
-               is_sakuya: bool) -> None:
+    def update(
+        self, enemy_pos: Vec2, player_pos: Vec2, *, is_boss: bool, is_sakuya: bool
+    ) -> None:
         """EnemyManager.cpp:894-938。Boss: 取 |dx| 离玩家更近者, 咲夜另按角度窗口
         更新 sakuya 目标并立 targeting; 未 targeting 时取最靠下的敌人,
         咲夜在窗口内补 sakuya 目标(仅当尚未设置)。"""
@@ -143,7 +160,8 @@ class Targeting(msgspec.Struct):
                 diff = self.sakuya_target_position - player_pos
                 angle = math.atan2(enemy_diff.y, enemy_diff.x)
                 if _SAKUYA_TARGET_ANGLE_LO <= angle <= _SAKUYA_TARGET_ANGLE_HI and (
-                        not self.targeting or abs(diff.x) > abs(enemy_diff.x)):
+                    not self.targeting or abs(diff.x) > abs(enemy_diff.x)
+                ):
                     self.sakuya_target_position = enemy_pos
                     self.targeting = True
             else:
@@ -152,8 +170,9 @@ class Targeting(msgspec.Struct):
             if self.position_of_last_enemy_hit.y < enemy_pos.y:
                 self.position_of_last_enemy_hit = enemy_pos
             if is_sakuya and self.sakuya_target_position.y < -900.0:
-                angle = math.atan2(enemy_pos.y - player_pos.y,
-                                   enemy_pos.x - player_pos.x)
+                angle = math.atan2(
+                    enemy_pos.y - player_pos.y, enemy_pos.x - player_pos.x
+                )
                 if _SAKUYA_TARGET_ANGLE_LO <= angle <= _SAKUYA_TARGET_ANGLE_HI:
                     self.sakuya_target_position = enemy_pos
 
@@ -161,28 +180,30 @@ class Targeting(msgspec.Struct):
 class ScriptedEnemy(msgspec.Struct):
     """一个由动作列表驱动的敌人。"""
 
-    path: list[Vec2]          # 移动轨迹(途经点)
+    path: list[Vec2]  # 移动轨迹(途经点)
     fire: Callable[["ScriptedEnemy", BulletWorld], None] | None = None
     life: int = 8
-    speed: float = 2.0        # 途经点间飞行速度
-    radius: float = 12.0      # 判定/绘制半径(命中判定为 pos±radius 的 AABB)
-    graze_size: Vec2 = msgspec.field(default_factory=Vec2.zero)  # 擦弹盒(全宽/全高); x>0 时追加一次判定
+    speed: float = 2.0  # 途经点间飞行速度
+    radius: float = 12.0  # 判定/绘制半径(命中判定为 pos±radius 的 AABB)
+    graze_size: Vec2 = msgspec.field(
+        default_factory=Vec2.zero
+    )  # 擦弹盒(全宽/全高); x>0 时追加一次判定
     is_boss: bool = False
     can_die: bool = True
     is_hittable: bool = True
     can_be_damaged: bool = True
     invincibility_timer: int = 0
 
-    pos: Vec2 = None          # type: ignore[assignment]
+    pos: Vec2 = None  # type: ignore[assignment]
     _target_idx: int = 0
-    fire_delay: int = 10      # 放弹间隔
+    fire_delay: int = 10  # 放弹间隔
     alive: bool = True
     # 体术/伤害门槛标志 (C enemyTemplate 默认值, EnemyManager.hpp:328-333)
     has_no_collision: int = 0
     has_contact_hitbox: int = 1
     is_projectile: int = 0
     invisible_on_bomb: int = 0
-    _tick: int = 0            # 内部帧计数(__post_init__ 归零; Struct 字段须声明)
+    _tick: int = 0  # 内部帧计数(__post_init__ 归零; Struct 字段须声明)
 
     def __post_init__(self) -> None:
         self.pos = self.path[0]
@@ -235,11 +256,24 @@ class EnemyHost:
     def add(self, enemy: ScriptedEnemy | EclEnemy) -> None:
         self._enemies.append(enemy)
 
-    def spawn(self, *, path: Sequence[Vec2], life: int = 8, speed: float = 2.0,
-              fire: Callable[[ScriptedEnemy, BulletWorld], None] | None = None,
-              radius: float = 12.0, graze_size: Vec2 | None = None) -> ScriptedEnemy:
-        e = ScriptedEnemy(list(path), fire=fire, life=life, speed=speed, radius=radius,
-                          graze_size=graze_size if graze_size is not None else Vec2.zero())
+    def spawn(
+        self,
+        *,
+        path: Sequence[Vec2],
+        life: int = 8,
+        speed: float = 2.0,
+        fire: Callable[[ScriptedEnemy, BulletWorld], None] | None = None,
+        radius: float = 12.0,
+        graze_size: Vec2 | None = None,
+    ) -> ScriptedEnemy:
+        e = ScriptedEnemy(
+            list(path),
+            fire=fire,
+            life=life,
+            speed=speed,
+            radius=radius,
+            graze_size=graze_size if graze_size is not None else Vec2.zero(),
+        )
         self._enemies.append(e)
         return e
 
@@ -297,12 +331,23 @@ class EnemyHost:
                     e.life -= 10
         return died
 
-    def shoot_hits(self, player: PlayerCombatFace, targeting: Targeting, *, is_focus: bool,
-                   is_sakuya: bool, bomb_in_use: bool, stage: int,
-                   spellcard_active: bool = False, used_bomb: bool = False,
-                   is_reimu_a: bool = False, bomb_box_hit=None
-                   ) -> tuple[list[tuple[ScriptedEnemy | EclEnemy, DamageResult]],
-                              list[ScriptedEnemy | EclEnemy]]:
+    def shoot_hits(
+        self,
+        player: PlayerCombatFace,
+        targeting: Targeting,
+        *,
+        is_focus: bool,
+        is_sakuya: bool,
+        bomb_in_use: bool,
+        stage: int,
+        spellcard_active: bool = False,
+        used_bomb: bool = False,
+        is_reimu_a: bool = False,
+        bomb_box_hit=None,
+    ) -> tuple[
+        list[tuple[ScriptedEnemy | EclEnemy, DamageResult]],
+        list[ScriptedEnemy | EclEnemy],
+    ]:
         """自机弹 vs 敌人完整管线 (EnemyManager.cpp:754-938 OnUpdate 伤害段)。
 
         每帧对每个 can_die/is_hittable 敌人调一次 player.calc_damage_to_enemy
@@ -341,32 +386,48 @@ class EnemyHost:
         for e in self._enemies:
             if not e.alive:
                 continue
-            if not (e.has_no_collision or e.invisible_on_bomb) \
-                    and e.can_die and e.is_hittable:
+            if (
+                not (e.has_no_collision or e.invisible_on_bomb)
+                and e.can_die
+                and e.is_hittable
+            ):
                 damage = player.calc_damage_to_enemy(
-                    e.pos, (e.radius * 2.0, e.radius * 2.0), bomb_active=bomb_in_use)
+                    e.pos, (e.radius * 2.0, e.radius * 2.0), bomb_active=bomb_in_use
+                )
                 graze_damage = 0
                 if e.graze_size.x > 0.0:
                     graze_damage = player.calc_damage_to_enemy(
-                        e.pos, (e.graze_size.x, e.graze_size.y), bomb_active=bomb_in_use)
-                    if bomb_in_use and bomb_box_hit is not None and bomb_box_hit(
-                            e.pos, (e.graze_size.x, e.graze_size.y)):
+                        e.pos, (e.graze_size.x, e.graze_size.y), bomb_active=bomb_in_use
+                    )
+                    if (
+                        bomb_in_use
+                        and bomb_box_hit is not None
+                        and bomb_box_hit(e.pos, (e.graze_size.x, e.graze_size.y))
+                    ):
                         # collisionOut!=0: grazeDamage 整体丢弃(含 bomb 盒对
                         # graze 盒的伤害, 该部分 C++ 也不计入 damage)
                         graze_damage = 0
                 r = settle_damage(
-                    damage, is_boss=e.is_boss, is_focus=is_focus,
-                    bomb_in_use=bomb_in_use, stage=stage,
-                    spellcard_active=spellcard_active, used_bomb=used_bomb,
+                    damage,
+                    is_boss=e.is_boss,
+                    is_focus=is_focus,
+                    bomb_in_use=bomb_in_use,
+                    stage=stage,
+                    spellcard_active=spellcard_active,
+                    used_bomb=used_bomb,
                     invincibility_timer=e.invincibility_timer,
-                    enemy_timer=e._tick, can_be_damaged=e.can_be_damaged,
-                    graze_damage=graze_damage, is_reimu_a=is_reimu_a)
+                    enemy_timer=e._tick,
+                    can_be_damaged=e.can_be_damaged,
+                    graze_damage=graze_damage,
+                    is_reimu_a=is_reimu_a,
+                )
                 e.life -= r.damage
                 # 索敌只锁定版内敌人 (BUGS.md 增量#5, 见 _target_in_bounds);
                 # 版外敌人照常受击结算, 只是不做追踪目标
                 if _target_in_bounds(e.pos, e.hitbox_full):
-                    targeting.update(e.pos, player.pos, is_boss=e.is_boss,
-                                     is_sakuya=is_sakuya)
+                    targeting.update(
+                        e.pos, player.pos, is_boss=e.is_boss, is_sakuya=is_sakuya
+                    )
                 results.append((e, r))
             if e.life <= 0 and e.can_die:
                 if e.kill():
@@ -403,6 +464,7 @@ def aimed_spread_fire(arms: int = 5, spread_angle: float = 0.2, speed: float = 2
 
 # ---- ECL 驱动的敌人 (EnemyManager::OnUpdate 的 RunEcl/回调段) ----
 
+
 class EclEnemy:
     """携带 ECL 虚拟机(EclMachineBase 子类)的敌人, 鸭子类型适配 ScriptedEnemy 接口。
 
@@ -424,7 +486,7 @@ class EclEnemy:
     def __init__(self, machine: EclMachineBase, host=None) -> None:
         self.machine = machine
         self.state = machine.enemy
-        self._host = host          # GameEclHost (清场/超时事件), None=裸跑
+        self._host = host  # GameEclHost (清场/超时事件), None=裸跑
         self.alive = True
         self._kill_no_score = False  # kill() 置位: death_type==2 不计分
         st = self.state
@@ -516,8 +578,7 @@ class EclEnemy:
     # ---- 每帧 (EnemyManager::OnUpdate: RunEcl → 回调 → [伤害由 shoot_hits]) ----
     def step(self, world: BulletWorld | None = None, *, rng=None) -> None:
         st = self.state
-        if (st.freeze_ecl_during_bombs and self._host is not None
-                and self._host.frozen):
+        if st.freeze_ecl_during_bombs and self._host is not None and self._host.frozen:
             # C: timer-- 后 goto 循环尾 (LAB_00421da7), 尾部 timer++ 抵消 →
             # 净不变; invincibilityTimer-- 照常 (EnemyManager.cpp:658-663,
             # 1096-1100)。旧实现 timer 净 -1/帧, 死亡频繁时 boss 计时器倒走。

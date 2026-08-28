@@ -29,26 +29,26 @@ class BossBase(msgspec.Struct):
     pos: Vec2 = Vec2.zero()
     life: float = 0.0
     max_life: float = 0.0
-    is_active: int = 0                     # 0=无符卡 1=进行中 2=超时失败
+    is_active: int = 0  # 0=无符卡 1=进行中 2=超时失败
     phase: int = 0
     boss_id: int = 0
     invincibility_timer: int = 0
     # (阈值, 阶段切换回调标识); 阈值按生命降序
     life_thresholds: list[tuple[float, int]] = msgspec.field(default_factory=list)
     # 超时回调 (ECL_SET_TIMER_CALLBACK_THRESHOLD/SUB)
-    timer_callback_threshold: int = -1     # 帧; -1=无
+    timer_callback_threshold: int = -1  # 帧; -1=无
     timer_callback_sub: int = 0
     death_callback_sub: int = -1
-    seconds_remaining: int = 0             # 剩余秒显示(bossId==0 时每帧更新)
+    seconds_remaining: int = 0  # 剩余秒显示(bossId==0 时每帧更新)
     # 符卡
     spellcard_idx: int = -1
-    spellcard_face: int = 0                # 宣言立绘 sprite 下标 (ECL BEGIN_SPELLCARD
-                                           # arg0, Gui.cpp:367 +1197 取 face_0{stage}_00)
-    spellcard_time_limit: int = 0          # 帧
+    spellcard_face: int = 0  # 宣言立绘 sprite 下标 (ECL BEGIN_SPELLCARD
+    # arg0, Gui.cpp:367 +1197 取 face_0{stage}_00)
+    spellcard_time_limit: int = 0  # 帧
     is_capturing: bool = False
     is_survival_spellcard: bool = False
-    capture_score: int = 0                 # 代码值
-    graze_bonus_score: int = 0             # 代码值(擦弹加成)
+    capture_score: int = 0  # 代码值
+    graze_bonus_score: int = 0  # 代码值(擦弹加成)
     score_drain_rate: int = 0
     used_bomb: bool = False
     timer: int = 0
@@ -70,19 +70,18 @@ class BossBase(msgspec.Struct):
         """
         for i, (threshold, cb) in enumerate(self.life_thresholds):
             if self.life < threshold:
-                self.life = threshold          # 钉住生命
+                self.life = threshold  # 钉住生命
                 self.phase = i + 1
                 # 清掉已触发的阈值与超时回调
-                self.life_thresholds = self.life_thresholds[i + 1:]
+                self.life_thresholds = self.life_thresholds[i + 1 :]
                 self.timer_callback_threshold = -1
                 if clear_field_cb:
-                    clear_field_cb()           # 清场(非 boss 敌 deathCallback)
+                    clear_field_cb()  # 清场(非 boss 敌 deathCallback)
                 return cb
         return 0
 
     # ---- 符卡 ----
-    def begin_spellcard(self, idx: int, time_limit: int,
-                        timeout_sub: int = 0) -> None:
+    def begin_spellcard(self, idx: int, time_limit: int, timeout_sub: int = 0) -> None:
         """BeginSpellcard (EclManager.cpp:658-752)。"""
         self.spellcard_idx = idx
         self.spellcard_time_limit = time_limit
@@ -112,10 +111,15 @@ class BossBase(msgspec.Struct):
         if not self.is_active:
             return
         self.timer += 1
-        if (self.is_capturing and self.spellcard_idx >= 0
-                and not self.is_survival_spellcard):
-            score = int(self._score_table()[self.spellcard_idx]
-                        - self.timer * self.score_drain_rate / 60.0)
+        if (
+            self.is_capturing
+            and self.spellcard_idx >= 0
+            and not self.is_survival_spellcard
+        ):
+            score = int(
+                self._score_table()[self.spellcard_idx]
+                - self.timer * self.score_drain_rate / 60.0
+            )
             if score > 0:
                 score -= score % 10
             self.capture_score = max(0, score)
@@ -135,17 +139,22 @@ class BossBase(msgspec.Struct):
     def end_spellcard(self) -> dict:
         """EndSpellcard (EclManager.cpp:755-849), 返回结算/清场事件 dict:
 
-          ended: 是否有进行中的符卡;  timed_out: is_active==2(超时失败);
-          captured / score(代码值 = captureScore+grazeBonusScore) /
-          spell_cards_captured(上层计数);
-          despawn_bullets=(8000,1) / remove_all_enemies=(8000,0):
-            非超时时清弹清敌事件, 上层执行 BulletManager.DespawnBullets /
-            EnemyManager.RemoveAllEnemies(scoreMax, scoreMin=清弹返回值)。
+        ended: 是否有进行中的符卡;  timed_out: is_active==2(超时失败);
+        captured / score(代码值 = captureScore+grazeBonusScore) /
+        spell_cards_captured(上层计数);
+        despawn_bullets=(8000,1) / remove_all_enemies=(8000,0):
+          非超时时清弹清敌事件, 上层执行 BulletManager.DespawnBullets /
+          EnemyManager.RemoveAllEnemies(scoreMax, scoreMin=清弹返回值)。
         """
         result: dict[str, Any] = {
-            "ended": False, "timed_out": False, "captured": False,
-            "score": 0, "spell_cards_captured": 0,
-            "despawn_bullets": None, "remove_all_enemies": None}
+            "ended": False,
+            "timed_out": False,
+            "captured": False,
+            "score": 0,
+            "spell_cards_captured": 0,
+            "despawn_bullets": None,
+            "remove_all_enemies": None,
+        }
         if self.is_active:
             result["ended"] = True
             if self.is_active == 1:
@@ -161,9 +170,16 @@ class BossBase(msgspec.Struct):
         self.spellcard_idx = -1
         return result
 
-    def damage(self, amount: float, *, from_bomb: bool = False,
-               is_focus: bool = False, bomb_in_use: bool | None = None,
-               stage: int = 1, is_reimu_a: bool = False) -> DamageResult:
+    def damage(
+        self,
+        amount: float,
+        *,
+        from_bomb: bool = False,
+        is_focus: bool = False,
+        bomb_in_use: bool | None = None,
+        stage: int = 1,
+        is_reimu_a: bool = False,
+    ) -> DamageResult:
         """受击结算 (规格 §A.6 下半, 数值以 EnemyManager.cpp:782-890 为准)。
 
         返回 DamageResult(damage/cherry_gain/score_code), 由上层接 globals。
@@ -171,12 +187,17 @@ class BossBase(msgspec.Struct):
         if bomb_in_use is None:
             bomb_in_use = from_bomb
         r = settle_damage(
-            int(amount), is_boss=True, is_focus=is_focus,
-            bomb_in_use=bomb_in_use, bomb_damage=from_bomb, stage=stage,
+            int(amount),
+            is_boss=True,
+            is_focus=is_focus,
+            bomb_in_use=bomb_in_use,
+            bomb_damage=from_bomb,
+            stage=stage,
             spellcard_active=bool(self.is_active) and self.spellcard_idx >= 0,
             used_bomb=self.used_bomb,
             invincibility_timer=self.invincibility_timer,
-            enemy_timer=self.timer, is_reimu_a=is_reimu_a,
+            enemy_timer=self.timer,
+            is_reimu_a=is_reimu_a,
         )
         self.life -= r.damage
         if self.life <= 0:

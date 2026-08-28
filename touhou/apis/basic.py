@@ -14,6 +14,7 @@
 架构铁律: 本层(apis)与 engine 一样不 import games.* —— 窗口 App 等作品
 组件一律经 registry 按作品名解析(register_app; AST 守护测试钉死)。
 """
+
 from __future__ import annotations
 
 import msgspec
@@ -30,30 +31,33 @@ from ..types import GameEngine, InputSource, KeysTuple, PathLike
 
 class GamePhase(Enum):
     """对局所处阶段(由内部状态推导)。"""
-    RUNNING = "running"            # 正常游玩中
-    DIALOG = "dialog"              # 对话中(可移动, 不能射击/Bomb)
-    STAGE_CLEAR = "stage_clear"    # 过关结算面板显示中
-    ENDING = "ending"              # 结局画面显示中
-    GAME_OVER = "game_over"        # 无残机(续关菜单/冻结)
-    RESULT = "result"              # 总结算已出(result 可读)
+
+    RUNNING = "running"  # 正常游玩中
+    DIALOG = "dialog"  # 对话中(可移动, 不能射击/Bomb)
+    STAGE_CLEAR = "stage_clear"  # 过关结算面板显示中
+    ENDING = "ending"  # 结局画面显示中
+    GAME_OVER = "game_over"  # 无残机(续关菜单/冻结)
+    RESULT = "result"  # 总结算已出(result 可读)
 
 
 class GameEventKind:
     """通用事件类别。"""
-    SPELLCARD_BEGIN = "spellcard_begin"          # name=符卡名
-    SPELLCARD_CAPTURED = "spellcard_captured"    # name=符卡名
-    SPELLCARD_END = "spellcard_end"              # 未捕获结束(超时/击破失败); name=符卡名
+
+    SPELLCARD_BEGIN = "spellcard_begin"  # name=符卡名
+    SPELLCARD_CAPTURED = "spellcard_captured"  # name=符卡名
+    SPELLCARD_END = "spellcard_end"  # 未捕获结束(超时/击破失败); name=符卡名
     PLAYER_DEATH = "player_death"
     BOMB_START = "bomb_start"
-    EXTEND = "extend"                            # 奖残(残机增加)
-    STAGE_CLEAR = "stage_clear"                  # stage=刚通过的关号
+    EXTEND = "extend"  # 奖残(残机增加)
+    STAGE_CLEAR = "stage_clear"  # stage=刚通过的关号
     GAME_OVER = "game_over"
-    GAME_CLEAR = "game_clear"                    # 通关(总结算)
-    ENDING_START = "ending_start"                # 6 面通关进结局
+    GAME_CLEAR = "game_clear"  # 通关(总结算)
+    ENDING_START = "ending_start"  # 6 面通关进结局
 
 
 class GameEvent(msgspec.Struct, frozen=True):
     """一帧内发生的事件。name/stage 仅在相关类别时有值。"""
+
     kind: str
     frame: int
     name: str | None = None
@@ -66,6 +70,7 @@ class Input(msgspec.Struct, frozen=True):
 
     对话推进用 advance(= 对话中 Z 新按下), 快进用 skip(= 按住 Ctrl)。
     """
+
     left: bool = False
     right: bool = False
     up: bool = False
@@ -90,7 +95,7 @@ class Input(msgspec.Struct, frozen=True):
 class PlayerSnapshot(msgspec.Struct, frozen=True):
     x: float
     y: float
-    state: str            # alive/spawning/dead/invulnerable/border
+    state: str  # alive/spawning/dead/invulnerable/border
     focus: bool
     invulnerable: bool
     hitbox: float | None = None  # 自机判定半宽(作品常量, 未提供的作品为 None)
@@ -101,8 +106,8 @@ class BulletSnapshot(msgspec.Struct, frozen=True):
     y: float
     angle: float
     speed: float
-    sprite: int           # 弹型模板号(0..10)
-    hitbox: float         # 判定半径(碰撞盒半宽, 与引擎实际判定同源)
+    sprite: int  # 弹型模板号(0..10)
+    hitbox: float  # 判定半径(碰撞盒半宽, 与引擎实际判定同源)
 
 
 class EnemySnapshot(msgspec.Struct, frozen=True):
@@ -116,7 +121,7 @@ class EnemySnapshot(msgspec.Struct, frozen=True):
 class ItemSnapshot(msgspec.Struct, frozen=True):
     x: float
     y: float
-    type: str             # ItemType 名, 如 "POWER_SMALL"/"POINT"/"LIFE"
+    type: str  # ItemType 名, 如 "POWER_SMALL"/"POINT"/"LIFE"
 
 
 class LaserSnapshot(msgspec.Struct, frozen=True):
@@ -124,7 +129,7 @@ class LaserSnapshot(msgspec.Struct, frozen=True):
     y: float
     angle: float
     width: float
-    active: bool          # 全宽命中态(SPAWNING/DESPAWNING 为 False)
+    active: bool  # 全宽命中态(SPAWNING/DESPAWNING 为 False)
 
 
 class BossSnapshot(msgspec.Struct, frozen=True):
@@ -138,6 +143,7 @@ class BossSnapshot(msgspec.Struct, frozen=True):
 
 class Snapshot(msgspec.Struct, frozen=True):
     """某一帧的实体全景(由 Game.snapshot() 按需构造)。"""
+
     frame: int
     phase: GamePhase
     player: PlayerSnapshot
@@ -151,40 +157,45 @@ class Snapshot(msgspec.Struct, frozen=True):
 # ---- 对局门面 ----
 def _require_world(game: str) -> GameSpec:
     """经注册表解析作品, 并要求其对局实现已注册(供 Game/TouhouWorld 构造)。"""
-    
+
     spec = get_game(game)
     if spec and spec.world is None:
         raise ValueError(
             f"作品 {game!r} 已注册, 但缺对局实现"
-            f"(需要 @register_world_impl({game!r}) 装饰主逻辑类)")
-        
+            f"(需要 @register_world_impl({game!r}) 装饰主逻辑类)"
+        )
+
     return spec
 
 
 class Game:
     """一局作品对局(默认 th07, ``game=`` 指定其他已注册作品)。典型用法::
 
-        game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL)
-        while game.phase == GamePhase.RUNNING:
-            events = game.step(Input(shoot=True))
-            if game.frame % 60 == 0:
-                snap = game.snapshot()   # 按需, 每帧构造有开销
+    game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL)
+    while game.phase == GamePhase.RUNNING:
+        events = game.step(Input(shoot=True))
+        if game.frame % 60 == 0:
+            snap = game.snapshot()   # 按需, 每帧构造有开销
     """
 
-    def __init__(self, character: str = "ReimuA",
-                 difficulty: str = "Normal",
-                 stage: int = 1, *,
-                 game: str = "th07",
-                 data_path: PathLike | None = None,
-                 seed: int | None = None,
-                 lives: int | None = None,
-                 score_path: PathLike | None = None) -> None:
+    def __init__(
+        self,
+        character: str = "ReimuA",
+        difficulty: str = "Normal",
+        stage: int = 1,
+        *,
+        game: str = "th07",
+        data_path: PathLike | None = None,
+        seed: int | None = None,
+        lives: int | None = None,
+        score_path: PathLike | None = None,
+    ) -> None:
         # 经注册表解析作品(未注册名报带已注册列表的 KeyError);
         # 对局实现(register_world_impl 登记)必须有, 否则无法构造对局
         self.game_name = game
         self.spec = _require_world(game)
         self._validate_data(character, difficulty)
-        
+
         # difficulty>=4(Extra/Phantasm) 固定 2 残, lives 仅 <4 生效
         kwargs: dict = {}
         if lives is not None:
@@ -192,34 +203,42 @@ class Game:
         if self.spec.data is not None:
             kwargs["data"] = self.spec.data  # 数值表(register_game_data 登记)
         world = self.spec.world
-        
-        character_id  = 0
+
+        character_id = 0
         difficulty_id = 0
-        
+
         if self.spec.data:
             character_id = self.spec.data.characters.index(character)
             difficulty_id = self.spec.data.difficulties.index(difficulty)
-        
+
         self._impl: GameEngine = world(
-            data_path=data_path, character=character_id,
-            difficulty=difficulty_id, seed=seed, score_path=score_path,
-            hooks=self.spec.hooks, **kwargs) # type: ignore
-        
+            data_path=data_path,
+            character=character_id,
+            difficulty=difficulty_id,
+            seed=seed,
+            score_path=score_path,
+            hooks=self.spec.hooks,
+            **kwargs,
+        )  # type: ignore
+
         if stage != 1:
             self._impl.enter_stage(stage)
         self._prev = self._probe()  # 事件差的基准帧状态(每帧 step 后更新)
-        
+
     def _validate_data(self, character: str, difficulty: str) -> None:
-        """ 验证数据 """
+        """验证数据"""
         if self.spec and self.spec.data:
             if character not in self.spec.data.characters:
-                raise ValueError(f"{self.game_name} 不支持角色 {character}，可选: {self.spec.data.characters}")
+                raise ValueError(
+                    f"{self.game_name} 不支持角色 {character}，可选: {self.spec.data.characters}"
+                )
             if difficulty not in self.spec.data.difficulties:
-                raise ValueError(f"{self.game_name} 不支持难度 {difficulty}，选择: {self.spec.data.difficulties}")
+                raise ValueError(
+                    f"{self.game_name} 不支持难度 {difficulty}，选择: {self.spec.data.difficulties}"
+                )
 
     @classmethod
-    def _from_impl(cls, impl: GameEngine, spec: GameSpec, game_name: str
-                   ) -> "Game":
+    def _from_impl(cls, impl: GameEngine, spec: GameSpec, game_name: str) -> "Game":
         """包一个现存对局 impl 为 Game 门面(不重新构造对局)。
 
         观战模式用: 窗口 App 把局内 live 对局包出门面喂 policy(输入策略拿到的
@@ -237,8 +256,9 @@ class Game:
     def step(self, input: Input = Input.none()) -> list[GameEvent]:
         """推进一帧, 返回自上次 step 以来发生的事件列表。"""
         prev = self._prev
-        self._impl.tick(keys=input._keys(), bomb=input.bomb,
-                        advance=input.advance, skip=input.skip)
+        self._impl.tick(
+            keys=input._keys(), bomb=input.bomb, advance=input.advance, skip=input.skip
+        )
         now = self._probe()
         self._prev = now
         return self._diff_events(prev, now)
@@ -261,9 +281,9 @@ class Game:
         # spellcard_active() 蕴含 boss 非空(boss.is_active 且 spellcard_idx>=0)
         if boss is not None and self._spellcard_active():
             spell_key = (boss.spellcard_idx, boss.name)
-            
+
         border = getattr(g, "border", None)
-        
+
         return {
             "lives": g.lives,
             "deaths": g.globals.deaths,
@@ -298,7 +318,7 @@ class Game:
             emit(GameEventKind.BOMB_START)
         if now["lives"] > prev["lives"]:
             emit(GameEventKind.EXTEND)
-            
+
         # TODO: 这里耦合了TH07，后续解耦合
         # TODO: 记得采用EventBus架构（事件发布/订阅机制）
         if now["border_active"] and not prev["border_active"]:
@@ -391,31 +411,66 @@ class Game:
         g = self._impl
         p = g.player
         player = PlayerSnapshot(
-            x=p.pos.x, y=p.pos.y, state=p.state.name.lower(),
-            focus=p.focus, invulnerable=p.invulnerability_timer > 0,
+            x=p.pos.x,
+            y=p.pos.y,
+            state=p.state.name.lower(),
+            focus=p.focus,
+            invulnerable=p.invulnerability_timer > 0,
             # 判定半宽是作品常量能力位(协议外): 未提供的作品回落 None
-            hitbox=getattr(p, "hitbox_radius", None))
+            hitbox=getattr(p, "hitbox_radius", None),
+        )
         boss = None
         if g.boss is not None:
             b = g.boss
             boss = BossSnapshot(
-                name=b.name, x=b.pos.x, y=b.pos.y, life=b.life,
-                max_life=b.max_life, spellcard_active=self._spellcard_active())
+                name=b.name,
+                x=b.pos.x,
+                y=b.pos.y,
+                life=b.life,
+                max_life=b.max_life,
+                spellcard_active=self._spellcard_active(),
+            )
         return Snapshot(
-            frame=g.frame, phase=self.phase, player=player, boss=boss,
-            bullets=tuple(BulletSnapshot(
-                x=b.pos.x, y=b.pos.y, angle=b.angle, speed=b.speed,
-                sprite=b.sprite, hitbox=b.hitbox) for b in g.bullets.alive()),
-            enemies=tuple(EnemySnapshot(
-                x=e.pos.x, y=e.pos.y, life=int(e.life), radius=e.radius,
-                is_boss=bool(e.is_boss)) for e in g.host.alive()),
-            items=tuple(ItemSnapshot(
-                x=i.pos.x, y=i.pos.y, type=i.type.name)
-                for i in g.items.alive()),
-            lasers=tuple(LaserSnapshot(
-                x=l.pos.x, y=l.pos.y, angle=l.angle, width=l.width,
-                active=l.state == LaserState.ACTIVE)
-                for l in g.lasers.lasers if l.in_use),
+            frame=g.frame,
+            phase=self.phase,
+            player=player,
+            boss=boss,
+            bullets=tuple(
+                BulletSnapshot(
+                    x=b.pos.x,
+                    y=b.pos.y,
+                    angle=b.angle,
+                    speed=b.speed,
+                    sprite=b.sprite,
+                    hitbox=b.hitbox,
+                )
+                for b in g.bullets.alive()
+            ),
+            enemies=tuple(
+                EnemySnapshot(
+                    x=e.pos.x,
+                    y=e.pos.y,
+                    life=int(e.life),
+                    radius=e.radius,
+                    is_boss=bool(e.is_boss),
+                )
+                for e in g.host.alive()
+            ),
+            items=tuple(
+                ItemSnapshot(x=i.pos.x, y=i.pos.y, type=i.type.name)
+                for i in g.items.alive()
+            ),
+            lasers=tuple(
+                LaserSnapshot(
+                    x=l.pos.x,
+                    y=l.pos.y,
+                    angle=l.angle,
+                    width=l.width,
+                    active=l.state == LaserState.ACTIVE,
+                )
+                for l in g.lasers.lasers
+                if l.in_use
+            ),
         )
 
     # ---- 实体 numpy 快路径(热循环用; 面向 BulletFace/LaserFace 协议构造) ----
@@ -434,12 +489,15 @@ class Game:
         if not bullets:
             return np.empty((0, 6), dtype=np.float64)
         raw = np.array(
-            [(b.pos.x, b.pos.y, b.angle, b.speed, b.hitbox, float(b.sprite))
-             for b in bullets], dtype=np.float64)
+            [
+                (b.pos.x, b.pos.y, b.angle, b.speed, b.hitbox, float(b.sprite))
+                for b in bullets
+            ],
+            dtype=np.float64,
+        )
         vx = raw[:, 3] * np.cos(raw[:, 2])
         vy = raw[:, 3] * np.sin(raw[:, 2])
-        return np.column_stack((raw[:, 0], raw[:, 1], vx, vy,
-                                raw[:, 4], raw[:, 5]))
+        return np.column_stack((raw[:, 0], raw[:, 1], vx, vy, raw[:, 4], raw[:, 5]))
 
     def lasers_array(self) -> np.ndarray:
         """在场激光的 numpy 观测面, 形状 (N, 5), float64。
@@ -452,9 +510,18 @@ class Game:
         if not lasers:
             return np.empty((0, 5), dtype=np.float64)
         return np.array(
-            [(l.pos.x, l.pos.y, l.angle, l.width,
-              1.0 if l.state == LaserState.ACTIVE else 0.0)
-             for l in lasers], dtype=np.float64)
+            [
+                (
+                    l.pos.x,
+                    l.pos.y,
+                    l.angle,
+                    l.width,
+                    1.0 if l.state == LaserState.ACTIVE else 0.0,
+                )
+                for l in lasers
+            ],
+            dtype=np.float64,
+        )
 
 
 # ---- 资源包 + 世界入口(用户级 API) ----
@@ -466,6 +533,7 @@ class WorldData(msgspec.Struct, frozen=True):
     bgm_dat: WAV 高音质 BGM 包(th07 的例子: thbgm.dat; None = 与 res_dat
             同目录推导, 缺失时自动回退 MIDI 音源)
     """
+
     res_dat: PathLike | None = None
     bgm_dat: PathLike | None = None
 
@@ -503,8 +571,9 @@ class TouhouWorldEventStream:
         stream.policy = lambda game: Input(...)   # 中途接管输入(如 AI)
     """
 
-    def __init__(self, world: "TouhouWorld",
-                 policy: Callable[[Game], Input] | None = None) -> None:
+    def __init__(
+        self, world: "TouhouWorld", policy: Callable[[Game], Input] | None = None
+    ) -> None:
         self._world = world
         self.policy = policy
         self._done = False
@@ -530,9 +599,15 @@ class TouhouWorldEventStream:
         seed = getattr(g._impl, "seed", None)
         if not isinstance(seed, int):
             seed = 0x5EED if w.seed is None else (w.seed & 0xFFFF)
-        return ReplayRecorder(make_meta(
-            difficulty=int(w.difficulty), character=int(w.character),
-            stage=w.stage, seed=seed, initial_lives=w.lives))
+        return ReplayRecorder(
+            make_meta(
+                difficulty=int(w.difficulty),
+                character=int(w.character),
+                stage=w.stage,
+                seed=seed,
+                initial_lives=w.lives,
+            )
+        )
 
     def save_replay(self, path: PathLike | None = None) -> Path:
         """把本流已驱动的全部输入帧存成录像文件, 返回实际路径。
@@ -552,20 +627,21 @@ class TouhouWorldEventStream:
             self._recorder = self._new_recorder()
         while not self._done:
             if self.policy is not None:
-                inp = self.policy(g) # type: ignore
+                inp = self.policy(g)  # type: ignore
             else:
                 default = self._world.auto_input
                 inp = default(g) if callable(default) else default
             # 录像: 记本帧实际喂给对局的输入(与 tick 收到的同构)
-            self._recorder.record(inp._keys(), bomb=inp.bomb,
-                                  advance=inp.advance, skip=inp.skip)
+            self._recorder.record(
+                inp._keys(), bomb=inp.bomb, advance=inp.advance, skip=inp.skip
+            )
             for ev in g.step(inp):
                 yield ev
             ph = g.phase
             if ph == GamePhase.RESULT:
                 self._done = True
             elif ph == GamePhase.GAME_OVER:
-                g.finalize_game_over()   # headless 无续关 UI, 等价选 No
+                g.finalize_game_over()  # headless 无续关 UI, 等价选 No
             elif ph == GamePhase.ENDING:
                 g.finish_ending()
 
@@ -603,42 +679,60 @@ class TouhouWorld(Generic[_H]):
 
     # headless 字面量进泛型参数: run() 返回类型随之为 Stream / None(mypy 精确收窄)
     @overload
-    def __init__(self: "TouhouWorld[Literal[True]]",
-                 wd: WorldData | None = None,
-                 character: str = "ReimuA",
-                 difficulty: str = "Normal",
-                 lives: int = 3, *, headless: Literal[True],
-                 stage: int = 1,
-                 game: str = "th07",
-                 seed: int | None = None,
-                 auto_input: InputSource | None = None) -> None: ...
+    def __init__(
+        self: "TouhouWorld[Literal[True]]",
+        wd: WorldData | None = None,
+        character: str = "ReimuA",
+        difficulty: str = "Normal",
+        lives: int = 3,
+        *,
+        headless: Literal[True],
+        stage: int = 1,
+        game: str = "th07",
+        seed: int | None = None,
+        auto_input: InputSource | None = None,
+    ) -> None: ...
     @overload
-    def __init__(self: "TouhouWorld[Literal[False]]",
-                 wd: WorldData | None = None,
-                 character: str = "ReimuA",
-                 difficulty: str = "Normal",
-                 lives: int = 3, headless: Literal[False] = False,
-                 stage: int = 1, *,
-                 game: str = "th07",
-                 seed: int | None = None,
-                 auto_input: InputSource | None = None) -> None: ...
+    def __init__(
+        self: "TouhouWorld[Literal[False]]",
+        wd: WorldData | None = None,
+        character: str = "ReimuA",
+        difficulty: str = "Normal",
+        lives: int = 3,
+        headless: Literal[False] = False,
+        stage: int = 1,
+        *,
+        game: str = "th07",
+        seed: int | None = None,
+        auto_input: InputSource | None = None,
+    ) -> None: ...
     @overload
-    def __init__(self, wd: WorldData | None = None,
-                 character: str = "ReimuA",
-                 difficulty: str = "Normal",
-                 lives: int = 3, headless: bool = False,
-                 stage: int = 1, *,
-                 game: str = "th07",
-                 seed: int | None = None,
-                 auto_input: InputSource | None = None) -> None: ...
-    def __init__(self, wd: WorldData | None = None,
-                 character: str = "ReimuA",
-                 difficulty: str = "Normal",
-                 lives: int = 3, headless: bool = False,
-                 stage: int = 1, *,
-                 game: str = "th07",
-                 seed: int | None = None,
-                 auto_input: InputSource | None = None) -> None:
+    def __init__(
+        self,
+        wd: WorldData | None = None,
+        character: str = "ReimuA",
+        difficulty: str = "Normal",
+        lives: int = 3,
+        headless: bool = False,
+        stage: int = 1,
+        *,
+        game: str = "th07",
+        seed: int | None = None,
+        auto_input: InputSource | None = None,
+    ) -> None: ...
+    def __init__(
+        self,
+        wd: WorldData | None = None,
+        character: str = "ReimuA",
+        difficulty: str = "Normal",
+        lives: int = 3,
+        headless: bool = False,
+        stage: int = 1,
+        *,
+        game: str = "th07",
+        seed: int | None = None,
+        auto_input: InputSource | None = None,
+    ) -> None:
         # 经注册表解析作品(未注册名在此即报 KeyError, 与 headless 无关)
         self.spec = _require_world(game)
         self.game_name = game
@@ -649,17 +743,23 @@ class TouhouWorld(Generic[_H]):
         self.headless = headless
         self.stage = stage
         self.seed = seed
-        self.auto_input = auto_input if auto_input is not None else Input(
-            shoot=True, advance=True)
+        self.auto_input = (
+            auto_input if auto_input is not None else Input(shoot=True, advance=True)
+        )
         self._game: Game | None = None
         if headless:
             self._game = self._make_game()
 
     def _make_game(self) -> Game:
-        return Game(character=self.character, difficulty=self.difficulty,
-                    stage=self.stage, game=self.game_name,
-                    data_path=self.wd.resolve_res(),
-                    seed=self.seed, lives=self.lives)
+        return Game(
+            character=self.character,
+            difficulty=self.difficulty,
+            stage=self.stage,
+            game=self.game_name,
+            data_path=self.wd.resolve_res(),
+            seed=self.seed,
+            lives=self.lives,
+        )
 
     @property
     def game(self) -> Game:
@@ -674,8 +774,9 @@ class TouhouWorld(Generic[_H]):
         # 直接造流: run() 在非 headless 下会弹窗, 而流是 headless 专用语义
         return TouhouWorldEventStream(self)
 
-    def stream(self, policy: Callable[[Game], Input] | None = None
-               ) -> TouhouWorldEventStream:
+    def stream(
+        self, policy: Callable[[Game], Input] | None = None
+    ) -> TouhouWorldEventStream:
         """带输入策略的事件流(等价 run() 后设置 stream.policy)。"""
         return TouhouWorldEventStream(self, policy)
 
@@ -705,7 +806,8 @@ class TouhouWorld(Generic[_H]):
         if app_cls is None:
             raise ValueError(
                 f"作品 {self.game_name!r} 已注册, 但缺窗口 App"
-                f"(需要 @register_app({self.game_name!r}) 装饰窗口应用类)")
+                f"(需要 @register_app({self.game_name!r}) 装饰窗口应用类)"
+            )
 
         def make_game(*, difficulty: int, character: int) -> GameEngine:
             if spectate is not None:
@@ -717,9 +819,14 @@ class TouhouWorld(Generic[_H]):
             if self.spec.data is not None:
                 kwargs["data"] = self.spec.data  # 数值表(注册表注入)
             impl: GameEngine = world(
-                data_path=self.wd.resolve_res(), character=character,
-                difficulty=difficulty, seed=self.seed,
-                initial_lives=self.lives, hooks=self.spec.hooks, **kwargs)
+                data_path=self.wd.resolve_res(),
+                character=character,
+                difficulty=difficulty,
+                seed=self.seed,
+                initial_lives=self.lives,
+                hooks=self.spec.hooks,
+                **kwargs,
+            )
             return impl
 
         # 构造契约见 registry.register_app:
@@ -728,8 +835,12 @@ class TouhouWorld(Generic[_H]):
         app_kwargs: dict = {}
         if spectate is not None:
             app_kwargs["spectate"] = spectate
-        app = app_cls(make_game, data_path=self.wd.resolve_res(),
-                      bgm_path=self.wd.resolve_bgm(), game_data=self.spec.data,
-                      **app_kwargs)
+        app = app_cls(
+            make_game,
+            data_path=self.wd.resolve_res(),
+            bgm_path=self.wd.resolve_bgm(),
+            game_data=self.spec.data,
+            **app_kwargs,
+        )
         app.run()
         return None

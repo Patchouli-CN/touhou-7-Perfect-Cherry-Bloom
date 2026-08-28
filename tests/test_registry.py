@@ -1,4 +1,5 @@
 """作品注册表(touhou/registry.py)+ TouhouWorld/Game 的 game= 接缝测试。"""
+
 from __future__ import annotations
 
 import pytest
@@ -28,8 +29,7 @@ from touhou.registry import (
 )
 from touhou.schema.anm import AnmFile
 
-needs_data = pytest.mark.skipif(not DEFAULT_DATA.exists(),
-                                reason="需要真实 th07.dat")
+needs_data = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
 
 
 # ---- 注册/查找 ----
@@ -183,8 +183,11 @@ def test_pygame_renderer_satisfies_renderer_protocol() -> None:
     由本测试兜底协议符合性(只查成员存在, 签名/语义由全量测试覆盖)。
     """
     cls = get_renderer("pygame")
-    missing = [m for m in dir(Renderer)
-               if not m.startswith("_") and not callable(getattr(cls, m, None))]
+    missing = [
+        m
+        for m in dir(Renderer)
+        if not m.startswith("_") and not callable(getattr(cls, m, None))
+    ]
     assert not missing, missing
 
 
@@ -231,8 +234,8 @@ def test_stub_game_with_custom_data_reuses_th07_engine() -> None:
         difficulties=("Only",),
         stage_count=6,
         character_sht={0: ("ply00a.sht", "ply00as.sht")},  # 复用 th07 资源文件
-        spellcard_scores=(100000,) * 8,   # 短表(impl 的 begin_spellcard 有钳位)
-        drop_table=(1,) * 4,              # 小怪只掉点道具
+        spellcard_scores=(100000,) * 8,  # 短表(impl 的 begin_spellcard 有钳位)
+        drop_table=(1,) * 4,  # 小怪只掉点道具
     )
     register_game_data("th07fork", custom)
     register_world_impl("th07fork")(PerfectCherryBloom)
@@ -241,12 +244,12 @@ def test_stub_game_with_custom_data_reuses_th07_engine() -> None:
 
     game = Game(game="th07fork", seed=9)
     assert isinstance(game._impl, PerfectCherryBloom)
-    assert game._impl.data is custom                # data 注入生效
-    assert game._impl._drop_table == [1, 1, 1, 1]   # 掉落表走了注入值
+    assert game._impl.data is custom  # data 注入生效
+    assert game._impl._drop_table == [1, 1, 1, 1]  # 掉落表走了注入值
     for _ in range(300):
         game.step(Input(shoot=True))
-    assert game.frame == 300 and game.score >= 0    # 基本对局推进
-    snap = game.snapshot()                          # 门面协议面照常工作
+    assert game.frame == 300 and game.score >= 0  # 基本对局推进
+    snap = game.snapshot()  # 门面协议面照常工作
     assert snap.frame == 300 and snap.player.state == "alive"
 
 
@@ -263,8 +266,12 @@ def test_engine_modules_default_to_th07_tables() -> None:
     raw = games_th07.BOMB_PARAMS
     assert set(bomb.BOMB_PARAMS) == set(raw)
     for key, params in bomb.BOMB_PARAMS.items():
-        assert (params.duration, params.invulnerability,
-                params.drain_min_cost, params.drain_scale) == raw[key]
+        assert (
+            params.duration,
+            params.invulnerability,
+            params.drain_min_cost,
+            params.drain_scale,
+        ) == raw[key]
     assert CHARACTER_SHT[5] == ("ply02b.sht", "ply02bs.sht")
 
 
@@ -274,10 +281,10 @@ def test_boss_spellcard_scores_override() -> None:
 
     b = Boss()
     b.begin_spellcard(0, 600)
-    assert b.capture_score == SPELLCARD_SCORE[0]      # 默认表
+    assert b.capture_score == SPELLCARD_SCORE[0]  # 默认表
     b2 = Boss(spellcard_scores=(777000,))
     b2.begin_spellcard(0, 600)
-    assert b2.capture_score == 777000                 # 注入表
+    assert b2.capture_score == 777000  # 注入表
 
 
 # ---- mod 能力提供者维度 ----

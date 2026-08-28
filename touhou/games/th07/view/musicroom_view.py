@@ -1,4 +1,4 @@
-""" Music Room 渲染(pygame) —— 风格对齐 playerdata_view。
+"""Music Room 渲染(pygame) —— 风格对齐 playerdata_view。
 
 布局(640x480, 简化版 MusicRoom.cpp OnDraw :189-229):
 - 背景 music.jpg(缺失回退 result.jpg/title00.jpg, 再退纯色), 上盖半透明面板;
@@ -57,8 +57,7 @@ class MusicRoomView:
         self._font_big = _load_font(28)
         self._font_small = _load_font(16)
 
-    def _text(self, surf, font, s: str, x: int, y: int,
-              color=_VALUE) -> None:
+    def _text(self, surf, font, s: str, x: int, y: int, color=_VALUE) -> None:
         surf.blit(font.render(s, True, color), (x, y))
 
     @staticmethod
@@ -83,11 +82,10 @@ class MusicRoomView:
             if not cut:
                 break
             out.append(cut)
-            s = s[len(cut):]
+            s = s[len(cut) :]
         return out
 
-    def render(self, surf: pygame.Surface, flow: MusicRoomFlow,
-               frame: int = 0) -> None:
+    def render(self, surf: pygame.Surface, flow: MusicRoomFlow, frame: int = 0) -> None:
         if self._bg is not None:
             surf.blit(pygame.transform.scale(self._bg, (TITLE_W, TITLE_H)), (0, 0))
         else:
@@ -106,15 +104,17 @@ class MusicRoomView:
             self._render_comment(surf, f, flow)
 
         if frame % 60 < 45:  # 闪烁提示
-            self._text(surf, f, "↑↓: 选曲  Z: 播放/停止  X/Esc: 返回",
-                       60, TITLE_H - 36, _LABEL)
+            self._text(
+                surf, f, "↑↓: 选曲  Z: 播放/停止  X/Esc: 返回", 60, TITLE_H - 36, _LABEL
+            )
 
     # ---- 左栏: 曲目表(一屏 MUSIC_ROOM_VISIBLE 首) ----
     def _render_track_list(self, surf, f, flow: MusicRoomFlow) -> None:
         n = len(flow.tracks)
         y = 92
-        for i in range(flow.listing_offset,
-                       min(flow.listing_offset + MUSIC_ROOM_VISIBLE, n)):
+        for i in range(
+            flow.listing_offset, min(flow.listing_offset + MUSIC_ROOM_VISIBLE, n)
+        ):
             track = flow.tracks[i]
             lit = i == flow.cursor
             playing = i == flow.playing

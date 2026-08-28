@@ -1,4 +1,4 @@
-""" score.json 持久化 —— 对照 ResultScreen.cpp / 规格 §F.3(JSON 简化版)。
+"""score.json 持久化 —— 对照 ResultScreen.cpp / 规格 §F.3(JSON 简化版)。
 
 原版 score.dat 是 LZSS 压缩 + 分块(TH7K/HSCR/CATK/CLRD/PSCR/PLST/LSNM)
 + XOR 校验的二进制格式; 本期简化为单个 JSON 文件, 字段语义对齐:
@@ -33,7 +33,7 @@ SCORE_JSON_VERSION = 1
 NUM_CHARACTERS = 6
 NUM_DIFFICULTIES = 6
 TOP_SIZE = 10
-CATK_CAP = 9999          # attempts/successes 上限 (EclManager.cpp < 9999 才 ++)
+CATK_CAP = 9999  # attempts/successes 上限 (EclManager.cpp < 9999 才 ++)
 DEFAULT_NAME = "PLAYER"  # 从未输入过名字时的初始默认名(原版 LSNM 缺省为 8 空格)
 
 
@@ -42,10 +42,16 @@ def default_score(slot: int) -> int:
     return max(0, 100000 - slot * 10000)
 
 
-def make_highscore_record(score: int, character: int, difficulty: int,
-                          stage: int, *, name: str = DEFAULT_NAME,
-                          num_retries: int = 0,
-                          date: str | None = None) -> dict:
+def make_highscore_record(
+    score: int,
+    character: int,
+    difficulty: int,
+    stage: int,
+    *,
+    name: str = DEFAULT_NAME,
+    num_retries: int = 0,
+    date: str | None = None,
+) -> dict:
     """一条 Hscr 子集记录; date 缺省取当前本地时间 ISO 字符串(带时区偏移)。"""
     if date is None:
         date = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -54,20 +60,22 @@ def make_highscore_record(score: int, character: int, difficulty: int,
         "character": int(character),
         "difficulty": int(difficulty),
         "stage": int(stage),
-        "name": str(name)[:9],          # 原版 name[9]
+        "name": str(name)[:9],  # 原版 name[9]
         "numRetries": int(num_retries),  # Hscr 字段名沿用原版拼写
         "date": date,
     }
 
 
 def _new_catk_entry() -> dict:
-    return {"name": "", "attempts": [0] * 7,
-            "successes": [0] * 7, "highscore": [0] * 7}
+    return {"name": "", "attempts": [0] * 7, "successes": [0] * 7, "highscore": [0] * 7}
 
 
 def _is_int_list(v, n: int) -> bool:
-    return (isinstance(v, list) and len(v) == n
-            and all(isinstance(x, int) and not isinstance(x, bool) for x in v))
+    return (
+        isinstance(v, list)
+        and len(v) == n
+        and all(isinstance(x, int) and not isinstance(x, bool) for x in v)
+    )
 
 
 class ScoreStore:
@@ -78,15 +86,24 @@ class ScoreStore:
     """
 
     def __init__(self, *, spellcard_count: int = 0) -> None:
-        self.highscores: dict[str, list[dict]] = {}   # "difficulty,character" -> [rec]
-        self.catk: list[dict] = [_new_catk_entry()
-                                 for _ in range(max(0, int(spellcard_count)))]
-        self.clrd = [{"with_retries": [0] * NUM_DIFFICULTIES,
-                      "without_retries": [0] * NUM_DIFFICULTIES}
-                     for _ in range(NUM_CHARACTERS)]
-        self.pscr: dict[str, dict] = {}               # "difficulty,character" -> {...}
-        self.plst = {"play_count": 0, "total_frames": 0,
-                     "clear_count": 0, "retry_count": 0}
+        self.highscores: dict[str, list[dict]] = {}  # "difficulty,character" -> [rec]
+        self.catk: list[dict] = [
+            _new_catk_entry() for _ in range(max(0, int(spellcard_count)))
+        ]
+        self.clrd = [
+            {
+                "with_retries": [0] * NUM_DIFFICULTIES,
+                "without_retries": [0] * NUM_DIFFICULTIES,
+            }
+            for _ in range(NUM_CHARACTERS)
+        ]
+        self.pscr: dict[str, dict] = {}  # "difficulty,character" -> {...}
+        self.plst = {
+            "play_count": 0,
+            "total_frames": 0,
+            "clear_count": 0,
+            "retry_count": 0,
+        }
         self.lsnm: str | None = None  # LSNM: 上次输入的名字(None=从未输入)
 
     # ---- 键 ----
@@ -137,8 +154,9 @@ class ScoreStore:
         """名字输入完成后登记 LSNM (HandleResultKeyboard :1321-1322)。"""
         self.lsnm = str(name)[:8]  # 原版 LSNM 槽 8 字符(name[9]=8+NUL)
 
-    def set_entry_name(self, difficulty: int, character: int, rank: int,
-                       name: str) -> None:
+    def set_entry_name(
+        self, difficulty: int, character: int, rank: int, name: str
+    ) -> None:
         """改榜上第 rank 条记录的名字(名字输入态原地改, 同原版改链上的
         curScore.name); rank 越界/无该榜时静默忽略。"""
         entries = self.highscores.get(self._key(difficulty, character), [])
@@ -150,8 +168,11 @@ class ScoreStore:
         rows = self.entries(difficulty, character)
         out = list(rows)
         for k in range(len(rows), TOP_SIZE):
-            out.append(make_highscore_record(
-                default_score(k), character, difficulty, 1, name="--------"))
+            out.append(
+                make_highscore_record(
+                    default_score(k), character, difficulty, 1, name="--------"
+                )
+            )
         return out[:TOP_SIZE]
 
     # ---- catk 符卡统计 (EclManager Begin/EndSpellcard) ----
@@ -178,8 +199,9 @@ class ScoreStore:
                     e["highscore"][s] = int(score)
 
     # ---- CLRD 通关统计 (GameManager.cpp 过关时) ----
-    def record_clear(self, character: int, difficulty: int, stage_reached: int,
-                     num_retries: int) -> None:
+    def record_clear(
+        self, character: int, difficulty: int, stage_reached: int, num_retries: int
+    ) -> None:
         """stage_reached = 通过的面数 (C: currentStage-1, 取 max 不累加)。
 
         ZUN quirk: C++ 里 difficultyClearedWithRetries 反而被
@@ -200,8 +222,16 @@ class ScoreStore:
         p["play_count"] += 1
         self.plst["play_count"] += 1
 
-    def record_run_end(self, character: int, difficulty: int, *, score: int,
-                       frames: int, cleared: bool, num_retries: int) -> None:
+    def record_run_end(
+        self,
+        character: int,
+        difficulty: int,
+        *,
+        score: int,
+        frames: int,
+        cleared: bool,
+        num_retries: int,
+    ) -> None:
         """一局结束: pscr highscore 取 max; plst 累加帧数/通关/续关次数。"""
         key = self._key(difficulty, character)
         p = self.pscr.setdefault(key, {"play_count": 0, "highscore": 0})
@@ -228,8 +258,9 @@ class ScoreStore:
         path = Path(path)
         tmp = path.with_suffix(path.suffix + ".tmp")
         # msgspec.json.format(indent=1) 与原 json.dumps(indent=1) 输出逐字节一致
-        tmp.write_bytes(msgspec.json.format(
-            msgspec.json.encode(self.to_dict()), indent=1))
+        tmp.write_bytes(
+            msgspec.json.format(msgspec.json.encode(self.to_dict()), indent=1)
+        )
         tmp.replace(path)  # 原子替换, 避免半截文件
 
     @classmethod
@@ -253,26 +284,34 @@ class ScoreStore:
         catk = data.get("catk")
         if isinstance(catk, list):
             if len(store.catk) < len(catk):
-                store.catk.extend(_new_catk_entry()
-                                  for _ in range(len(catk) - len(store.catk)))
+                store.catk.extend(
+                    _new_catk_entry() for _ in range(len(catk) - len(store.catk))
+                )
             for i, e in enumerate(catk):
                 if _is_catk_entry(e):
                     store.catk[i] = e
         clrd = data.get("clrd")
         if isinstance(clrd, list):
             for i, c in enumerate(clrd[:NUM_CHARACTERS]):
-                if (isinstance(c, dict)
-                        and _is_int_list(c.get("with_retries"), NUM_DIFFICULTIES)
-                        and _is_int_list(c.get("without_retries"), NUM_DIFFICULTIES)):
+                if (
+                    isinstance(c, dict)
+                    and _is_int_list(c.get("with_retries"), NUM_DIFFICULTIES)
+                    and _is_int_list(c.get("without_retries"), NUM_DIFFICULTIES)
+                ):
                     store.clrd[i] = c
         pscr = data.get("pscr")
         if isinstance(pscr, dict):
             for key, p in pscr.items():
-                if (isinstance(key, str) and isinstance(p, dict)
-                        and isinstance(p.get("play_count"), int)
-                        and isinstance(p.get("highscore"), int)):
-                    store.pscr[key] = {"play_count": p["play_count"],
-                                       "highscore": p["highscore"]}
+                if (
+                    isinstance(key, str)
+                    and isinstance(p, dict)
+                    and isinstance(p.get("play_count"), int)
+                    and isinstance(p.get("highscore"), int)
+                ):
+                    store.pscr[key] = {
+                        "play_count": p["play_count"],
+                        "highscore": p["highscore"],
+                    }
         plst = data.get("plst")
         if isinstance(plst, dict):
             for k in ("play_count", "total_frames", "clear_count", "retry_count"):
@@ -298,19 +337,24 @@ class ScoreStore:
 
 
 def _is_highscore_record(r) -> bool:
-    return (isinstance(r, dict)
-            and isinstance(r.get("score"), int) and not isinstance(r.get("score"), bool)
-            and isinstance(r.get("character"), int)
-            and isinstance(r.get("difficulty"), int)
-            and isinstance(r.get("stage"), int)
-            and isinstance(r.get("name"), str)
-            and isinstance(r.get("numRetries"), int)
-            and isinstance(r.get("date"), str))
+    return (
+        isinstance(r, dict)
+        and isinstance(r.get("score"), int)
+        and not isinstance(r.get("score"), bool)
+        and isinstance(r.get("character"), int)
+        and isinstance(r.get("difficulty"), int)
+        and isinstance(r.get("stage"), int)
+        and isinstance(r.get("name"), str)
+        and isinstance(r.get("numRetries"), int)
+        and isinstance(r.get("date"), str)
+    )
 
 
 def _is_catk_entry(e) -> bool:
-    return (isinstance(e, dict)
-            and isinstance(e.get("name"), str)
-            and _is_int_list(e.get("attempts"), 7)
-            and _is_int_list(e.get("successes"), 7)
-            and _is_int_list(e.get("highscore"), 7))
+    return (
+        isinstance(e, dict)
+        and isinstance(e.get("name"), str)
+        and _is_int_list(e.get("attempts"), 7)
+        and _is_int_list(e.get("successes"), 7)
+        and _is_int_list(e.get("highscore"), 7)
+    )

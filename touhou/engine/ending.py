@@ -56,7 +56,7 @@ class EndingData(msgspec.Struct):
     bad: bool
     path: str
     segments: list[EndingSegment]
-    music: str = ""    # @m 指令的 BGM 文件名(如 th07_14.mid), 无则空
+    music: str = ""  # @m 指令的 BGM 文件名(如 th07_14.mid), 无则空
     ops: list[tuple] = msgspec.field(default_factory=list)  # 完整指令流(parse_end_ops)
 
     @property
@@ -69,17 +69,31 @@ class EndingData(msgspec.Struct):
     def load(cls, archive, character: int, *, bad: bool) -> "EndingData":
         path = ending_path(character, bad=bad)
         data = archive.load(path)
-        return cls(character=character, bad=bad, path=path,
-                   segments=parse_end(data), music=parse_end_music(data),
-                   ops=parse_end_ops(data))
+        return cls(
+            character=character,
+            bad=bad,
+            path=path,
+            segments=parse_end(data),
+            music=parse_end_music(data),
+            ops=parse_end_ops(data),
+        )
 
     @classmethod
     def generic(cls, character: int = 0) -> "EndingData":
         """结局资源缺失时的通用通关画面(简化兜底)。"""
-        return cls(character=character, bad=False, path="",
-                   segments=[EndingSegment(None, ["ALL CLEAR!!", "感谢游玩！"])],
-                   ops=[("wait", 60, 60), ("text", "ALL CLEAR!!"),
-                        ("text", "感谢游玩！"), ("wait", 600, 60), ("end",)])
+        return cls(
+            character=character,
+            bad=False,
+            path="",
+            segments=[EndingSegment(None, ["ALL CLEAR!!", "感谢游玩！"])],
+            ops=[
+                ("wait", 60, 60),
+                ("text", "ALL CLEAR!!"),
+                ("text", "感谢游玩！"),
+                ("wait", 600, 60),
+                ("end",),
+            ],
+        )
 
 
 def ending_path(character: int, *, bad: bool) -> str:
@@ -135,6 +149,7 @@ def parse_end(data: bytes) -> list[EndingSegment]:
 # ---------------------------------------------------------------------------
 # 完整指令流解析 (Ending.cpp ParseEndFile 指令 switch, :242-372)
 # ---------------------------------------------------------------------------
+
 
 def _basename(raw: bytes) -> str:
     """@b/@m/@F 的路径参数 → archive 内裸文件名 (data/end/end00.jpg → end00.jpg)。"""
@@ -227,13 +242,13 @@ def parse_end_ops(data: bytes) -> list[tuple]:
 # ---------------------------------------------------------------------------
 
 # fadeType (Ending.hpp; ParseEndFile @0..@3 → 1..4)
-FADE_OUT_BLACK = 1   # @0: 黑幕淡出(从黑场进入)
-FADE_IN_BLACK = 2    # @1: 黑幕淡入(渐黑, 停在全黑)
-FADE_OUT_WHITE = 3   # @2: 白幕淡出
-FADE_IN_WHITE = 4    # @3: 白幕淡入(渐白, 停在全白)
+FADE_OUT_BLACK = 1  # @0: 黑幕淡出(从黑场进入)
+FADE_IN_BLACK = 2  # @1: 黑幕淡入(渐黑, 停在全黑)
+FADE_OUT_WHITE = 3  # @2: 白幕淡出
+FADE_IN_WHITE = 4  # @3: 白幕淡入(渐白, 停在全白)
 
-TEXT_MAX_SLOTS = 15      # sprites[15] (Ending.cpp:493-498)
-TEXT_X = 64              # sprites[i].pos = (64, i*16+392)
+TEXT_MAX_SLOTS = 15  # sprites[15] (Ending.cpp:493-498)
+TEXT_X = 64  # sprites[i].pos = (64, i*16+392)
 TEXT_Y0 = 392
 TEXT_LINE_H = 16
 
@@ -242,7 +257,7 @@ class EndingLine(msgspec.Struct):
     """一行已显示文本 (DrawVmTextFmt 画进 sprites[timesFileParsed])。"""
 
     text: str
-    color: int           # 0xRRGGBB (@c)
+    color: int  # 0xRRGGBB (@c)
 
 
 class EndingPlayer:
@@ -255,14 +270,17 @@ class EndingPlayer:
     advance_pressed = 确认键按下沿(minWait 耗尽后提前结束等待, :199-205/227-234)。
     """
 
-    def __init__(self, data: "bytes | list[tuple]",
-                 loader: "Callable[[str], bytes | None] | None" = None) -> None:
+    def __init__(
+        self,
+        data: "bytes | list[tuple]",
+        loader: "Callable[[str], bytes | None] | None" = None,
+    ) -> None:
         self._ops = parse_end_ops(data) if isinstance(data, bytes) else list(data)
-        self._loader = loader    # @F 续载用: (archive 裸文件名) -> bytes | None
+        self._loader = loader  # @F 续载用: (archive 裸文件名) -> bytes | None
         self._pc = 0
         # ParseEndFile 计时器/参数 (LoadEnding: line2Delay=8, timer2=0)
         self.timer2 = 0
-        self.min_wait = 0        # minWaitFrames (文本行/@w)
+        self.min_wait = 0  # minWaitFrames (文本行/@w)
         self.timer3 = 0
         self.min_wait_reset = 0  # minWaitResetFrames (@r)
         self.line2_delay = 8
@@ -274,7 +292,7 @@ class EndingPlayer:
         self.bg_scroll = 0.0
         # 立绘槽位: vm_idx → (anm_script_idx, anm_sprite_idx) (@a)
         self.faces: dict[int, tuple[int, int]] = {}
-        self.faces_version = 0   # faces 变更计数(view 据此重建/清 VM)
+        self.faces_version = 0  # faces 变更计数(view 据此重建/清 VM)
         self.texts: list[EndingLine] = []
         # 淡入淡出 (FadingEffect)
         self.fade_type = 0
@@ -285,24 +303,24 @@ class EndingPlayer:
         self.done = False
 
     # ---- 每帧 ----
-    def tick(self, *, advance_held: bool = False,
-             advance_pressed: bool = False) -> None:
+    def tick(
+        self, *, advance_held: bool = False, advance_pressed: bool = False
+    ) -> None:
         if self.done:
             return
-        self._advance_fade()     # OnDraw 的 FadingEffect (每帧, 与解析停止无关)
-        self._parse_once(advance_held=advance_held,
-                         advance_pressed=advance_pressed)
+        self._advance_fade()  # OnDraw 的 FadingEffect (每帧, 与解析停止无关)
+        self._parse_once(advance_held=advance_held, advance_pressed=advance_pressed)
 
     def _advance_fade(self) -> None:
         """FadingEffect (Ending.cpp:99-165) 的计时推进; 颜色见 fade_overlay。"""
         if self.fade_type in (FADE_OUT_BLACK, FADE_OUT_WHITE):
             if self.time_fading >= self.fade_frames:
-                self.fade_type = 0       # 淡出完成 → 无覆盖
+                self.fade_type = 0  # 淡出完成 → 无覆盖
             else:
                 self.time_fading += 1
         elif self.fade_type in (FADE_IN_BLACK, FADE_IN_WHITE):
             if self.time_fading < self.fade_frames:
-                self.time_fading += 1    # 淡入完成 → 停在不透明色
+                self.time_fading += 1  # 淡入完成 → 停在不透明色
 
     def fade_overlay(self) -> tuple[int, int, int, int] | None:
         """本帧淡色覆盖 (r, g, b, a); None = 无覆盖 (endingFadeRectColor alpha==0)。"""
@@ -334,7 +352,7 @@ class EndingPlayer:
             elif advance_pressed:
                 self.timer3 = 0
             if self.timer3 <= 0:
-                self.texts.clear()   # sprites[*].pendingInterrupt=2, timesFileParsed=0
+                self.texts.clear()  # sprites[*].pendingInterrupt=2, timesFileParsed=0
             else:
                 self._scroll_bg()
                 return
@@ -349,7 +367,7 @@ class EndingPlayer:
             return
         while True:
             if self._pc >= len(self._ops):
-                self.done = True     # 无 @z 兜底: 文件播完即结束
+                self.done = True  # 无 @z 兜底: 文件播完即结束
                 return
             op = self._ops[self._pc]
             self._pc += 1
@@ -370,9 +388,9 @@ class EndingPlayer:
                     return
                 self._ops = parse_end_ops(data)
                 self._pc = 0
-                self.line2_delay = 8       # LoadEnding 重置 (:446)
+                self.line2_delay = 8  # LoadEnding 重置 (:446)
                 self.timer2 = 0
-                self.faces.clear()         # @F fallthrough @R (:292-297)
+                self.faces.clear()  # @F fallthrough @R (:292-297)
                 self.faces_version += 1
             elif kind == "clear_faces":
                 self.faces.clear()

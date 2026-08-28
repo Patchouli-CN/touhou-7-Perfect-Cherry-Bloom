@@ -11,6 +11,7 @@ stg6enm.anm idx153 = 512x256 墨染巨扇): 修复前我们把 sub-anm 画在本
 本测试用真实 stg6enm.anm 渲染: 有扇帧 vs 无扇帧在本体不透明核心区域
 必须几乎一致(扇子不盖住人), 同时扇子区域确实被画上(排除扇子没画的假绿)。
 """
+
 from __future__ import annotations
 
 import os
@@ -61,11 +62,11 @@ def _render_with_sub_anm(sub_anm: int, frames: int = 90):
     from touhou.engine.enemies import EclEnemy
 
     g, view, surf = _mk_game_view()
-    machine = EclMachine(g.ecl_file)      # 不 call_sub: 视图层只读 state
+    machine = EclMachine(g.ecl_file)  # 不 call_sub: 视图层只读 state
     e = EclEnemy(machine)
     st = e.state
-    st.anm_idx = 147                       # 幽幽子站立
-    st.sub_anm_idx[0] = sub_anm            # 153 = 墨染巨扇 / -1 = 无
+    st.anm_idx = 147  # 幽幽子站立
+    st.sub_anm_idx[0] = sub_anm  # 153 = 墨染巨扇 / -1 = 无
     st.pos.set(BOSS_X, BOSS_Y, 0.0)
     g.host.add(e)
     for _ in range(frames):
@@ -92,5 +93,6 @@ def test_sub_anm_slot0_drawn_behind_primary() -> None:
     assert fan_diff > 0.5, f"扇子没画出来? fan box diff={fan_diff:.3f}"
     # 本体不被扇子盖住: 本体核心柱有扇/无扇必须逐像素一致
     body_diff = _diff_ratio(with_fan, no_fan, BODY_BOX)
-    assert body_diff < 0.02, \
+    assert body_diff < 0.02, (
         f"本体被巨扇盖住(扇子画在了本体之上): body box diff={body_diff:.3f}"
+    )

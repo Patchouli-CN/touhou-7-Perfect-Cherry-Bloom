@@ -1,4 +1,4 @@
-""" 道具系统(th07) —— 移植自 ItemManager.cpp / 规格 §E。
+"""道具系统(th07) —— 移植自 ItemManager.cpp / 规格 §E。
 
 通用机制(道具三态运动学/收点判定/批量操作/容器)已上移到引擎层基座
 engine/item_base.py(ItemBase/ItemContextBase/ItemWorldBase/CollectResultBase);
@@ -53,7 +53,7 @@ def next_needed_point_items_for_extend(extends: int, difficulty: int) -> int:
     """第 extends 次(0 起)点道具残机所需累计点道具数 (ItemManager.cpp:289-315)。"""
     if difficulty < 4:
         if extends < 3:
-            return extends * 75 + 50       # 50/125/200
+            return extends * 75 + 50  # 50/125/200
         if extends < 5:
             return (extends - 3) * 150 + 300
         return (extends - 5) * 200 + 800
@@ -81,9 +81,9 @@ class ItemType(IntEnum):
 class CollectResult(CollectResultBase):
     """收集一个道具后的结算(尚未应用到全局)。通用字段在基类 CollectResultBase。"""
 
-    delta_cherry: int = 0       # 仅 cherry 轨(AddCherry)
+    delta_cherry: int = 0  # 仅 cherry 轨(AddCherry)
     delta_cherry_plus: int = 0  # cherryPlus 轨(AddCherryPlus, 同时也累加 cherry)
-    extends: int = 0            # 本次收集获得的残机数(点道具阈值, 可连升多个)
+    extends: int = 0  # 本次收集获得的残机数(点道具阈值, 可连升多个)
     clear_bullets: bool = False
     point_items_collected: int = 0  # 计入残机累计的点道具数
     full_power: bool = False
@@ -97,9 +97,9 @@ class CollectResult(CollectResultBase):
 
 # 弹字颜色 (ItemManager.cpp CreatePopup1/2 实参, ARGB)
 POPUP_WHITE = 0xFFFFFFFF
-POPUP_YELLOW = 0xFFFFFF00        # POC 线上/结界收点满分
-POPUP_POWERUP = 0xFFFFC0A0       # 火力升档 PowerUp 字形
-POPUP_CHERRY_GAIN = 0xFFFF4040   # 樱点系加分(STAR 的 cherryPlus +100)
+POPUP_YELLOW = 0xFFFFFF00  # POC 线上/结界收点满分
+POPUP_POWERUP = 0xFFFFC0A0  # 火力升档 PowerUp 字形
+POPUP_CHERRY_GAIN = 0xFFFF4040  # 樱点系加分(STAR 的 cherryPlus +100)
 
 
 class GameContext(ItemContextBase):
@@ -118,7 +118,7 @@ class GameContext(ItemContextBase):
     bombing: bool = False
     power_overflow_counter: int = 0
     spell_cards_captured: int = 0
-    cherry_gap: int = 0         # cherry - cherryStart
+    cherry_gap: int = 0  # cherry - cherryStart
     cherry_maxed: bool = False  # cherry >= cherryMax
     extends_from_point_items: int = 0
     point_items_collected_for_extend: int = 0
@@ -140,8 +140,9 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
     """th07 道具管理器(通用容器/运动机制在基类 ItemWorldBase)。"""
 
     # ---- 生成 ----
-    def spawn(self, at: Vec2, it: ItemType, power: float = 0.0,
-              state: int = STATE_FALL) -> Item:
+    def spawn(
+        self, at: Vec2, it: ItemType, power: float = 0.0, state: int = STATE_FALL
+    ) -> Item:
         # 满火力时 POWER_SMALL/BIG 自动转 CHERRY (ItemManager::SpawnItem)
         if power >= FULL_POWER and it in (ItemType.POWER_SMALL, ItemType.POWER_BIG):
             it = ItemType.CHERRY
@@ -153,8 +154,13 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
         self.items.append(item)
         return item
 
-    def drop_random(self, at: Vec2, table: list[int] | None = None,
-                    counter: int = 0, power: float = 0.0) -> Item:
+    def drop_random(
+        self,
+        at: Vec2,
+        table: list[int] | None = None,
+        counter: int = 0,
+        power: float = 0.0,
+    ) -> Item:
         """按掉落表放一个道具(小怪死亡掉落)。"""
         tbl = table or DROP_TABLE
         it = ItemType(tbl[counter % len(tbl)])
@@ -169,10 +175,14 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
         道具也被改回下落态 + (0,-0.5) 缓降(死亡爆道具重撒)。"""
         if item.state == STATE_SPAWN:
             return
-        trigger = (item.state == STATE_ATTRACT
-                   or ((ctx.power >= FULL_POWER or ctx.difficulty >= 4)
-                       and ctx.player_pos.y < ctx.poc_y)
-                   or ctx.border_active)
+        trigger = (
+            item.state == STATE_ATTRACT
+            or (
+                (ctx.power >= FULL_POWER or ctx.difficulty >= 4)
+                and ctx.player_pos.y < ctx.poc_y
+            )
+            or ctx.border_active
+        )
         if not trigger:
             return
         if ctx.player_state == PLAYER_STATE_SPAWNING:
@@ -204,8 +214,9 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                 r.score = code // 10
                 r.full_power = True
                 # C++ :211 (表末 12000 < 12800, 恒白)
-                r.popups.append((code, POPUP_YELLOW if code >= 12800
-                                 else POPUP_WHITE, 1))
+                r.popups.append(
+                    (code, POPUP_YELLOW if code >= 12800 else POPUP_WHITE, 1)
+                )
             else:
                 r.delta_power = 1
                 r.score = 1  # AddScore(10), 显示分 1
@@ -216,7 +227,9 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                     r.clear_bullets = not ctx.spellcard_active
                     self.despawn_all_items(skip=item)
                 # 火力升档弹 PowerUp 字形, 否则弹 10 (ItemManager.cpp:236-248)
-                if _power_level(min(ctx.power + 1, FULL_POWER)) != _power_level(ctx.power):
+                if _power_level(min(ctx.power + 1, FULL_POWER)) != _power_level(
+                    ctx.power
+                ):
                     r.popups.append((-1, POPUP_POWERUP, 1))
                 else:
                     r.popups.append((10, POPUP_WHITE, 1))
@@ -230,7 +243,9 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                     r.clear_bullets = not ctx.spellcard_active
                     self.despawn_all_items(skip=item)
                 # 升档判断 (ItemManager.cpp:354-366)
-                if _power_level(min(ctx.power + 8, FULL_POWER)) != _power_level(ctx.power):
+                if _power_level(min(ctx.power + 8, FULL_POWER)) != _power_level(
+                    ctx.power
+                ):
                     r.popups.append((-1, POPUP_POWERUP, 1))
                 else:
                     r.popups.append((10, POPUP_WHITE, 1))
@@ -250,11 +265,11 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                 r.popups.append((-1, POPUP_POWERUP, 1))  # :386
             r.delta_power = max(0.0, FULL_POWER - ctx.power)
             r.score = 100  # AddScore(1000)
-            r.popups.append((1000, POPUP_WHITE, 1))      # :392
+            r.popups.append((1000, POPUP_WHITE, 1))  # :392
         elif t == ItemType.POINT:
             code, color = _point_score(item, ctx)
             r.score = code // 10
-            r.popups.append((code, color, 1))            # :272
+            r.popups.append((code, color, 1))  # :272
             r.point_items_collected = 1
             r.subrank = 10 if item.pos.y < 128.0 else 3  # C++ 硬编码 128.0(非 pocY)
             r.extends = _point_extends(ctx)
@@ -270,7 +285,7 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                 # 此处简化为 bomb 中固定 cherryPlus/cherry 各 +10
                 r.delta_cherry_plus = 10
                 r.delta_cherry = 10
-            r.popups.append((code, POPUP_WHITE, 2))      # :408 CreatePopup2(…, -1)
+            r.popups.append((code, POPUP_WHITE, 2))  # :408 CreatePopup2(…, -1)
         elif t == ItemType.CHERRY:
             if ctx.cherry_maxed:
                 # 满樱时按 POINT 计分(无樱差加成), ≤5000 显示 (ItemManager.cpp:428-436)
@@ -280,9 +295,15 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                     code = 50000 - int(item.pos.y - ctx.poc_y) * 100
                 code -= code % 10
                 r.score = code // 10
-                r.popups.append((code, POPUP_YELLOW if (
-                    item.pos.y < ctx.poc_y or item.auto_collect)
-                    else POPUP_WHITE, 1))                # :434
+                r.popups.append(
+                    (
+                        code,
+                        POPUP_YELLOW
+                        if (item.pos.y < ctx.poc_y or item.auto_collect)
+                        else POPUP_WHITE,
+                        1,
+                    )
+                )  # :434
             r.delta_cherry_plus = 1000 + ctx.spell_cards_captured * 100
         elif t == ItemType.CHERRY_SMALL:
             r.delta_cherry_plus = 30
@@ -292,7 +313,7 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
             r.score = code // 10
             r.delta_cherry_plus = 100
             if ctx.cherry_maxed:
-                r.popups.append((code, POPUP_WHITE, 1))      # :453
+                r.popups.append((code, POPUP_WHITE, 1))  # :453
             else:
                 r.popups.append((100, POPUP_CHERRY_GAIN, 1))  # :459
         return r
@@ -322,7 +343,9 @@ def _point_score(item: Item, ctx: GameContext) -> tuple[int, int]:
     if item.pos.y < ctx.poc_y:
         code = 50000
     else:
-        code = 50000 - int(item.pos.y - ctx.poc_y) * 100  # 低于 POC 线每像素 -100(代码值)
+        code = (
+            50000 - int(item.pos.y - ctx.poc_y) * 100
+        )  # 低于 POC 线每像素 -100(代码值)
     if item.auto_collect:
         code = 50000  # 结界收集恒满值
     gap = ctx.cherry_gap
@@ -333,8 +356,9 @@ def _point_score(item: Item, ctx: GameContext) -> tuple[int, int]:
         code += (gap - 50000) // 5  # 满樱且樱差>50000 追加 1/5
     code -= code % 10
     # 弹字颜色 (:272): POC 线上/结界收点黄, 其余白
-    color = POPUP_YELLOW if (item.pos.y < ctx.poc_y or item.auto_collect) \
-        else POPUP_WHITE
+    color = (
+        POPUP_YELLOW if (item.pos.y < ctx.poc_y or item.auto_collect) else POPUP_WHITE
+    )
     return code, color
 
 

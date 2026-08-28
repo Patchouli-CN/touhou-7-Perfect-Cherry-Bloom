@@ -1,4 +1,4 @@
-""" 数学与向量工具 —— Pythonic 风格。 """
+"""数学与向量工具 —— Pythonic 风格。"""
 
 from __future__ import annotations
 

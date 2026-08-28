@@ -10,6 +10,7 @@ harness(与 tmp_title/exins_smoke3.py 同语义):
 帧数预算按锚点数据(tmp_title/smoke_b*.log)裁剪, 慢关只跑到中段锚点,
 整体耗时控制在 ~2 分钟内。
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,8 +39,7 @@ def _move_keys(f: int, period: int = 40):
 
 
 def _bosses(g: PerfectCherryBloom):
-    return [e for e in g.host.all()
-            if getattr(e, "is_boss", False) and e.alive]
+    return [e for e in g.host.all() if getattr(e, "is_boss", False) and e.alive]
 
 
 def _crush(g: PerfectCherryBloom) -> None:
@@ -52,11 +52,18 @@ def _crush(g: PerfectCherryBloom) -> None:
 
 
 def _signature(g: PerfectCherryBloom) -> tuple:
-    sig = tuple(sorted(
-        (id(e.state), e.machine.current.sub_id, e.state.life,
-         e.state.timer_callback_threshold,
-         tuple(e.state.life_callback_threshold))
-        for e in _bosses(g)))
+    sig = tuple(
+        sorted(
+            (
+                id(e.state),
+                e.machine.current.sub_id,
+                e.state.life,
+                e.state.timer_callback_threshold,
+                tuple(e.state.life_callback_threshold),
+            )
+            for e in _bosses(g)
+        )
+    )
     return sig + tuple((t.idx, t.time, t.done) for t in g.ecl_timelines)
 
 
@@ -71,12 +78,13 @@ class SmokeResult:
         self.frames = 0
         self.saw_boss = False
         self.boss_kills: Counter = Counter()  # death_type → 次数
-        self.min_time_scale = 1.0   # 减速场(ex10)生效证据
+        self.min_time_scale = 1.0  # 减速场(ex10)生效证据
         self.slow_restored = False  # 减速后恢复 1.0 (ex11) 证据
 
 
-def run_stage(stage: int, frames: int, *, stall_frames: int = 4800,
-              difficulty: int = 1) -> tuple[PerfectCherryBloom, SmokeResult]:
+def run_stage(
+    stage: int, frames: int, *, stall_frames: int = 4800, difficulty: int = 1
+) -> tuple[PerfectCherryBloom, SmokeResult]:
     """跑到过关(1-5 面=换关, 6/7/8 面=结局/结算)或帧数上限。返回 (game, 统计)。"""
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=difficulty)
     g.stage_no = stage
@@ -118,8 +126,11 @@ def run_stage(stage: int, frames: int, *, stall_frames: int = 4800,
                 r.saw_boss = True
                 # C++:754 起 hasNoCollision/isHittable 的 boss 不吃弹 —
                 # 吸附目标优先选当前可受击者(如 4 面三姐妹轮换位)
-                dmg = [e for e in bs
-                       if not e.state.has_no_collision and e.state.is_hittable]
+                dmg = [
+                    e
+                    for e in bs
+                    if not e.state.has_no_collision and e.state.is_hittable
+                ]
                 lead = min(dmg or bs, key=lambda e: max(e.state.life, 0))
                 g.player.pos = Vec2(lead.pos.x, min(lead.pos.y + 200, 400))
             if g.game_over:
@@ -152,6 +163,7 @@ def run_stage(stage: int, frames: int, *, stall_frames: int = 4800,
 
 
 # ---- kill() 死亡分支回归 (EnemyManager.cpp:943 OnUpdate life<=0 && canDie) ----
+
 
 def _make_enemy(death_type: int, death_cb_sub: int = 1) -> EclEnemy:
     """裸 EclEnemy: sub0 主体(立即结束), sub1 死亡回调(SET_LIFE 500 复活)。"""
@@ -212,6 +224,7 @@ def test_kill_death_type_3_escape():
 
 # ---- 8 关逐关冒烟 (锚点帧数来自 tmp_title/smoke_b*.log, 确定性可复现) ----
 
+
 @NEEDS_DAT
 def test_stage1_full_clear():
     """1 面全程: ~10187 帧通关, 2 张符卡(中超 6455 / 尾王 8491)。
@@ -267,8 +280,8 @@ def test_stage5_youmu_slow_field():
     _, r = run_stage(5, 7000)
     assert len(r.spell_frames) >= 1
     assert all(idx in r.ex for idx in (9, 10, 11))
-    assert r.min_time_scale < 1.0    # 减速场确实生效 (ExInsYoumuSetGameSpeed)
-    assert r.slow_restored           # 且确实恢复 (ExInsYoumuRestoreGameSpeed)
+    assert r.min_time_scale < 1.0  # 减速场确实生效 (ExInsYoumuSetGameSpeed)
+    assert r.slow_restored  # 且确实恢复 (ExInsYoumuRestoreGameSpeed)
     assert r.stalls == 0
 
 
@@ -348,8 +361,9 @@ def test_stage3_alice_ex6_split_bullets_limited_damage():
         g.tick(keys=_move_keys(g.frame), advance=(g.frame % 15 == 0))
         bs = _bosses(g)
         if bs:
-            dmg = [e for e in bs
-                   if not e.state.has_no_collision and e.state.is_hittable]
+            dmg = [
+                e for e in bs if not e.state.has_no_collision and e.state.is_hittable
+            ]
             lead = min(dmg or bs, key=lambda e: max(e.state.life, 0))
             if not spell_begin:
                 # 限伤前: 与 run_stage 相同的吸附, 保证阶段按时推进
@@ -362,13 +376,14 @@ def test_stage3_alice_ex6_split_bullets_limited_damage():
             g.result = None
             g.lives = 3.0
         split_seen = max(
-            split_seen,
-            sum(1 for b in g.bullets.alive() if b.sprite_offset == 15))
+            split_seen, sum(1 for b in g.bullets.alive() if b.sprite_offset == 15)
+        )
         if ex6_frames and g.frame > ex6_frames[0] + 5:
             break
     assert spell_begin, "3 面 1 卡(Normal idx 29)未宣言"
     assert ex6_frames, "限伤后 ex6(t=90) 仍未触发"
     # 实测锚点: boss var10014 脉冲(begin+300) → 人偶进 sub44, 自身 t=90 分裂
-    assert ex6_frames[0] - spell_begin[0] >= 380, \
+    assert ex6_frames[0] - spell_begin[0] >= 380, (
         f"ex6 触发过早({ex6_frames[0] - spell_begin[0]}), 不像 sub44 t=90 路径"
+    )
     assert split_seen > 0, "分裂弹(sprite_offset==15)未生成"

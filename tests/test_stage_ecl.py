@@ -3,6 +3,7 @@
 覆盖: 时间轴刷怪锚点(第 600 帧)、ECL 敌人发弹进 BulletWorld、自机弹击杀
 ECL 敌人与道具掉落、Boss/符卡桥接(begin/end/超时)、确定性(同种子两遍一致)。
 """
+
 from __future__ import annotations
 
 import struct
@@ -67,6 +68,7 @@ def _spellcard_word0_and_name(gui_id: int, idx: int, name: bytes) -> tuple:
 
 
 # ---- 真实数据: 时间轴驱动 ----
+
 
 @NEEDS_DAT
 def test_stage1_timeline_spawn_anchor() -> None:
@@ -141,8 +143,15 @@ def test_stage4_healthbar_tracks_boss_slot0() -> None:
             break
         g.tick(keys=_move_keys(f))
     g.ecl_timelines = []
-    e = g.ecl_host.spawn_enemy(42, Vec3(192.0, 100.0, 0.0), life=-1, item_drop=0,
-                               score=1000, mirror=0, context_args=EclContextArgs())
+    e = g.ecl_host.spawn_enemy(
+        42,
+        Vec3(192.0, 100.0, 0.0),
+        life=-1,
+        item_drop=0,
+        score=1000,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
     assert e is not None
     for f in range(30):
         g.tick(keys=_move_keys(f))
@@ -185,12 +194,14 @@ def test_stage1_letty_spellcard_bridge() -> None:
     assert boss_frame is not None, "蕾蒂未出场"
     assert g.boss is not None and g.boss.is_active, "符卡未开始"
     assert g.boss.is_capturing or g.globals.spell_cards_captured > 0
-    assert g.boss.name and not g.boss.name.startswith("boss"), \
+    assert g.boss.name and not g.boss.name.startswith("boss"), (
         f"符卡名未桥接: {g.boss.name!r}"
+    )
     assert g.ecl_world.spellcard_active
 
 
 # ---- 手工构造 sub: 击杀/掉落与符卡桥接 ----
+
 
 def _inject_ecl(g: PerfectCherryBloom, *subs) -> None:
     """把手工 ecl 注入游戏(替换文件与时间轴, 停掉真实刷怪)。"""
@@ -206,17 +217,27 @@ def test_player_shots_kill_ecl_enemy_and_drop() -> None:
     g = _game()
     _tick_until_alive(g)
     _isolate(g)
-    _inject_ecl(g, [
-        # SET_ANM 不可省: C++ 无 sprite 的敌人 hasNoCollision=1
-        # (EnemyManager.cpp:697-700), 无碰撞也不受击
-        _instr(0, OP.SET_ANM, (4,)),
-        _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
-        _instr(0, OP.SET_LIFE, (30,)),
-        _instr(9999, OP.UNIMP),
-    ])
+    _inject_ecl(
+        g,
+        [
+            # SET_ANM 不可省: C++ 无 sprite 的敌人 hasNoCollision=1
+            # (EnemyManager.cpp:697-700), 无碰撞也不受击
+            _instr(0, OP.SET_ANM, (4,)),
+            _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
+            _instr(0, OP.SET_LIFE, (30,)),
+            _instr(9999, OP.UNIMP),
+        ],
+    )
     px = g.player.pos.x
-    e = g.ecl_host.spawn_enemy(0, Vec3(px, 100.0, 0.0), life=-1, item_drop=1,
-                               score=1000, mirror=0, context_args=EclContextArgs())
+    e = g.ecl_host.spawn_enemy(
+        0,
+        Vec3(px, 100.0, 0.0),
+        life=-1,
+        item_drop=1,
+        score=1000,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
     assert isinstance(e, EclEnemy) and e.alive
     assert e.life == 30 and e.radius == 24.0  # hitbox 48 → 半径 24
     score0 = g.globals.score
@@ -225,10 +246,12 @@ def test_player_shots_kill_ecl_enemy_and_drop() -> None:
         if not e.alive:
             break
     assert not e.alive, "自机弹未击杀 ECL 敌人"
-    assert g.globals.score >= score0 + 100, \
+    assert g.globals.score >= score0 + 100, (
         "enemy->score 未入账(代码值 1000, AddScore 入账 //10)"
-    assert any(it.type == ItemType.POINT for it in g.items.alive()), \
+    )
+    assert any(it.type == ItemType.POINT for it in g.items.alive()), (
         "itemDrop=1(点道具)未掉落"
+    )
 
 
 @NEEDS_DAT
@@ -247,8 +270,11 @@ def test_spellcard_begin_and_timeout_bridge() -> None:
             _instr(0, OP.SET_LIFE, (100000,)),  # 打不动, 只能超时
             _instr(0, OP.SET_TIMER_CALLBACK_THRESHOLD, (120,)),
             _instr(0, OP.SET_TIMER_CALLBACK_SUB, (1,)),
-            _instr(0, OP.BEGIN_SPELLCARD,
-                   _spellcard_word0_and_name(1, 5, "TestCard".encode())),
+            _instr(
+                0,
+                OP.BEGIN_SPELLCARD,
+                _spellcard_word0_and_name(1, 5, "TestCard".encode()),
+            ),
             _instr(9999, OP.UNIMP),
         ],
         [  # sub1: 超时回调: 结束符卡后退场
@@ -256,8 +282,15 @@ def test_spellcard_begin_and_timeout_bridge() -> None:
             _instr(0, OP.UNIMP),
         ],
     )
-    e = g.ecl_host.spawn_enemy(0, Vec3(192.0, 120.0, 0.0), life=-1, item_drop=-1,
-                               score=1000, mirror=0, context_args=EclContextArgs())
+    e = g.ecl_host.spawn_enemy(
+        0,
+        Vec3(192.0, 120.0, 0.0),
+        life=-1,
+        item_drop=-1,
+        score=1000,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
     assert g.boss is not None, "SET_BOSS 未桥接"
     assert g.boss.spellcard_idx == 5 and g.boss.is_active == 1
     assert g.boss.is_capturing and g.boss.name == "TestCard"
@@ -284,18 +317,31 @@ def test_spellcard_capture_by_damage_bridge() -> None:
     g = _game()
     _tick_until_alive(g)
     _isolate(g)
-    _inject_ecl(g, [
-        _instr(0, OP.SET_BOSS, (0,)),
-        _instr(0, OP.SET_ANM, (4,)),  # 无 sprite → hasNoCollision (见上个用例)
-        _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
-        _instr(0, OP.SET_LIFE, (30,)),
-        _instr(0, OP.BEGIN_SPELLCARD,
-               _spellcard_word0_and_name(2, 7, "CapCard".encode())),
-        _instr(9999, OP.UNIMP),
-    ])
+    _inject_ecl(
+        g,
+        [
+            _instr(0, OP.SET_BOSS, (0,)),
+            _instr(0, OP.SET_ANM, (4,)),  # 无 sprite → hasNoCollision (见上个用例)
+            _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
+            _instr(0, OP.SET_LIFE, (30,)),
+            _instr(
+                0,
+                OP.BEGIN_SPELLCARD,
+                _spellcard_word0_and_name(2, 7, "CapCard".encode()),
+            ),
+            _instr(9999, OP.UNIMP),
+        ],
+    )
     px = g.player.pos.x
-    g.ecl_host.spawn_enemy(0, Vec3(px, 120.0, 0.0), life=-1, item_drop=-1,
-                           score=1000, mirror=0, context_args=EclContextArgs())
+    g.ecl_host.spawn_enemy(
+        0,
+        Vec3(px, 120.0, 0.0),
+        life=-1,
+        item_drop=-1,
+        score=1000,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
     assert g.boss is not None and g.boss.spellcard_idx == 7
     score0 = g.globals.score
     for _ in range(300):
@@ -314,21 +360,35 @@ def test_spellcard_begin_clears_bullets_to_items() -> None:
     g = _game()
     _tick_until_alive(g)
     _isolate(g)
-    _inject_ecl(g, [
-        _instr(0, OP.SET_BOSS, (0,)),
-        _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
-        _instr(0, OP.SET_LIFE, (100000,)),
-        _instr(0, OP.BEGIN_SPELLCARD,
-               _spellcard_word0_and_name(1, 5, "ClearCard".encode())),
-        _instr(9999, OP.UNIMP),
-    ])
+    _inject_ecl(
+        g,
+        [
+            _instr(0, OP.SET_BOSS, (0,)),
+            _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
+            _instr(0, OP.SET_LIFE, (100000,)),
+            _instr(
+                0,
+                OP.BEGIN_SPELLCARD,
+                _spellcard_word0_and_name(1, 5, "ClearCard".encode()),
+            ),
+            _instr(9999, OP.UNIMP),
+        ],
+    )
     # 宣告前先摆几发敌弹: BEGIN_SPELLCARD 在 spawn 当帧同步执行
     for i in range(3):
         g.bullets._bullets.append(
-            Bullet(Vec2(100.0 + i * 40.0, 200.0), 0.0, 2.0, sprite=0))
+            Bullet(Vec2(100.0 + i * 40.0, 200.0), 0.0, 2.0, sprite=0)
+        )
     assert len(list(g.bullets.alive())) == 3
-    g.ecl_host.spawn_enemy(0, Vec3(192.0, 120.0, 0.0), life=-1, item_drop=-1,
-                           score=1000, mirror=0, context_args=EclContextArgs())
+    g.ecl_host.spawn_enemy(
+        0,
+        Vec3(192.0, 120.0, 0.0),
+        life=-1,
+        item_drop=-1,
+        score=1000,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
     assert g.boss is not None and g.boss.spellcard_idx == 5
     assert all(b.dead for b in g.bullets.alive()), "宣告未击杀场上弹"
     points = [it for it in g.items.alive() if it.type == ItemType.POINT_BULLET]
@@ -365,10 +425,24 @@ def test_get_boss_int_reads_boss_context_args() -> None:
             _instr(9999, OP.UNIMP),
         ],
     )
-    g.ecl_host.spawn_enemy(0, Vec3(192.0, 100.0, 0.0), life=-1, item_drop=-1,
-                           score=100, mirror=0, context_args=EclContextArgs())
-    doll = g.ecl_host.spawn_enemy(1, Vec3(96.0, 200.0, 0.0), life=-1, item_drop=-1,
-                                  score=100, mirror=0, context_args=EclContextArgs())
+    g.ecl_host.spawn_enemy(
+        0,
+        Vec3(192.0, 100.0, 0.0),
+        life=-1,
+        item_drop=-1,
+        score=100,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
+    doll = g.ecl_host.spawn_enemy(
+        1,
+        Vec3(96.0, 200.0, 0.0),
+        life=-1,
+        item_drop=-1,
+        score=100,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
     assert doll is not None
     # spawn 当帧已跑过 t=0: 读到的是 boss 上下文的值, 不是自己的(0)
     assert doll.machine._get_int(10014) == 42
@@ -376,6 +450,7 @@ def test_get_boss_int_reads_boss_context_args() -> None:
 
 
 # ---- 确定性 ----
+
 
 @NEEDS_DAT
 def test_determinism_same_seed() -> None:
@@ -388,28 +463,44 @@ def test_determinism_same_seed() -> None:
             if g.game_over:
                 g.game_over = False
                 g.lives = 3.0
-        positions = sorted(
-            (round(e.pos.x, 4), round(e.pos.y, 4)) for e in g.host.all())
-        return (g.globals.score, g.globals.cherry, g.globals.gui_score,
-                len(g.bullets), len(g.items), positions,
-                round(g.player.pos.x, 4), round(g.player.pos.y, 4))
+        positions = sorted((round(e.pos.x, 4), round(e.pos.y, 4)) for e in g.host.all())
+        return (
+            g.globals.score,
+            g.globals.cherry,
+            g.globals.gui_score,
+            len(g.bullets),
+            len(g.items),
+            positions,
+            round(g.player.pos.x, 4),
+            round(g.player.pos.y, 4),
+        )
 
     assert run() == run()
 
 
 # ---- 体术判定集成 (EnemyManager.cpp:754-775 → Player::CalcKillboxCollision) ----
 
+
 def _inject_rammer(g: PerfectCherryBloom):
     """注入一个钉在玩家位置的 ECL 敌人(SET_ANM 不可省: 无 sprite 即无碰撞)。"""
-    _inject_ecl(g, [
-        _instr(0, OP.SET_ANM, (4,)),
-        _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
-        _instr(0, OP.SET_LIFE, (10000,)),
-        _instr(9999, OP.UNIMP),
-    ])
-    return g.ecl_host.spawn_enemy(0, Vec3(g.player.pos.x, g.player.pos.y, 0.0),
-                                  life=-1, item_drop=-1, score=1000, mirror=0,
-                                  context_args=EclContextArgs())
+    _inject_ecl(
+        g,
+        [
+            _instr(0, OP.SET_ANM, (4,)),
+            _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
+            _instr(0, OP.SET_LIFE, (10000,)),
+            _instr(9999, OP.UNIMP),
+        ],
+    )
+    return g.ecl_host.spawn_enemy(
+        0,
+        Vec3(g.player.pos.x, g.player.pos.y, 0.0),
+        life=-1,
+        item_drop=-1,
+        score=1000,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
 
 
 @NEEDS_DAT
@@ -453,16 +544,25 @@ def test_ecl_enemy_no_collision_flag_exempts_contact() -> None:
     g = _game()
     _tick_until_alive(g)
     _isolate(g)
-    _inject_ecl(g, [
-        _instr(0, OP.SET_ANM, (4,)),
-        _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
-        _instr(0, OP.SET_LIFE, (10000,)),
-        _instr(0, OP.SET_HAS_NO_COLLISION, (1,)),
-        _instr(9999, OP.UNIMP),
-    ])
-    e = g.ecl_host.spawn_enemy(0, Vec3(g.player.pos.x, g.player.pos.y, 0.0),
-                               life=-1, item_drop=-1, score=1000, mirror=0,
-                               context_args=EclContextArgs())
+    _inject_ecl(
+        g,
+        [
+            _instr(0, OP.SET_ANM, (4,)),
+            _instr(0, OP.SET_HITBOX_SIZE, (_f(48.0), _f(48.0), _f(48.0))),
+            _instr(0, OP.SET_LIFE, (10000,)),
+            _instr(0, OP.SET_HAS_NO_COLLISION, (1,)),
+            _instr(9999, OP.UNIMP),
+        ],
+    )
+    e = g.ecl_host.spawn_enemy(
+        0,
+        Vec3(g.player.pos.x, g.player.pos.y, 0.0),
+        life=-1,
+        item_drop=-1,
+        score=1000,
+        mirror=0,
+        context_args=EclContextArgs(),
+    )
     assert e is not None
     for _ in range(10):
         g.tick(keys=_STOP_KEYS)

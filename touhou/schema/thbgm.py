@@ -1,4 +1,4 @@
-""" thbgm.dat / thbgm.fmt 解析 —— TH07 高音质 WAV BGM 流。
+"""thbgm.dat / thbgm.fmt 解析 —— TH07 高音质 WAV BGM 流。
 
 对照反编译源码:
 
@@ -37,10 +37,10 @@ THBGM_GAME_ID = 0x700
 class ThbgmTrack(msgspec.Struct, frozen=True):
     """thbgm.fmt 里的一首曲目。"""
 
-    name: str            # "th07_02.wav"
-    start_offset: int    # PCM 在 thbgm.dat 的绝对偏移
-    intro_length: int    # 前奏字节数(只播一遍)
-    total_length: int    # 整曲 PCM 字节数
+    name: str  # "th07_02.wav"
+    start_offset: int  # PCM 在 thbgm.dat 的绝对偏移
+    intro_length: int  # 前奏字节数(只播一遍)
+    total_length: int  # 整曲 PCM 字节数
     channels: int
     sample_rate: int
     bits_per_sample: int
@@ -70,12 +70,14 @@ def parse_fmt(data: bytes) -> dict[str, ThbgmTrack]:
     tracks: dict[str, ThbgmTrack] = {}
     pos = 0
     while pos + FMT_ENTRY_SIZE <= len(data):
-        raw_name = data[pos:pos + 16]
+        raw_name = data[pos : pos + 16]
         if raw_name[0] == 0:
             break  # 空条目终止 (SoundPlayer.cpp:218)
         name = raw_name.split(b"\x00")[0].decode("latin-1")
         start, preload, intro, total = struct.unpack_from("<iIii", data, pos + 16)
-        _tag, ch, rate, _avg, _align, bits = struct.unpack_from("<HHIIHH", data, pos + 32)
+        _tag, ch, rate, _avg, _align, bits = struct.unpack_from(
+            "<HHIIHH", data, pos + 32
+        )
         tracks[name] = ThbgmTrack(name, start, intro, total, ch, rate, bits, preload)
         pos += FMT_ENTRY_SIZE
     return tracks
@@ -91,13 +93,14 @@ def check_thbgm_header(path: str | Path) -> bool:
     if len(header) < THBGM_HEADER_SIZE:
         return False
     magic, version, game_id, _ = struct.unpack("<4sIII", header)
-    return bool(magic == THBGM_MAGIC and version == THBGM_VERSION
-                and game_id == THBGM_GAME_ID)
+    return bool(
+        magic == THBGM_MAGIC and version == THBGM_VERSION and game_id == THBGM_GAME_ID
+    )
 
 
 def build_wav(track: ThbgmTrack, pcm: bytes) -> bytes:
     """把 thbgm.dat 里读出的裸 PCM 包成完整 RIFF/WAVE (供 pygame 解码)。"
-    
+
     pcm 长度以 track.total_length 为准(截断/不足容忍)。
     """
     pcm = pcm[: track.total_length]

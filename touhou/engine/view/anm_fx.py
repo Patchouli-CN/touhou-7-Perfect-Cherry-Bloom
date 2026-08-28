@@ -32,18 +32,18 @@ from .anm_vm import AnmVm, ScriptRef, chain_offsets, reset_and_run
 # EffectManager.cpp g_EffectMapping 子集: effectId → (anm 全局 script id, 粒子物理)
 _FX_STATIC, _FX_BURST, _FX_BURST_FAST, _FX_ATTACH, _FX_BURST30 = 0, 1, 2, 3, 4
 EFFECT_TABLE: dict[int, tuple[int, int]] = {
-    0: (0x2AB, _FX_STATIC),      # 击坠爆炸爆风环 (EnemyManager deathAnm1=0)
+    0: (0x2AB, _FX_STATIC),  # 击坠爆炸爆风环 (EnemyManager deathAnm1=0)
     1: (0x2AC, _FX_STATIC),
     2: (0x2AD, _FX_STATIC),
-    3: (0x2AE, _FX_BURST),       # InitDeceleratingBurst
+    3: (0x2AE, _FX_BURST),  # InitDeceleratingBurst
     4: (0x2B3, _FX_BURST_FAST),
     5: (0x2B4, _FX_BURST_FAST),  # 自机弹命中火花 (Player.cpp:896)
     6: (0x2B5, _FX_BURST_FAST),  # 玩家死亡 ×16 (Player.cpp:1235)
     7: (0x2B6, _FX_BURST_FAST),  # 道具爆皮 (deathAnm2+4=7)
     8: (0x2B7, _FX_BURST_FAST),  # 擦弹 (Player.cpp:1197)
-    12: (0x2BB, _FX_STATIC),     # 玩家死亡大爆风 (Player.cpp:1234)
-    24: (0x2C2, _FX_ATTACH),     # focus 判定点环 AttachToPlayer (Player.cpp:1438)
-    29: (0x2B2, _FX_BURST30),    # 结界破裂樱点 ×32 (Player.cpp:2181)
+    12: (0x2BB, _FX_STATIC),  # 玩家死亡大爆风 (Player.cpp:1234)
+    24: (0x2C2, _FX_ATTACH),  # focus 判定点环 AttachToPlayer (Player.cpp:1438)
+    29: (0x2B2, _FX_BURST30),  # 结界破裂樱点 ×32 (Player.cpp:2181)
 }
 
 
@@ -55,7 +55,7 @@ class AnmScriptBank:
         self.name = name
         self.base = base
         self.refs: dict[int, ScriptRef] = {}
-        self._spr_loc: dict[int, tuple[int, int]] = {}   # key → (entry, 局部 id)
+        self._spr_loc: dict[int, tuple[int, int]] = {}  # key → (entry, 局部 id)
         raw = bank.raw(name)
         self.ok = raw is not None
         if not self.ok:
@@ -63,7 +63,8 @@ class AnmScriptBank:
         anm = bank._anms[name]
         per_entry = parse_scripts(raw)
         for ei, (entry, escr, off) in enumerate(
-                zip(anm.entries, per_entry, chain_offsets(anm, per_entry))):
+            zip(anm.entries, per_entry, chain_offsets(anm, per_entry))
+        ):
             for sid, instrs in escr.items():
                 self.refs[off + sid] = ScriptRef(instrs, off)
             for sid in entry.sprites:
@@ -101,11 +102,12 @@ class TransformCache:
         self._mod: dict[tuple, tuple[pygame.Surface, pygame.Surface]] = {}
         self._limit = limit
 
-    def get(self, img: pygame.Surface, sx: float, sy: float,
-            rot_rad: float) -> pygame.Surface:
+    def get(
+        self, img: pygame.Surface, sx: float, sy: float, rot_rad: float
+    ) -> pygame.Surface:
         flipx, flipy = sx < 0, sy < 0
         ax, ay = abs(sx), abs(sy)
-        deg = -math.degrees(rot_rad)     # D3D LH +z = 屏幕顺时针 → pygame 取负
+        deg = -math.degrees(rot_rad)  # D3D LH +z = 屏幕顺时针 → pygame 取负
         qdeg = round(deg / 3.0) * 3 % 360
         qsx, qsy = max(1, round(ax * 16)), max(1, round(ay * 16))
         key = (id(img), flipx, flipy, qdeg, qsx, qsy)
@@ -126,31 +128,41 @@ class TransformCache:
         self._d[key] = out
         return out
 
-    def get_additive(self, img: pygame.Surface, sx: float, sy: float,
-                     rot_rad: float, rgba: tuple[int, int, int, int]
-                     ) -> pygame.Surface:
+    def get_additive(
+        self,
+        img: pygame.Surface,
+        sx: float,
+        sy: float,
+        rot_rad: float,
+        rgba: tuple[int, int, int, int],
+    ) -> pygame.Surface:
         """加算绘制用: 变换 + vm 颜色调制 + alpha 预乘(src.rgb*src.a*a/255)。"""
         base = self.get(img, sx, sy, rot_rad)
         r, g, b, a = rgba
-        qa = 255 if a >= 248 else a & 0xF8   # alpha 量化(保 255 不损失亮度)
+        qa = 255 if a >= 248 else a & 0xF8  # alpha 量化(保 255 不损失亮度)
         key = (id(base), r, g, b, qa)
         hit = self._add.get(key)
-        if hit is not None and hit[0] is base:   # 持引用防 id 复用串键
+        if hit is not None and hit[0] is base:  # 持引用防 id 复用串键
             return hit[1]
         out = base.copy()
         rgb = pygame.surfarray.pixels3d(out)
         alpha = pygame.surfarray.pixels_alpha(out)
-        w = alpha.astype(np.uint16) * qa // 255          # 有效 alpha/255 分子
-        rgb[:] = (rgb.astype(np.uint16) * w[..., None] // 255
-                  * np.array((r, g, b), dtype=np.uint16)) // 255
+        w = alpha.astype(np.uint16) * qa // 255  # 有效 alpha/255 分子
+        rgb[:] = (
+            rgb.astype(np.uint16)
+            * w[..., None]
+            // 255
+            * np.array((r, g, b), dtype=np.uint16)
+        ) // 255
         del rgb, alpha
         if len(self._add) >= 256:
             self._add.pop(next(iter(self._add)))
         self._add[key] = (base, out)
         return out
 
-    def get_modulated(self, base: pygame.Surface, r: int, g: int, b: int,
-                      a: int) -> pygame.Surface:
+    def get_modulated(
+        self, base: pygame.Surface, r: int, g: int, b: int, a: int
+    ) -> pygame.Surface:
         """非加算路径的颜色/alpha 调制缓存(与 Vm2d.draw 原逐帧 copy 同式)。
 
         调用顺序与原实现一致: 先 BLEND_MULT 颜色, 再 set_alpha。
@@ -160,7 +172,7 @@ class TransformCache:
         qa = 255 if a >= 248 else a & 0xF8
         key = (id(base), r, g, b, qa)
         hit = self._mod.get(key)
-        if hit is not None and hit[0] is base:   # 持引用防 id 复用串键
+        if hit is not None and hit[0] is base:  # 持引用防 id 复用串键
             return hit[1]
         out = base
         if (r, g, b) != (255, 255, 255):
@@ -175,8 +187,7 @@ class TransformCache:
                 # 实测 blit 慢 2.4 倍; 烘焙等价于每像素 alpha*a//255
                 # (≤1 LSB 截断差, 与 get_additive 的量化同量级)
                 alpha = pygame.surfarray.pixels_alpha(out)
-                alpha[:] = (alpha.astype(np.uint16) * qa // 255
-                            ).astype(np.uint8)
+                alpha[:] = (alpha.astype(np.uint16) * qa // 255).astype(np.uint8)
                 del alpha
             else:
                 out.set_alpha(qa)
@@ -222,8 +233,9 @@ class Vm2d:
     def alive(self) -> bool:
         return self.vm.pc >= 0
 
-    def draw(self, surf: pygame.Surface, x: float, y: float,
-             tint_alpha: int | None = None) -> None:
+    def draw(
+        self, surf: pygame.Surface, x: float, y: float, tint_alpha: int | None = None
+    ) -> None:
         vm = self.vm
         img = self.surf
         if not vm.visible or img is None:
@@ -235,39 +247,41 @@ class Vm2d:
             return
         if vm.blend_mode == 1:
             # 加算: 预乘后 BLEND_ADD(C++ DESTBLEND=ONE, 见 TransformCache)
-            out = self.tcache.get_additive(img, vm.scale[0], vm.scale[1],
-                                           vm.rotation[2], (r, g, b, a))
-            surf.blit(out, (int(x) - out.get_width() // 2,
-                            int(y) - out.get_height() // 2),
-                      special_flags=pygame.BLEND_ADD)
+            out = self.tcache.get_additive(
+                img, vm.scale[0], vm.scale[1], vm.rotation[2], (r, g, b, a)
+            )
+            surf.blit(
+                out,
+                (int(x) - out.get_width() // 2, int(y) - out.get_height() // 2),
+                special_flags=pygame.BLEND_ADD,
+            )
             return
         out = self.tcache.get(img, vm.scale[0], vm.scale[1], vm.rotation[2])
         if (r, g, b) != (255, 255, 255) or a < 255:
             out = self.tcache.get_modulated(out, r, g, b, a)
-        surf.blit(out, (int(x) - out.get_width() // 2,
-                        int(y) - out.get_height() // 2))
+        surf.blit(out, (int(x) - out.get_width() // 2, int(y) - out.get_height() // 2))
 
 
 class Effect:
     """一个特效粒子(EffectManager.hpp Effect 的 2D 子集)。"""
 
-    __slots__ = ("vm2d", "kind", "x", "y", "vx", "vy", "ax", "ay", "timer",
-                 "ex", "ey")
+    __slots__ = ("vm2d", "kind", "x", "y", "vx", "vy", "ax", "ay", "timer", "ex", "ey")
 
     def __init__(self, vm2d: Vm2d, kind: int, x: float, y: float) -> None:
         self.vm2d = vm2d
         self.kind = kind
         self.x, self.y = x, y
         self.vx = self.vy = self.ax = self.ay = 0.0
-        self.ex, self.ey = x, y       # emitterPosition (burst30 的发射原点)
+        self.ex, self.ey = x, y  # emitterPosition (burst30 的发射原点)
         self.timer = 0
 
 
 class EffectLayer:
     """EffectManager 子集: spawn/update/draw; 回收 = 脚本结束(pc<0)。"""
 
-    def __init__(self, sbank: AnmScriptBank | None, tcache: TransformCache,
-                 seed: int = 0xC0FFEE) -> None:
+    def __init__(
+        self, sbank: AnmScriptBank | None, tcache: TransformCache, seed: int = 0xC0FFEE
+    ) -> None:
         self.sbank = sbank
         self.tcache = tcache
         self.effects: list[Effect] = []
@@ -276,9 +290,15 @@ class EffectLayer:
     def __len__(self) -> int:
         return len(self.effects)
 
-    def spawn(self, effect_id: int, x: float, y: float, count: int = 1,
-              color: int = 0xFFFFFFFF,
-              direction: tuple[float, float] | None = None) -> list[Effect]:
+    def spawn(
+        self,
+        effect_id: int,
+        x: float,
+        y: float,
+        count: int = 1,
+        color: int = 0xFFFFFFFF,
+        direction: tuple[float, float] | None = None,
+    ) -> list[Effect]:
         """SpawnParticles(effectId, pos, count, color) 子集。
 
         color = D3DCOLOR 0xAARRGGBB, 直接进 vm.color
@@ -297,7 +317,7 @@ class EffectLayer:
             vm2d = Vm2d(self.sbank, self.tcache)
             if not vm2d.start(gid):
                 break
-            vm2d.vm.color = [cr, cg, cb, ca]   # start 后设置(同 C++ 顺序)
+            vm2d.vm.color = [cr, cg, cb, ca]  # start 后设置(同 C++ 顺序)
             e = Effect(vm2d, kind, x, y)
             if kind == _FX_BURST:
                 # InitDeceleratingBurst (EffectManager.cpp:111)
@@ -336,7 +356,7 @@ class EffectLayer:
                 e.vx += e.ax
                 e.vy += e.ay
             elif e.kind == _FX_ATTACH and player_pos is not None:
-                e.x, e.y = player_pos          # UpdateAttachToPlayer
+                e.x, e.y = player_pos  # UpdateAttachToPlayer
             e.timer += 1
             if e.kind == _FX_BURST30:
                 # UpdateBurst30Frames (EffectManager.cpp:232):

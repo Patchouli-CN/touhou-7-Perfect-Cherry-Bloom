@@ -1,4 +1,4 @@
-""" 主游戏逻辑 —— PerfectCherryBloom(TH07)。
+"""主游戏逻辑 —— PerfectCherryBloom(TH07)。
 
 把资源、关卡、玩家、弹幕、敌人串成一个可玩的竖版弹幕关。
 本类是整合层: 各逻辑模块(同包 player/bomb/items/boss + engine/enemies)为纯逻辑,
@@ -83,8 +83,11 @@ from .globals import (
 from .results import RunStats, ScoreRecord, TopList, clear_percent, rating
 from ...engine.score_store import ScoreStore, make_highscore_record
 from ...schema.sound import SE, SoundQueue
-from ...paths import (DEFAULT_DATA, DEFAULT_SCORE_PATH,  # noqa: F401 (DEFAULT_DATA 为兼容再导出)
-                      resolve_data_path)
+from ...paths import (
+    DEFAULT_DATA,
+    DEFAULT_SCORE_PATH,  # noqa: F401 (DEFAULT_DATA 为兼容再导出)
+    resolve_data_path,
+)
 
 # CHARACTER_SHT(角色 → .sht 文件名)已集中于同包 data.py(单一来源);
 # 这里的导入作 data 缺省/残缺的回落默认。
@@ -94,18 +97,18 @@ _SAKUYA_CHARACTERS = (4, 5)
 
 # 炸弹发声音 (BombData.cpp 各 *Calc 的 timer==0 分支): (character, focus) → SE
 _BOMB_SOUNDS = {
-    (0, False): SE.BOMB_REIMU_A,           # :180
-    (0, True): SE.BOMB_REIMU_A,            # :374
-    (1, False): SE.BOMB_REIMARI,           # :542
-    (1, True): SE.BOMB_REIMARI,            # :653
-    (2, False): SE.BOMB_REIMARI,           # :737
-    (2, True): SE.BOMB_MARISA_A_FOCUS,     # :866
-    (3, False): SE.BOMB_SAKUMARI,          # :990
-    (3, True): SE.BOMB_SAKUMARI,           # :1117
-    (4, False): SE.BOMB_SAKUYA_A,          # :1219
-    (4, True): SE.BOMB_SAKUYA_A,           # :1352
-    (5, False): SE.BOMB_SAKUMARI,          # :1516
-    (5, True): SE.BOMB_SAKUMARI,           # :1658
+    (0, False): SE.BOMB_REIMU_A,  # :180
+    (0, True): SE.BOMB_REIMU_A,  # :374
+    (1, False): SE.BOMB_REIMARI,  # :542
+    (1, True): SE.BOMB_REIMARI,  # :653
+    (2, False): SE.BOMB_REIMARI,  # :737
+    (2, True): SE.BOMB_MARISA_A_FOCUS,  # :866
+    (3, False): SE.BOMB_SAKUMARI,  # :990
+    (3, True): SE.BOMB_SAKUMARI,  # :1117
+    (4, False): SE.BOMB_SAKUYA_A,  # :1219
+    (4, True): SE.BOMB_SAKUYA_A,  # :1352
+    (5, False): SE.BOMB_SAKUMARI,  # :1516
+    (5, True): SE.BOMB_SAKUMARI,  # :1658
 }
 
 
@@ -116,6 +119,7 @@ def _power_level(power: float) -> int:
         n += 1
     return n
 
+
 from ...logger import logger as log
 
 
@@ -123,25 +127,34 @@ from ...logger import logger as log
 class PerfectCherryBloom:
     """《东方妖妖梦》主逻辑类(注册为 th07 的对局实现, 见 registry)。"""
 
-    def __init__(self, data_path: str | Path | None = None, character: int = 0,
-                 difficulty: int = 1, *, score_store: ScoreStore | None = None,
-                 score_path: str | Path | None = None,
-                 initial_lives: int = 3, seed: int | None = None,
-                 hooks: GameHooks | None = None,
-                 data: GameData | None = None) -> None:
+    def __init__(
+        self,
+        data_path: str | Path | None = None,
+        character: int = 0,
+        difficulty: int = 1,
+        *,
+        score_store: ScoreStore | None = None,
+        score_path: str | Path | None = None,
+        initial_lives: int = 3,
+        seed: int | None = None,
+        hooks: GameHooks | None = None,
+        data: GameData | None = None,
+    ) -> None:
         # 关卡资源命名规则(th07 默认; TouhouWorld(game=...) 经注册表注入)
         self.hooks = hooks or GameHooks()
         # 数值表(registry.GameData; 缺省 = th07 表, data.TH07_DATA)
         self.data = data if data is not None else TH07_DATA
         # 小怪随机掉落表(data 注入; 空 = 引擎默认表, drop_random 的 table=None)
-        self._drop_table: list[int] | None = \
+        self._drop_table: list[int] | None = (
             list(self.data.drop_table) if self.data.drop_table else None
+        )
         # data_path 解析顺序: 显式参数 > TOUHOU_DAT 环境变量 > 默认 (paths.py)
         self.archive = GameArchive.open(resolve_data_path(data_path))
         self.stage_no = 1
         self.stage = Stage.read(
             self.archive.load(self.hooks.stage_file.format(n=self.stage_no)),
-            self.stage_no)
+            self.stage_no,
+        )
         self.character = character
         self.difficulty = difficulty
 
@@ -153,9 +166,12 @@ class PerfectCherryBloom:
         self.shot_data_focus = parse_sht(self.archive.load(n_foc))
 
         # 游戏实体
-        self.player = Player(shot_data=self.shot_data, shot_data_focus=self.shot_data_focus,
-                             rotating_options=(character == 5))  # 咲夜B 旋转子机
-        self.player.is_marisa_b = (character == CHAR_MARISA_B)  # 炸弹中不发射
+        self.player = Player(
+            shot_data=self.shot_data,
+            shot_data_focus=self.shot_data_focus,
+            rotating_options=(character == 5),
+        )  # 咲夜B 旋转子机
+        self.player.is_marisa_b = character == CHAR_MARISA_B  # 炸弹中不发射
         self.bullets = BulletWorld()
         self.bullets.player_pos = self.player.pos
         self.lasers = LaserWorld()
@@ -170,7 +186,9 @@ class PerfectCherryBloom:
         self._ecl_seed = 0 if seed is None else ((self.seed ^ 0x3C7) & 0xFFFF)
         self.rng = Rng(self.seed)
         self._inject_player_rng()
-        self.targeting = Targeting()  # 每帧索敌状态 (Player::UpdateUI 重置, EnemyManager 扫描)
+        self.targeting = (
+            Targeting()
+        )  # 每帧索敌状态 (Player::UpdateUI 重置, EnemyManager 扫描)
 
         # 结算统计
         self.stats = RunStats(difficulty=self.difficulty)
@@ -180,28 +198,30 @@ class PerfectCherryBloom:
         if score_store is not None:
             self.store = score_store
         else:
-            self.store = ScoreStore.load(score_path or DEFAULT_SCORE_PATH,
-                                         spellcard_count=len(self.data.spellcard_scores))
+            self.store = ScoreStore.load(
+                score_path or DEFAULT_SCORE_PATH,
+                spellcard_count=len(self.data.spellcard_scores),
+            )
         self.store.record_play(character, difficulty)  # PSCR/PLST 开局计数
-        self.result: dict | None = None   # 结算数据(通关/GameOver 后填, view 消费)
-        self.cleared = False              # 通关标志(终面击破+timeline 完)
+        self.result: dict | None = None  # 结算数据(通关/GameOver 后填, view 消费)
+        self.cleared = False  # 通关标志(终面击破+timeline 完)
         self.stage_results: dict | None = None  # STAGERESULTS 结算快照(view 消费)
-        self.ending: EndingData | None = None   # 6 面通关后的结局(view 消费)
-        self._pending_next_level = False        # NEXT_LEVEL 事件登记, 次帧帧首换关
-        self._point_items_prev_stages = 0       # 已过关面的点道具累计(结算用)
+        self.ending: EndingData | None = None  # 6 面通关后的结局(view 消费)
+        self._pending_next_level = False  # NEXT_LEVEL 事件登记, 次帧帧首换关
+        self._point_items_prev_stages = 0  # 已过关面的点道具累计(结算用)
         self._result_cache: dict | None = None
         self._catk_idx: int | None = None  # 当前 ECL 符卡的全局编号(0..140)
 
         # ---- 音效/BGM 事件(引擎纯逻辑透出, 播放层每帧消费; schema/sound.py) ----
-        self.sounds = SoundQueue()          # 本帧累积的发声队列(节流语义同 C++)
-        self.frame_sounds: list[int] = []   # 上一帧的音效快照(take 后的队列)
-        self.bgm_events: list[tuple] = []   # 本帧累积的 BGM 事件
+        self.sounds = SoundQueue()  # 本帧累积的发声队列(节流语义同 C++)
+        self.frame_sounds: list[int] = []  # 上一帧的音效快照(take 后的队列)
+        self.bgm_events: list[tuple] = []  # 本帧累积的 BGM 事件
         # 震屏事件 (ScreenEffect::RegisterChain(SCREEN_EFFECT_SHAKE,...) 透出;
         # 上游 55ff90c 由 BombEffects 改名 ScreenEffect; bomb.py/ecl_host.py
         # 各注册点累积, 帧末拍成 frame_shakes 快照, view 层维护衰减与偏移)
         self.frame_shakes: list[tuple[int, int, int]] = []
-        self.frame_bgm: list[tuple] = []    # 上一帧的 BGM 事件快照
-        self._last_spellcard_secs = -1      # 符卡倒计时警告音的去抖 (Gui.cpp:1888)
+        self.frame_bgm: list[tuple] = []  # 上一帧的 BGM 事件快照
+        self._last_spellcard_secs = -1  # 符卡倒计时警告音的去抖 (Gui.cpp:1888)
         self.player.sound = self.sounds
 
         # 状态(计数/分数/樱点/动态难度收口在 globals, 见同包 globals.py)
@@ -212,14 +232,21 @@ class PerfectCherryBloom:
         # 之后每帧随 guiScore 同步 (tick_high_score, BUGS.md#15)
         self.globals.high_score = self.store.high_score(difficulty, character)
         self.globals.high_score_num_continues = self.store.high_score_continues(
-            difficulty, character)
+            difficulty, character
+        )
         # cherryMax/初始樱点按难度 (GameManager::AddedCallback 新开局分支 switch):
         # Easy/Normal +200000, Hard +250000, Lunatic +300000, Extra/Phantasm +400000
         # 且 Extra 预填 cherry=cherryStart+200000 / Phantasm +300000
         g0 = self.globals
         g0.cherry_max = g0.cherry_start + (
-            200000 if difficulty <= 1 else 250000 if difficulty == 2
-            else 300000 if difficulty == 3 else 400000)
+            200000
+            if difficulty <= 1
+            else 250000
+            if difficulty == 2
+            else 300000
+            if difficulty == 3
+            else 400000
+        )
         if difficulty == 4:
             g0.cherry = g0.cherry_start + 200000
         elif difficulty == 5:
@@ -233,7 +260,7 @@ class PerfectCherryBloom:
             # view 层开局按 config 覆写(make_game 无法透参, 见 view._start_game)
             g0.lives_remaining = float(initial_lives)
         self.power_overflow = 0
-        self.game_over = False           # 无残机死亡(C++ 进 retry 菜单)
+        self.game_over = False  # 无残机死亡(C++ 进 retry 菜单)
         # 续关上限 (MainMenu.cpp:2576-2587): 累计游戏时长 <7h→3 / <14h→4 / 否则 5
         # (plst.gameHours 无对应字段, 用 plst.total_frames 折算)
         _play_hours = self.store.plst.get("total_frames", 0) / (60 * 3600)
@@ -241,21 +268,21 @@ class PerfectCherryBloom:
         # 续关回残基数 (retry 菜单 Yes: SetLivesRemaining(defaultCfg->lifeCount),
         # 与开局同值; view 按 config 覆写开局残机时同步改这里)
         self.initial_lives = initial_lives
-        self._death_pos: Vec2 | None = None      # 死亡点(掉 P 位置)
-        self._border_clear_boxes: list = []       # BreakBorder 的全屏清弹圆
-        self._score_milestone = 0               # score 里程碑去抖(每 1000 万)
+        self._death_pos: Vec2 | None = None  # 死亡点(掉 P 位置)
+        self._border_clear_boxes: list = []  # BreakBorder 的全屏清弹圆
+        self._score_milestone = 0  # score 里程碑去抖(每 1000 万)
 
         # ---- ECL 关卡脚本(真实 .ecl 驱动波次/Boss; 加载失败回退合成波次) ----
         self.ecl_file: EclFile | None = None
         self.ecl_world: EclWorld | None = None
         self.ecl_host: GameEclHost | None = None
         self.ecl_timelines: list[EclTimelineRunner] = []
-        self.msg_file: MsgFile | None = None   # msg{stage}.dat 对话脚本
-        self.msg_vm: MsgVm | None = None       # 对话 VM(GuiMsgVm; 门控见 tick)
-        self._boss_ecl_state = None      # 当前 Boss 绑定的 EclEnemyState
+        self.msg_file: MsgFile | None = None  # msg{stage}.dat 对话脚本
+        self.msg_vm: MsgVm | None = None  # 对话 VM(GuiMsgVm; 门控见 tick)
+        self._boss_ecl_state = None  # 当前 Boss 绑定的 EclEnemyState
         self._boss_ecl_enemy: EclEnemy | None = None
-        self._rand_spawn_idx = 0         # C randomItemSpawnIdx (itemDrop==-1 每 3 杀掉 1)
-        self._rand_table_idx = 0         # C randomItemTableIdx
+        self._rand_spawn_idx = 0  # C randomItemSpawnIdx (itemDrop==-1 每 3 杀掉 1)
+        self._rand_table_idx = 0  # C randomItemTableIdx
         self._load_ecl()
 
     # ---- 回放确定性 ----
@@ -290,28 +317,38 @@ class PerfectCherryBloom:
             self.ecl_timelines = []
             return
         self.ecl_file = EclFile.parse(data)
-        self.ecl_world = EclWorld(rng=Rng(self._ecl_seed), difficulty=self.difficulty,
-                                  rank=self.globals.rank,
-                                  current_stage=self.stage_no,
-                                  player_shottype=self.character)
+        self.ecl_world = EclWorld(
+            rng=Rng(self._ecl_seed),
+            difficulty=self.difficulty,
+            rank=self.globals.rank,
+            current_stage=self.stage_no,
+            player_shottype=self.character,
+        )
         self.ecl_host = GameEclHost(
-            self.ecl_file, self.ecl_world, enemies=self.host,
-            bullets=self.bullets, lasers=self.lasers, items=self.items,
-            ecl_machine_cls=EclMachineTh07)
+            self.ecl_file,
+            self.ecl_world,
+            enemies=self.host,
+            bullets=self.bullets,
+            lasers=self.lasers,
+            items=self.items,
+            ecl_machine_cls=EclMachineTh07,
+        )
         self.ecl_host.sound = self.sounds
         self.ecl_host.on_set_boss = self._ecl_on_set_boss
         self.ecl_host.on_begin_spellcard = self._ecl_on_begin_spellcard
         self.ecl_host.on_end_spellcard = self._ecl_on_end_spellcard
         self.ecl_host.on_spellcard_timeout = self._ecl_on_spellcard_timeout
         self.ecl_host.on_set_power = lambda v: setattr(
-            self.globals, "current_power", float(v))
+            self.globals, "current_power", float(v)
+        )
         self.ecl_host.on_add_cherry_plus = self._add_cherry_plus
         # 对话系统: msg{stage}.dat (Gui::LoadMsg); 缺资源则不留 VM(不停轴)
         self.msg_file = None
         self.msg_vm = None
         try:
             self.msg_file = MsgFile.parse(
-                self.archive.load(self.hooks.msg_file.format(n=self.stage_no)))
+                self.archive.load(self.hooks.msg_file.format(n=self.stage_no))
+            )
             self.msg_vm = MsgVm(self.msg_file)
             self.ecl_host.msg_vm = self.msg_vm
             # C g_GameManager.character 是 0..2; 本实现 character 是 shotType(0..5)
@@ -329,11 +366,15 @@ class PerfectCherryBloom:
         h = self.ecl_host
         assert h is not None  # 仅 _load_ecl 成功(ECL 驱动)时被调用
         h.frame_update(
-            player_pos=self.player.pos, difficulty=self.difficulty,
-            rank=self.globals.rank, power=self.power, shottype=self.character,
+            player_pos=self.player.pos,
+            difficulty=self.difficulty,
+            rank=self.globals.rank,
+            power=self.power,
+            shottype=self.character,
             spellcard_active=self._spellcard_active(),
             frozen=self.bomb.is_in_use or self.player.state != PlayerState.ALIVE,
-            bomb_in_use=self.bomb.is_in_use)
+            bomb_in_use=self.bomb.is_in_use,
+        )
         for tl in self.ecl_timelines:
             tl.step()
 
@@ -351,8 +392,14 @@ class PerfectCherryBloom:
         b.boss_id = idx
         b.pos = Vec2(st.pos.x, st.pos.y)
         b.set_life(max(st.life, 1))
-        log.debug("Boss 出场: boss_id={} stage={} pos=({:.1f},{:.1f}) (frame={})",
-                  idx, self.stage_no, st.pos.x, st.pos.y, self.frame)
+        log.debug(
+            "Boss 出场: boss_id={} stage={} pos=({:.1f},{:.1f}) (frame={})",
+            idx,
+            self.stage_no,
+            st.pos.x,
+            st.pos.y,
+            self.frame,
+        )
         self.boss = b
         self._boss_ecl_state = st
         assert self.ecl_host is not None  # ECL 回调路径, 宿主必已装载
@@ -368,18 +415,28 @@ class PerfectCherryBloom:
         boss.is_survival_spellcard = bool(st.is_survival_spellcard)
         # 超时阈值若已在 ECL 里设置则采用, 否则给 60 秒兜底(实际超时由
         # ECL 的 timer callback 驱动, 这里只影响捕获分衰减率)
-        timeout = st.timer_callback_threshold if st.timer_callback_threshold > 0 else 3600
+        timeout = (
+            st.timer_callback_threshold if st.timer_callback_threshold > 0 else 3600
+        )
         boss.set_life(max(st.life, 1))
-        boss.begin_spellcard(min(idx, len(SPELLCARD_SCORE) - 1), timeout,
-                             timeout_sub=max(st.timer_callback_sub, 0))
+        boss.begin_spellcard(
+            min(idx, len(SPELLCARD_SCORE) - 1),
+            timeout,
+            timeout_sub=max(st.timer_callback_sub, 0),
+        )
         # catk: BeginSpellcard  attempts[shot]/[6] ++ (EclManager.cpp:709-744)
         self._catk_idx = idx
         self.store.record_spellcard_attempt(idx, name, self.character)
         self.sounds.play(SE.BOMB)  # 符卡宣告 (Gui.cpp:396, ShowSpellcard)
-        log.debug("符卡宣言: #{} {} (stage={}, 基础分={}, 时限={}s) (frame={})",
-                  idx, name, self.stage_no,
-                  SPELLCARD_SCORE[min(idx, len(SPELLCARD_SCORE) - 1)] // 10,
-                  timeout // 60, self.frame)
+        log.debug(
+            "符卡宣言: #{} {} (stage={}, 基础分={}, 时限={}s) (frame={})",
+            idx,
+            name,
+            self.stage_no,
+            SPELLCARD_SCORE[min(idx, len(SPELLCARD_SCORE) - 1)] // 10,
+            timeout // 60,
+            self.frame,
+        )
 
     def _ecl_on_end_spellcard(self, st) -> None:
         if self.boss is not None and self._boss_ecl_state is st:
@@ -468,11 +525,15 @@ class PerfectCherryBloom:
         """给 ItemWorld 的游戏状态快照(§E; pocY/吸附速度/半径取自 .sht)。"""
         g = self.globals
         return GameContext(
-            power=g.current_power, lives=int(g.lives_remaining),
-            bombs=int(g.bombs_remaining), graze_total=g.graze_in_total,
-            player_pos=self.player.pos, player_alive=self.player.alive,
+            power=g.current_power,
+            lives=int(g.lives_remaining),
+            bombs=int(g.bombs_remaining),
+            graze_total=g.graze_in_total,
+            player_pos=self.player.pos,
+            player_alive=self.player.alive,
             player_state=int(self.player.state),  # 1=SPAWNING: 道具缓降不吸附
-            border_active=self.border.active, difficulty=self.difficulty,
+            border_active=self.border.active,
+            difficulty=self.difficulty,
             bombing=self.bomb.is_in_use,
             power_overflow_counter=self.power_overflow,
             spell_cards_captured=g.spell_cards_captured,
@@ -504,7 +565,8 @@ class PerfectCherryBloom:
             self.lives += r.extends
             g.extends_from_point_items += r.extends
             g.next_needed_point_items_for_extend = next_needed_point_items_for_extend(
-                g.extends_from_point_items, self.difficulty)
+                g.extends_from_point_items, self.difficulty
+            )
         # add_cherry_plus 会同时累加 cherry, 两轨分开入账不双加
         g.add_cherry(r.delta_cherry)
         self._add_cherry_plus(r.delta_cherry_plus)
@@ -518,11 +580,13 @@ class PerfectCherryBloom:
             # BulletManager.cpp:423-434): 弹转弹消点道具(出生即吸附, state=1);
             # 连带激光 (BulletManager.cpp:440-479): flags&4 豁免, 沿线出弹消点
             for b in self.bullets.alive():
-                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
-                                 state=STATE_ATTRACT)
+                self.items.spawn(
+                    b.pos, ItemType.POINT_BULLET, power=self.power, state=STATE_ATTRACT
+                )
                 b.dead = True
-            self.lasers.remove_all(spawn_items=True, skip_flag4=True,
-                                   spawn_item=self._spawn_point_bullet)
+            self.lasers.remove_all(
+                spawn_items=True, skip_flag4=True, spawn_item=self._spawn_point_bullet
+            )
         if r.reached_full_power:
             # "Full Power Mode!" 横幅 (Gui::ShowStatusPopup(0, 1),
             # ItemManager.cpp:231/349/384; 符卡中横幅照弹, 只是不清弹)
@@ -548,17 +612,25 @@ class PerfectCherryBloom:
         """cherryPlus 入账; 满樱信号(触达 cherryStart+50000) → 结界 READY。"""
         if x > 0 and self.globals.add_cherry_plus(x):
             self.border.ready_border()
-            log.debug("结界 READY (frame={}, cherryPlus={})",
-                      self.frame, self.globals.cherry_plus)
+            log.debug(
+                "结界 READY (frame={}, cherryPlus={})",
+                self.frame,
+                self.globals.cherry_plus,
+            )
 
     # ---- 读档 / 关卡切换 ----
     def enter_stage(self, stage_no: int) -> None:
         self.stage_no = stage_no
         self.stage = Stage.read(
-            self.archive.load(self.hooks.stage_file.format(n=stage_no)), stage_no)
-        log.debug("进关: stage={} 「{}」 BGM={} (frame={})", stage_no,
-                  self.stage.title.strip(),
-                  next((n for n in self.stage.bgm_names if n), ""), self.frame)
+            self.archive.load(self.hooks.stage_file.format(n=stage_no)), stage_no
+        )
+        log.debug(
+            "进关: stage={} 「{}」 BGM={} (frame={})",
+            stage_no,
+            self.stage.title.strip(),
+            next((n for n in self.stage.bgm_names if n), ""),
+            self.frame,
+        )
         self._load_ecl()
 
     # ---- 波次编排 ----
@@ -598,7 +670,8 @@ class PerfectCherryBloom:
         """BreakBorderNaturally 入账(与 _tick_border 的 res 分支同账)。"""
         g = self.globals
         res = self.border.break_border_naturally(
-            cherry=g.cherry, cherry_start=g.cherry_start, cherry_max=g.cherry_max)
+            cherry=g.cherry, cherry_start=g.cherry_start, cherry_max=g.cherry_max
+        )
         log.debug("结界自然破(对话中) (frame={}, 得分={})", self.frame, res.score)
         g.cherry = res.cherry
         g.cherry_max = res.cherry_max
@@ -633,7 +706,11 @@ class PerfectCherryBloom:
                     radius=16,
                 )
             else:
-                fire = aimed_ring_fire(10 + cycle % 3, 2.0 + cycle * 0.1) if cycle % 2 else aimed_spread_fire()
+                fire = (
+                    aimed_ring_fire(10 + cycle % 3, 2.0 + cycle * 0.1)
+                    if cycle % 2
+                    else aimed_spread_fire()
+                )
                 self.host.spawn(
                     path=[Vec2(cx, -20), Vec2(cx, 60), Vec2(cx, last)],
                     life=3 + cycle // 2,
@@ -645,14 +722,27 @@ class PerfectCherryBloom:
         """精英敌人: 周期性瞄准玩家放激光。"""
         if self.frame % 120 < 40 and len(self.lasers.lasers) < 64:
             self.lasers.spawn(
-                enemy.pos, 0.0, aimed=True, player_pos=self.player.pos,
-                width=10.0, duration=60, start_time=15, hitbox_start_time=10,
-                end_time=25, hitbox_end_time=20,
+                enemy.pos,
+                0.0,
+                aimed=True,
+                player_pos=self.player.pos,
+                width=10.0,
+                duration=60,
+                start_time=15,
+                hitbox_start_time=10,
+                end_time=25,
+                hitbox_end_time=20,
             )
 
     # ---- 每帧 ----
-    def tick(self, *, keys: tuple[bool, ...] | None = None, bomb: bool = False,
-             advance: bool = False, skip: bool = False) -> None:
+    def tick(
+        self,
+        *,
+        keys: tuple[bool, ...] | None = None,
+        bomb: bool = False,
+        advance: bool = False,
+        skip: bool = False,
+    ) -> None:
         """推进一帧。keys 为 (left,right,up,down,focus[,shoot]); bomb=True 表示按炸弹键;
         advance = 对话中 Z 新按下(提前结束 PAUSE), skip = 按住 Ctrl(快进对话)。"""
         if self.game_over:
@@ -661,8 +751,11 @@ class PerfectCherryBloom:
             # (Extra/Phantasm/次数用尽, AsciiManager.cpp:839-846 直接跳过
             # retry 菜单) 同 C++ 进结算。practice/replay 由 view 短路。
             if self.result is None and not self.continue_available:
-                log.debug("GameOver → 结算 (frame={}, score={})", self.frame,
-                         self.globals.gui_score)
+                log.debug(
+                    "GameOver → 结算 (frame={}, score={})",
+                    self.frame,
+                    self.globals.gui_score,
+                )
                 self.result = self.final_result(cleared=False)
             self._drain_frame_events()
             return
@@ -698,8 +791,12 @@ class PerfectCherryBloom:
         g = self.globals
 
         # ---- 炸弹/结界键 (Player.cpp UpdateBorderAndBombState 触发分支) ----
-        if bomb and not msg_active and not self.bomb.is_in_use \
-                and self.border.has_border != BorderState.NONE:
+        if (
+            bomb
+            and not msg_active
+            and not self.bomb.is_in_use
+            and self.border.has_border != BorderState.NONE
+        ):
             # hasBorder != NONE 时按 bomb 键 = 主动破结界 (Player.cpp:1686-1692)
             self._break_border(by_bomb_key=True)
         elif bomb and not msg_active and not self.bomb.is_in_use:
@@ -738,9 +835,12 @@ class PerfectCherryBloom:
         self._tick_border()
 
         # ---- 玩家步进(移动/射击/死亡倒计时/重生全在内部状态机) ----
-        death_ctx = DeathContext(lives=int(g.lives_remaining), cherry=g.cherry,
-                                 cherry_start=g.cherry_start,
-                                 is_sakuya=self.character in _SAKUYA_CHARACTERS)
+        death_ctx = DeathContext(
+            lives=int(g.lives_remaining),
+            cherry=g.cherry,
+            cherry_start=g.cherry_start,
+            is_sakuya=self.character in _SAKUYA_CHARACTERS,
+        )
         self.player.bomb_active = self.bomb.is_in_use  # 持续弹压计时/伤害 /3
         mult = self.bomb.move_speed_multiplier if self.bomb.is_in_use else 1.0
         if mult != 1.0:
@@ -769,13 +869,17 @@ class PerfectCherryBloom:
         # 索敌状态每帧重置(Player::UpdateUI), 敌人扫描中更新, Boss 扫描后写回 player。
         self.targeting.reset()
         results, kills = self.host.shoot_hits(
-            self.player, self.targeting, is_focus=self.player.focus,
+            self.player,
+            self.targeting,
+            is_focus=self.player.focus,
             is_sakuya=self.character in _SAKUYA_CHARACTERS,
-            bomb_in_use=self.bomb.is_in_use, stage=self.stage_no,
+            bomb_in_use=self.bomb.is_in_use,
+            stage=self.stage_no,
             spellcard_active=self._spellcard_active(),
             used_bomb=bool(self.boss and self.boss.used_bomb),
             is_reimu_a=self.character == CHAR_REIMU_A,
-            bomb_box_hit=self._bomb_box_hit)
+            bomb_box_hit=self._bomb_box_hit,
+        )
         for _, r in results:
             if r.score_code:
                 g.add_score(r.score_code)
@@ -791,7 +895,9 @@ class PerfectCherryBloom:
 
         self._tick_boss()
         self._tick_spellcard_timeout_warn()
-        self.player.position_of_last_enemy_hit = self.targeting.position_of_last_enemy_hit
+        self.player.position_of_last_enemy_hit = (
+            self.targeting.position_of_last_enemy_hit
+        )
         self.player.sakuya_target_position = self.targeting.sakuya_target_position
 
         # ---- 敌弹推进 + 擦弹/命中判定 (§A.7 AABB) ----
@@ -827,8 +933,9 @@ class PerfectCherryBloom:
                 # 残机判定循环逐道具跑); ctx 是同帧快照不会自动跟进, 不同步的
                 # 话同帧多个点道具过阈值会按旧基线重复奖残, 分母由 125 跳成
                 # 200 (BUGS.md 增量#3) —— 收完一个就把残机两轨刷回 ctx
-                ctx.point_items_collected_for_extend = \
+                ctx.point_items_collected_for_extend = (
                     g.point_items_collected_for_extend
+                )
                 ctx.extends_from_point_items = g.extends_from_point_items
 
         # ---- 激光推进 + 玩家碰撞 ----
@@ -854,25 +961,37 @@ class PerfectCherryBloom:
         milestone = g.gui_score // 10_000_000
         if milestone > self._score_milestone:
             self._score_milestone = milestone
-            log.debug("score 突破 {}000万 (frame={}, stage={}, score={})",
-                      milestone, self.frame, self.stage_no, g.gui_score)
+            log.debug(
+                "score 突破 {}000万 (frame={}, stage={}, score={})",
+                milestone,
+                self.frame,
+                self.stage_no,
+                g.gui_score,
+            )
 
         # 通关判定(尾王击破 + timeline 完)。正常路径: msg 脚本 STAGERESULTS →
         # NEXT_LEVEL 事件先行(见 _step_msg, 事件必在时间轴全完之前发出);
         # 这里只兜无 msg 脚本/测试强跳时间轴的底
-        if self.result is None and self.ending is None \
-                and not self._pending_next_level and self._stage_cleared():
+        if (
+            self.result is None
+            and self.ending is None
+            and not self._pending_next_level
+            and self._stage_cleared()
+        ):
             log.debug("关卡 {} 通过 (frame={})", self.stage_no, self.frame)
             if self.stage_no < 6:
-                self._pending_next_level = True   # 次帧帧首换关
+                self._pending_next_level = True  # 次帧帧首换关
             elif self.stage_no == 6:
-                self._enter_ending()              # curState=9 → Ending
+                self._enter_ending()  # curState=9 → Ending
             else:
                 # 7=Extra 8=Phantasm: 通关直接总结算(Gui.cpp NEXT_LEVEL →
                 # finished=1 → curState=6 ResultScreen)
                 self.cleared = True
-                log.debug("通关(Extra/Phantasm) → 总结算 (frame={}, score={})",
-                          self.frame, g.gui_score)
+                log.debug(
+                    "通关(Extra/Phantasm) → 总结算 (frame={}, score={})",
+                    self.frame,
+                    g.gui_score,
+                )
                 self.result = self.final_result(cleared=True)
 
         # 帧末收口: 本帧音效/BGM 事件快照给播放层(C++ 主循环每帧 ProcessQueues)
@@ -921,9 +1040,12 @@ class PerfectCherryBloom:
         6 面 → 结局(_enter_ending); 7/8 面 → 总结算(final_result)。
         正常路径由 msg 的 NEXT_LEVEL 事件先行驱动(_on_next_level)。
         """
-        return (self.ecl_file is not None and bool(self.ecl_timelines)
-                and all(t.done for t in self.ecl_timelines)
-                and self.boss is None)
+        return (
+            self.ecl_file is not None
+            and bool(self.ecl_timelines)
+            and all(t.done for t in self.ecl_timelines)
+            and self.boss is None
+        )
 
     # ---- STAGERESULTS 过关结算 / NEXT_LEVEL 换关 (Gui.cpp RunMsg) ----
     def _on_stage_results(self) -> None:
@@ -950,13 +1072,23 @@ class PerfectCherryBloom:
         if self.stage_no >= 6:
             g.extends_from_point_items = -1
         survivor = self.stage_no >= 6  # 6/7/8 面: 残机/炸弹奖(无 practice/replay)
-        bonus = (self.stage_no * 100000 + snap["graze"] * 50
-                 + snap["point_items"] * 5000 + snap["cherry_max"])
+        bonus = (
+            self.stage_no * 100000
+            + snap["graze"] * 50
+            + snap["point_items"] * 5000
+            + snap["cherry_max"]
+        )
         if survivor:
             bonus += snap["lives"] * 2000000 + snap["bombs"] * 400000
         d = self.difficulty
-        rank_line = ("Easy Rank    *0.5", "Normal Rank  *1.0", "Hard Rank    *1.2",
-                     "Lunatic Rank *1.5", "Extra Rank   *2.0", "Phantasm Rank*2.0")[d]
+        rank_line = (
+            "Easy Rank    *0.5",
+            "Normal Rank  *1.0",
+            "Hard Rank    *1.2",
+            "Lunatic Rank *1.5",
+            "Extra Rank   *2.0",
+            "Phantasm Rank*2.0",
+        )[d]
         if d == 0:
             bonus //= 2
         elif d == 2:
@@ -1001,18 +1133,24 @@ class PerfectCherryBloom:
 
     def _on_next_level(self) -> None:
         """msg NEXT_LEVEL 指令 (Gui.cpp:1004-1058): 按当前面分流转场。"""
-        if self._pending_next_level or self.result is not None \
-                or self.ending is not None:
+        if (
+            self._pending_next_level
+            or self.result is not None
+            or self.ending is not None
+        ):
             return
         if self.stage_no < 6:
             self._pending_next_level = True  # 转场结算 → 次帧帧首换关
         elif self.stage_no == 6:
-            self._enter_ending()             # finished=1 → curState=9 Ending
+            self._enter_ending()  # finished=1 → curState=9 Ending
         else:
             # Extra/Phantasm 通关 → finished=1 → curState=6 ResultScreen
             self.cleared = True
-            log.debug("通关(Extra/Phantasm) → 总结算 (frame={}, score={})",
-                      self.frame, self.globals.gui_score)
+            log.debug(
+                "通关(Extra/Phantasm) → 总结算 (frame={}, score={})",
+                self.frame,
+                self.globals.gui_score,
+            )
             self.result = self.final_result(cleared=True)
 
     def _advance_stage(self) -> None:
@@ -1032,8 +1170,13 @@ class PerfectCherryBloom:
         已清空, 无需处理。ECL/msg 由 enter_stage 换新关脚本(EclManager.Load)。
         """
         g = self.globals
-        log.debug("换关: stage {} → {} (frame={}, score={})",
-                 self.stage_no, self.stage_no + 1, self.frame, g.gui_score)
+        log.debug(
+            "换关: stage {} → {} (frame={}, score={})",
+            self.stage_no,
+            self.stage_no + 1,
+            self.frame,
+            g.gui_score,
+        )
         # NEXT_LEVEL/AddedCallback: guiScore 对齐真实分(fallback 路径也走这)
         g.gui_score = g.score
         g.gui_score_difference = 0
@@ -1056,10 +1199,12 @@ class PerfectCherryBloom:
         self._border_clear_boxes = []
         self._death_pos = None
         # Player::RegisterChain(0): 玩家/炸弹/结界重建 → SPAWNING 出生点
-        self.player = Player(shot_data=self.shot_data,
-                             shot_data_focus=self.shot_data_focus,
-                             rotating_options=(self.character == 5))
-        self.player.is_marisa_b = (self.character == CHAR_MARISA_B)
+        self.player = Player(
+            shot_data=self.shot_data,
+            shot_data_focus=self.shot_data_focus,
+            rotating_options=(self.character == 5),
+        )
+        self.player.is_marisa_b = self.character == CHAR_MARISA_B
         self.player.sound = self.sounds
         self._inject_player_rng()  # 换关重建后重新注入确定性 rand_float
         self.bullets.player_pos = self.player.pos
@@ -1080,11 +1225,16 @@ class PerfectCherryBloom:
         g = self.globals
         g.snap_gui_score()  # NEXT_LEVEL: guiScore 对齐真实分
         self.stage_results = None
-        log.debug("6 面通关 → 结局 (frame={}, bad={}, score={})",
-                  self.frame, g.num_retries > 0, g.gui_score)
+        log.debug(
+            "6 面通关 → 结局 (frame={}, bad={}, score={})",
+            self.frame,
+            g.num_retries > 0,
+            g.gui_score,
+        )
         try:
-            self.ending = EndingData.load(self.archive, self.character,
-                                          bad=g.num_retries > 0)
+            self.ending = EndingData.load(
+                self.archive, self.character, bad=g.num_retries > 0
+            )
         except (KeyError, ValueError, OSError) as e:
             log.warning("结局资源缺失, 用通用通关画面: {}", e)
             self.ending = EndingData.generic(self.character)
@@ -1103,15 +1253,21 @@ class PerfectCherryBloom:
         """续关菜单是否可出现 (AsciiManager.cpp RetryMenu::OnUpdate 门控:
         :839-846 numRetries>=maxRetries 或 difficulty>=4(Extra/Phantasm)
         直接跳过菜单进结算; practice/replay 由 view 短路)。"""
-        return (self.game_over and self.result is None
-                and self.difficulty < 4
-                and self.globals.num_retries < self.max_retries)
+        return (
+            self.game_over
+            and self.result is None
+            and self.difficulty < 4
+            and self.globals.num_retries < self.max_retries
+        )
 
     def finalize_game_over(self) -> None:
         """续关菜单选 No (RetryMenu case 4 → curState=6 ResultScreen): 进结算。"""
         if self.game_over and self.result is None:
-            log.debug("续关菜单选 No → 结算 (frame={}, score={})",
-                     self.frame, self.globals.gui_score)
+            log.debug(
+                "续关菜单选 No → 结算 (frame={}, score={})",
+                self.frame,
+                self.globals.gui_score,
+            )
             self.result = self.final_result(cleared=False)
 
     def continue_play(self) -> None:
@@ -1130,9 +1286,9 @@ class PerfectCherryBloom:
         g = self.globals
         g.num_retries += 1
         self.stats.retries = g.num_retries
-        g.gui_score = g.num_retries        # C: guiScore = numRetries (≈0)
+        g.gui_score = g.num_retries  # C: guiScore = numRetries (≈0)
         g.gui_score_difference = 0
-        g.score = g.gui_score              # C: score = guiScore
+        g.score = g.gui_score  # C: score = guiScore
         g.lives_remaining = float(self.initial_lives)
         g.bombs_remaining = self.shot_data.initial_bombs
         g.graze_in_stage = 0
@@ -1153,36 +1309,52 @@ class PerfectCherryBloom:
         # 追踪炸弹目标 = 索敌系统的 positionOfLastEnemyHit (BombData.cpp:390/
         # :1403 用 player->positionOfLastEnemyHit; EnemyManager.cpp:894-938
         # 每帧伤害扫描按 boss 优先/|dx| 更新), 不是击杀/炸弹盒命中位置
-        return BombContext(player_pos=self.player.pos, cherry=g.cherry,
-                           cherry_start=g.cherry_start, difficulty=self.difficulty,
-                           last_enemy_hit=self.player.position_of_last_enemy_hit,
-                           rng_float=self.rng.unit)
+        return BombContext(
+            player_pos=self.player.pos,
+            cherry=g.cherry,
+            cherry_start=g.cherry_start,
+            difficulty=self.difficulty,
+            last_enemy_hit=self.player.position_of_last_enemy_hit,
+            rng_float=self.rng.unit,
+        )
 
     def _try_bomb(self) -> None:
         """炸弹触发 (Player.cpp:1719-1755); 成功后把透出事件接回 globals/boss。"""
         g = self.globals
         res = try_start_bomb(
-            self.bomb, self._bomb_ctx(), focus=self.player.focus,
+            self.bomb,
+            self._bomb_ctx(),
+            focus=self.player.focus,
             bombs_remaining=g.bombs_remaining,
             respawn_timer=self.player.respawn_timer,
             initial_respawn_timer=self.shot_data.initial_respawn_timer,
             border_invulnerability_time=self.border.border_invulnerability_time,
             bomb_pressed=True,
-            spellcard_active=bool(self.boss and self.boss.is_active))
+            spellcard_active=bool(self.boss and self.boss.is_active),
+        )
         if not res.started:
-            log.debug("bomb 触发被拒 (frame={}): bombs={} respawn_timer={} "
-                      "border_invuln={} bomb_in_use={}", self.frame,
-                      g.bombs_remaining, self.player.respawn_timer,
-                      self.border.border_invulnerability_time,
-                      self.bomb.is_in_use)
+            log.debug(
+                "bomb 触发被拒 (frame={}): bombs={} respawn_timer={} "
+                "border_invuln={} bomb_in_use={}",
+                self.frame,
+                g.bombs_remaining,
+                self.player.respawn_timer,
+                self.border.border_invulnerability_time,
+                self.bomb.is_in_use,
+            )
             return
-        log.debug("bomb 触发 (frame={}, character={}, focus={}, 剩余炸弹={})",
-                 self.frame, self.character, self.player.focus,
-                 g.bombs_remaining - 1)
+        log.debug(
+            "bomb 触发 (frame={}, character={}, focus={}, 剩余炸弹={})",
+            self.frame,
+            self.character,
+            self.player.focus,
+            g.bombs_remaining - 1,
+        )
         # 炸弹发声音(BombData.cpp 各 *Calc timer==0) + 符卡横幅音
         # (Gui.cpp:356, ShowBombNamePortrait)
-        self.sounds.play(_BOMB_SOUNDS.get((self.character, self.player.focus),
-                                          SE.BOMB_REIMU_A))
+        self.sounds.play(
+            _BOMB_SOUNDS.get((self.character, self.player.focus), SE.BOMB_REIMU_A)
+        )
         self.sounds.play(SE.BOMB)
         g.bombs_used += res.bombs_used_delta
         g.bombs_remaining += res.bombs_remaining_delta
@@ -1200,8 +1372,7 @@ class PerfectCherryBloom:
             # (Player.cpp:1764-1779 只在 DEAD 时跑); 这里在玩家步进前翻状态,
             # 本帧起死亡倒计时即停, 残机不扣。
             self.player.state = PlayerState.INVULNERABLE
-            log.debug("决死B 成立 (frame={}, character={})", self.frame,
-                      self.character)
+            log.debug("决死B 成立 (frame={}, character={})", self.frame, self.character)
 
     def _bomb_box_hit(self, pos: Vec2, full_size: tuple[float, float]) -> bool:
         """bomb 伤害盒与敌人盒(center, 全宽/全高)是否相交 (collisionOut 语义,
@@ -1211,8 +1382,9 @@ class PerfectCherryBloom:
     def _spawn_point_bullet(self, pos: Vec2) -> None:
         """弹消点道具 (C RemoveAllBullets/DespawnBullets 的 this->itemType);
         出生即吸附 (BulletManager.cpp:427/468/510/546 的 SpawnItem(…, 1))。"""
-        self.items.spawn(pos, ItemType.POINT_BULLET, power=self.power,
-                         state=STATE_ATTRACT)
+        self.items.spawn(
+            pos, ItemType.POINT_BULLET, power=self.power, state=STATE_ATTRACT
+        )
 
     def _apply_bomb_boxes(self) -> None:
         """炸弹盒生效: 清弹盒→弹转道具(CheckBombGraze), 伤害盒→敌人/Boss。
@@ -1231,8 +1403,12 @@ class PerfectCherryBloom:
                 continue  # 出生态弹不吃炸弹盒 (C++ CheckBombGraze 只在判定路径里触发)
             if self.bomb.check_bomb_graze(b.pos, bsize):
                 # CheckBombGraze 命中 → 弹转道具, 出生即吸附 (BulletManager.cpp:995/1010)
-                self.items.spawn(b.pos, ItemType(self.bomb.item_type),
-                                 power=self.power, state=STATE_ATTRACT)
+                self.items.spawn(
+                    b.pos,
+                    ItemType(self.bomb.item_type),
+                    power=self.power,
+                    state=STATE_ATTRACT,
+                )
                 b.dead = True
         for e in self.host.alive():
             # bomb 盒伤害同走 CalcDamageToEnemy 门控 (EnemyManager.cpp:776-779
@@ -1242,12 +1418,19 @@ class PerfectCherryBloom:
                 continue
             dmg = self.bomb.damage_to(e.pos, Vec2(e.radius, e.radius))
             if dmg:
-                r = settle_damage(int(dmg), is_boss=e.is_boss, is_focus=self.player.focus,
-                                  bomb_in_use=True, bomb_damage=True, stage=self.stage_no,
-                                  spellcard_active=self._spellcard_active(),
-                                  used_bomb=bool(self.boss and self.boss.used_bomb),
-                                  invincibility_timer=e.invincibility_timer,
-                                  enemy_timer=e._tick, can_be_damaged=e.can_be_damaged)
+                r = settle_damage(
+                    int(dmg),
+                    is_boss=e.is_boss,
+                    is_focus=self.player.focus,
+                    bomb_in_use=True,
+                    bomb_damage=True,
+                    stage=self.stage_no,
+                    spellcard_active=self._spellcard_active(),
+                    used_bomb=bool(self.boss and self.boss.used_bomb),
+                    invincibility_timer=e.invincibility_timer,
+                    enemy_timer=e._tick,
+                    can_be_damaged=e.can_be_damaged,
+                )
                 e.life -= r.damage
                 g.add_score(r.score_code)
                 if r.damage:
@@ -1258,9 +1441,13 @@ class PerfectCherryBloom:
         if self.boss and self.boss.is_active and self._boss_ecl_state is None:
             bd = self.bomb.damage_to(self.boss.pos, Vec2(30.0, 30.0))
             if bd:
-                r = self.boss.damage(bd, from_bomb=True, is_focus=self.player.focus,
-                                     stage=self.stage_no,
-                                     is_reimu_a=self.character == CHAR_REIMU_A)
+                r = self.boss.damage(
+                    bd,
+                    from_bomb=True,
+                    is_focus=self.player.focus,
+                    stage=self.stage_no,
+                    is_reimu_a=self.character == CHAR_REIMU_A,
+                )
                 g.add_score(r.score_code)
                 if r.cherry_gain:
                     self._add_cherry_plus(r.cherry_gain)
@@ -1276,15 +1463,20 @@ class PerfectCherryBloom:
             elif self.player.state == PlayerState.ALIVE:
                 if self.border.activate_border():
                     self.player.state = PlayerState.BORDER
-                    log.debug("结界激活 (frame={}, pos=({:.1f},{:.1f}))",
-                              self.frame, self.player.pos.x, self.player.pos.y)
+                    log.debug(
+                        "结界激活 (frame={}, pos=({:.1f},{:.1f}))",
+                        self.frame,
+                        self.player.pos.x,
+                        self.player.pos.y,
+                    )
                     # "Supernatural Border!!" 横幅 (Player.cpp:2138)
                     g.show_status_popup(0, STATUS_BORDER)
                     # 结界激活 (Player.cpp:2139-2140)
                     self.sounds.play(SE.BORDER_ACTIVATE)
                     self.sounds.play(SE.BORDER_ACTIVATE2)
-        plus, res = self.border.tick(cherry=g.cherry, cherry_start=g.cherry_start,
-                                     cherry_max=g.cherry_max)
+        plus, res = self.border.tick(
+            cherry=g.cherry, cherry_start=g.cherry_start, cherry_max=g.cherry_max
+        )
         if res is not None:
             # 自然破 (BreakBorderNaturally): +10000 上限/樱点, 得分 (cherry-cherryStart)*10
             log.debug("结界自然破 (frame={}, 得分={})", self.frame, res.score)
@@ -1302,10 +1494,18 @@ class PerfectCherryBloom:
 
     def _break_border(self, *, by_bomb_key: bool = False) -> None:
         """BreakBorder (Player.cpp:2148-2182): 主动破(bomb键)/中弹破/死亡破。"""
-        reason = "主动破" if by_bomb_key else (
-            "死亡破" if self.player.state == PlayerState.DEAD else "中弹破")
-        log.debug("结界破[{}] (frame={}, pos=({:.1f},{:.1f}))", reason,
-                  self.frame, self.player.pos.x, self.player.pos.y)
+        reason = (
+            "主动破"
+            if by_bomb_key
+            else ("死亡破" if self.player.state == PlayerState.DEAD else "中弹破")
+        )
+        log.debug(
+            "结界破[{}] (frame={}, pos=({:.1f},{:.1f}))",
+            reason,
+            self.frame,
+            self.player.pos.x,
+            self.player.pos.y,
+        )
         box = self.border.break_border(self.player.pos)
         self._border_clear_boxes.append(box)
         self.globals.cherry_plus = self.globals.cherry_start
@@ -1332,8 +1532,12 @@ class PerfectCherryBloom:
                     continue  # 出生态弹不吃清弹圆 (同上, CheckBombGraze 路径不到)
                 if box.hits(b.pos, size):
                     # 同 CheckBombGraze 路径: 弹转小樱点, 出生即吸附 (BulletManager.cpp:995)
-                    self.items.spawn(b.pos, ItemType(box.item_type),
-                                     power=self.power, state=STATE_ATTRACT)
+                    self.items.spawn(
+                        b.pos,
+                        ItemType(box.item_type),
+                        power=self.power,
+                        state=STATE_ATTRACT,
+                    )
                     b.dead = True
             keep.append(box)
         self._border_clear_boxes = keep
@@ -1360,8 +1564,9 @@ class PerfectCherryBloom:
         b.life_thresholds = [(400, 1), (200, 2)]
         b.begin_spellcard(0, 1800)  # is_active=1, 30 秒超时
         self.boss = b
-        log.debug("Boss 出场(演示): {} stage={} (frame={})",
-                  b.name, self.stage_no, self.frame)
+        log.debug(
+            "Boss 出场(演示): {} stage={} (frame={})", b.name, self.stage_no, self.frame
+        )
         self.sounds.play(SE.BOMB)  # 符卡宣告 (Gui.cpp:396, ShowSpellcard)
         return b
 
@@ -1384,14 +1589,23 @@ class PerfectCherryBloom:
         # 是弹伤非 bomb 伤 (from_bomb=False: 炸弹中弹伤仍按 collisionOut==0 缩放)
         boss_dmg = self.player.calc_damage_to_enemy(boss.pos, (60.0, 60.0))
         if boss_dmg:
-            r = boss.damage(boss_dmg, from_bomb=False, is_focus=self.player.focus,
-                            bomb_in_use=self.bomb.is_in_use, stage=self.stage_no,
-                            is_reimu_a=self.character == CHAR_REIMU_A)
+            r = boss.damage(
+                boss_dmg,
+                from_bomb=False,
+                is_focus=self.player.focus,
+                bomb_in_use=self.bomb.is_in_use,
+                stage=self.stage_no,
+                is_reimu_a=self.character == CHAR_REIMU_A,
+            )
             g.add_score(r.score_code)
             if r.cherry_gain:
                 self._add_cherry_plus(r.cherry_gain)
-        self.targeting.update(boss.pos, self.player.pos, is_boss=True,
-                              is_sakuya=self.character in _SAKUYA_CHARACTERS)
+        self.targeting.update(
+            boss.pos,
+            self.player.pos,
+            is_boss=True,
+            is_sakuya=self.character in _SAKUYA_CHARACTERS,
+        )
         if boss.life <= 0:
             self._apply_spellcard_end(boss.end_spellcard())  # 击破
             return
@@ -1400,11 +1614,14 @@ class PerfectCherryBloom:
         if cb:
             self._apply_spellcard_end(boss.end_spellcard())
             g.add_score(10000)  # 显示分 1000 → 代码值*10
-            boss.begin_spellcard(min(cb, len(SPELLCARD_SCORE) - 1), 1800,
-                                 timeout_sub=cb + 1)
+            boss.begin_spellcard(
+                min(cb, len(SPELLCARD_SCORE) - 1), 1800, timeout_sub=cb + 1
+            )
         # B.5 超时状态机
-        ev = boss.handle_timer_callback(cherry_above_start=g.cherry - g.cherry_start,
-                                        clear_field_cb=self._clear_field)
+        ev = boss.handle_timer_callback(
+            cherry_above_start=g.cherry - g.cherry_start,
+            clear_field_cb=self._clear_field,
+        )
         if ev["fired"]:
             if ev["cherry_penalty"]:
                 g.cherry = max(g.cherry_start, g.cherry - ev["cherry_penalty"])
@@ -1415,8 +1632,9 @@ class PerfectCherryBloom:
             self._apply_spellcard_end(boss.end_spellcard())
             nxt = ev["callback"]
             if nxt and boss.life > 0:
-                boss.begin_spellcard(min(nxt, len(SPELLCARD_SCORE) - 1), 1800,
-                                     timeout_sub=nxt + 1)
+                boss.begin_spellcard(
+                    min(nxt, len(SPELLCARD_SCORE) - 1), 1800, timeout_sub=nxt + 1
+                )
         boss.tick()
 
     def _tick_boss_ecl(self) -> None:
@@ -1457,8 +1675,9 @@ class PerfectCherryBloom:
         self.sounds.play(SE.ENEMY_SPELLCARD_END)
         name = self.boss.name if self.boss is not None else "?"
         if res["captured"]:
-            log.debug("符卡捕获: {} (frame={}, 分数={})",
-                      name, self.frame, res["score"] // 10)
+            log.debug(
+                "符卡捕获: {} (frame={}, 分数={})", name, self.frame, res["score"] // 10
+            )
         elif res["timed_out"]:
             log.debug("符卡超时: {} (frame={})", name, self.frame)
         else:
@@ -1473,7 +1692,8 @@ class PerfectCherryBloom:
             # 只接 ECL 路径(_catk_idx 由 begin 登记); 演示 Boss 不统计。
             if self._catk_idx is not None:
                 self.store.record_spellcard_success(
-                    self._catk_idx, self.character, res["score"] // 10)
+                    self._catk_idx, self.character, res["score"] // 10
+                )
         self._catk_idx = None
         if res["despawn_bullets"]:
             # EclManager.cpp:770-776: 清弹/清敌累计分入账 + "BONUS" 横幅
@@ -1500,17 +1720,22 @@ class PerfectCherryBloom:
         total = 0
         value = 2000
         for b in self.bullets.alive():
-            self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
-                             state=STATE_ATTRACT)
+            self.items.spawn(
+                b.pos, ItemType.POINT_BULLET, power=self.power, state=STATE_ATTRACT
+            )
             self.globals.add_popup(
-                b.pos, value, POPUP_YELLOW if value >= 8000 else POPUP_WHITE, kind=1)
+                b.pos, value, POPUP_YELLOW if value >= 8000 else POPUP_WHITE, kind=1
+            )
             total += value
             value = min(value + 20, 8000)
             b.dead = True
         # 连带激光 (:524-550): 无 flags&4 豁免, 原点+沿线出弹消点
-        self.lasers.remove_all(spawn_items=True, skip_flag4=False,
-                               spawn_at_pos=True,
-                               spawn_item=self._spawn_point_bullet)
+        self.lasers.remove_all(
+            spawn_items=True,
+            skip_flag4=False,
+            spawn_at_pos=True,
+            spawn_item=self._spawn_point_bullet,
+        )
         return total
 
     def _clear_field(self) -> None:
@@ -1544,9 +1769,12 @@ class PerfectCherryBloom:
             elif d == -1:
                 # C: randomItemSpawnIdx%3==0 才掉, 掉落表索引独立递增
                 if self._rand_spawn_idx % 3 == 0:
-                    self.items.drop_random(e.pos, table=self._drop_table,
-                                           counter=self._rand_table_idx,
-                                           power=self.power)
+                    self.items.drop_random(
+                        e.pos,
+                        table=self._drop_table,
+                        counter=self._rand_table_idx,
+                        power=self.power,
+                    )
                     self._rand_table_idx = (self._rand_table_idx + 1) % 32
                 self._rand_spawn_idx += 1
             if st.is_boss and not self._spellcard_active():
@@ -1560,8 +1788,9 @@ class PerfectCherryBloom:
                     g.show_bonus_score(removed)
             return
         g.add_score(5000)  # 显示分 500/杀 → 代码值*10
-        self.items.drop_random(e.pos, table=self._drop_table,
-                               counter=counter, power=self.power)
+        self.items.drop_random(
+            e.pos, table=self._drop_table, counter=counter, power=self.power
+        )
 
     # ---- 玩家事件消费 ----
     def _consume_player_events(self) -> None:
@@ -1573,18 +1802,24 @@ class PerfectCherryBloom:
                 # 本作品运行时恒为子类 —— isinstance 收窄兼作不变量断言)
                 assert isinstance(ev.data, DeathSettle)
                 pos = self._death_pos or self.player.pos
-                log.debug("玩家死亡 (frame={}, pos=({:.1f},{:.1f}), "
-                          "power {}→{}, 残机={})", self.frame, pos.x, pos.y,
-                          int(g.current_power), int(ev.data.new_power),
-                          g.lives_remaining)
+                log.debug(
+                    "玩家死亡 (frame={}, pos=({:.1f},{:.1f}), power {}→{}, 残机={})",
+                    self.frame,
+                    pos.x,
+                    pos.y,
+                    int(g.current_power),
+                    int(ev.data.new_power),
+                    g.lives_remaining,
+                )
                 self._apply_death_settle(ev.data)
             elif k == PlayerEventKind.RESPAWNED:
                 # C++ 残机在重生时扣 (Player.cpp UpdateDeath else 分支 AddLivesRemaining(-1))
                 if g.lives_remaining > 0:
                     g.lives_remaining -= 1
                     g.bombs_remaining = self.shot_data.initial_bombs
-                    log.debug("重生 (frame={}, 剩余残机={})", self.frame,
-                             g.lives_remaining)
+                    log.debug(
+                        "重生 (frame={}, 剩余残机={})", self.frame, g.lives_remaining
+                    )
                 else:
                     log.debug("无残机 → GameOver (frame={})", self.frame)
                     self.game_over = True  # 无残机 → C++ 进 retry 菜单
@@ -1634,8 +1869,13 @@ class PerfectCherryBloom:
         self.globals.spell_cards_captured += 1
         self.stats.add_spellcard()
 
-    def final_result(self, *, cleared: bool = False, slow_percent: float = 0.0,
-                     name: str | None = None) -> dict:
+    def final_result(
+        self,
+        *,
+        cleared: bool = False,
+        slow_percent: float = 0.0,
+        name: str | None = None,
+    ) -> dict:
         """结算: 汇总 globals → RunStats + 评级 + 入榜 + 写 store(内存)。
 
         slow_percent: 固定 60fps 下恒 0(无减速统计), 参数仅留接口。
@@ -1659,31 +1899,57 @@ class PerfectCherryBloom:
         st.bombs_used = g.bombs_used
         st.graze_total = g.graze_in_total
         # 点道具: 已过关面的累计 + 本关(_advance_stage 入账前关, 终面用当前值)
-        st.point_items_collected = (self._point_items_prev_stages
-                                    + g.point_items_collected_this_stage)
+        st.point_items_collected = (
+            self._point_items_prev_stages + g.point_items_collected_this_stage
+        )
         st.play_time_frames = self.frame
         rank_value = rating(st, slow_percent=slow_percent)
         rec = make_highscore_record(
-            g.score, self.character, self.difficulty, self.stage_no,
-            name=name, num_retries=g.num_retries)
+            g.score,
+            self.character,
+            self.difficulty,
+            self.stage_no,
+            name=name,
+            num_retries=g.num_retries,
+        )
         pos = self.store.insert_score(rec)
-        self.toplist.insert(ScoreRecord(score=g.score, character=self.character,
-                                        difficulty=st.difficulty, stage=self.stage_no))
+        self.toplist.insert(
+            ScoreRecord(
+                score=g.score,
+                character=self.character,
+                difficulty=st.difficulty,
+                stage=self.stage_no,
+            )
+        )
         if cleared:
             # CLRD: currentStage-1 = 通过的面数(本期只有 1 面 → 1)
-            self.store.record_clear(self.character, self.difficulty,
-                                    self.stage_no, g.num_retries)
-        self.store.record_run_end(self.character, self.difficulty, score=g.score,
-                                  frames=self.frame, cleared=cleared,
-                                  num_retries=g.num_retries)
+            self.store.record_clear(
+                self.character, self.difficulty, self.stage_no, g.num_retries
+            )
+        self.store.record_run_end(
+            self.character,
+            self.difficulty,
+            score=g.score,
+            frames=self.frame,
+            cleared=cleared,
+            num_retries=g.num_retries,
+        )
         self._result_cache = {
-            "score": g.score, "rating": round(rank_value, 1), "rank": pos,
-            "cleared": cleared, "clear_percent": st.clear_percent * 100.0,
-            "difficulty": self.difficulty, "character": self.character,
-            "stage": self.stage_no, "name": name,
-            "retries": g.num_retries, "deaths": int(st.deaths),
-            "bombs": g.bombs_used, "spellcards": st.spellcards_captured,
-            "graze": st.graze_total, "point_items": st.point_items_collected,
+            "score": g.score,
+            "rating": round(rank_value, 1),
+            "rank": pos,
+            "cleared": cleared,
+            "clear_percent": st.clear_percent * 100.0,
+            "difficulty": self.difficulty,
+            "character": self.character,
+            "stage": self.stage_no,
+            "name": name,
+            "retries": g.num_retries,
+            "deaths": int(st.deaths),
+            "bombs": g.bombs_used,
+            "spellcards": st.spellcards_captured,
+            "graze": st.graze_total,
+            "point_items": st.point_items_collected,
             "slow_percent": slow_percent,
             "high_score": self.store.high_score(self.difficulty, self.character),
         }
@@ -1691,23 +1957,30 @@ class PerfectCherryBloom:
 
     # ---- 渲染(离屏/无窗口用) ----
     def render_into(self, arr, *, width: int, height: int) -> None:
-        arr[..., 0] = 8; arr[..., 1] = 12; arr[..., 2] = 30; arr[..., 3] = 255
+        arr[..., 0] = 8
+        arr[..., 1] = 12
+        arr[..., 2] = 30
+        arr[..., 3] = 255
         for b in self.bullets.alive():
             y0, x0 = int(b.pos.y) - 4, int(b.pos.x) - 4
             if 0 <= x0 < width and 0 <= y0 < height:
-                arr[y0:y0 + 8, x0:x0 + 8, :3] = (235, 235, 90)
+                arr[y0 : y0 + 8, x0 : x0 + 8, :3] = (235, 235, 90)
         for e in self.host.alive():
             y0, x0 = int(e.pos.y) - 12, int(e.pos.x) - 12
             if 0 <= x0 < width and 0 <= y0 < height:
-                arr[y0:y0 + 24, x0:x0 + 24, :3] = (250, 40, 220)
+                arr[y0 : y0 + 24, x0 : x0 + 24, :3] = (250, 40, 220)
         for s in self.player.shots:
             y0, x0 = int(s.pos.y) - 6, int(s.pos.x) - 2
             if 0 <= x0 < width and 0 <= y0 < height:
-                arr[y0:y0 + 12, x0:x0 + 4, :3] = (120, 220, 255)
+                arr[y0 : y0 + 12, x0 : x0 + 4, :3] = (120, 220, 255)
         px, py = int(self.player.pos.x), int(self.player.pos.y)
         for dy in range(-8, 9):
             for dx in range(-8, 9):
-                if dx * dx + dy * dy <= 64 and 0 <= py + dy < height and 0 <= px + dx < width:
+                if (
+                    dx * dx + dy * dy <= 64
+                    and 0 <= py + dy < height
+                    and 0 <= px + dx < width
+                ):
                     arr[py + dy, px + dx, :3] = (255, 255, 255)
 
     def render_frame(self) -> np.ndarray:
@@ -1719,7 +1992,9 @@ class PerfectCherryBloom:
     # ---- 批量跑(无窗口) ----
     def run(self, *, frames: int = 120) -> np.ndarray | None:
         """离屏跑 N 帧并渲染, 返回末帧 RGB 数组。窗口玩法请用 games/th07/view/sprite_view.py 的 GameView。"""
-        print(f"《第{self.stage_no}面 {self.stage.title}》 BGM: {self.stage.bgm_names[0]}")
+        print(
+            f"《第{self.stage_no}面 {self.stage.title}》 BGM: {self.stage.bgm_names[0]}"
+        )
         last: np.ndarray | None = None
         for i in range(frames):
             self.tick()
@@ -1734,4 +2009,6 @@ class PerfectCherryBloom:
         for i in range(frames):
             self.tick()
             Image.fromarray(self.render_frame(), "RGBA").save(outdir / f"f{i:03d}.png")
-        print(f"已导出 {frames} 帧到 {outdir}/ | 分数={self.globals.gui_score} 残机={self.lives}")
+        print(
+            f"已导出 {frames} 帧到 {outdir}/ | 分数={self.globals.gui_score} 残机={self.lives}"
+        )

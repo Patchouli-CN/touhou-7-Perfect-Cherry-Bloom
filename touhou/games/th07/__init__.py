@@ -28,6 +28,7 @@ TYPE_CHECKING 下引用本包 screens.py 的菜单流类型, 仅 mypy 可见)。
 (ECL/ANM 经 engine.ecl/schema.anm 链; 窗口 App 与 pygame 渲染后端经
 view 子包注册, ``import touhou`` 保证全链触发)。
 """
+
 from .data import TH07_DATA
 from .player import Player, PlayerState
 from .boss import SPELLCARD_SCORE, Boss

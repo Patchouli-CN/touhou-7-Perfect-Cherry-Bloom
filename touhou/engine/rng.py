@@ -1,4 +1,4 @@
-""" 可复现的伪随机数(欧式弹幕回放用) —— Pythonic。 """
+"""可复现的伪随机数(欧式弹幕回放用) —— Pythonic。"""
 
 from __future__ import annotations
 

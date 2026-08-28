@@ -4,6 +4,7 @@
 GameApp(renderer=实例) 直接注入, 不建窗口不碰 pygame display, 验证
 应用壳的场景流/状态机与渲染后端完全解耦。
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,12 +16,16 @@ import pytest  # noqa: E402
 from touhou.engine.render import EndingFrame, FrameInput  # noqa: E402
 from touhou.games.th07.view.screens import MenuAction, Screen  # noqa: E402
 from touhou.registry import (  # noqa: E402
-    get_renderer, register_renderer, registered_renderers)
+    get_renderer,
+    register_renderer,
+    registered_renderers,
+)
 
 
 # ---------------------------------------------------------------------------
 # registry 渲染后端维度
 # ---------------------------------------------------------------------------
+
 
 def test_pygame_renderer_registered_by_default() -> None:
     """import touhou 即登记默认后端 "pygame"(import 链上的 decorator)。"""
@@ -58,6 +63,7 @@ def test_register_renderer_roundtrip_and_dup() -> None:
 # ---------------------------------------------------------------------------
 # 假 renderer 桩(记录调用, 无窗口无 pygame display)
 # ---------------------------------------------------------------------------
+
 
 class StubRenderer:
     """Renderer 协议最小桩: 记录调用序列, poll_input 返回空帧。"""
@@ -158,12 +164,23 @@ class StubGame:
         self.frame += 1
         if self.frame >= 2:
             self.result = {
-                "score": 100, "rating": 1.0, "rank": -1, "cleared": True,
-                "clear_percent": 100.0, "difficulty": self.kw["difficulty"],
-                "character": self.kw["character"], "stage": 1,
-                "name": "PLAYER", "retries": 0, "deaths": 0, "bombs": 0.0,
-                "spellcards": 0, "graze": 0, "point_items": 0,
-                "slow_percent": 0.0, "high_score": 100,
+                "score": 100,
+                "rating": 1.0,
+                "rank": -1,
+                "cleared": True,
+                "clear_percent": 100.0,
+                "difficulty": self.kw["difficulty"],
+                "character": self.kw["character"],
+                "stage": 1,
+                "name": "PLAYER",
+                "retries": 0,
+                "deaths": 0,
+                "bombs": 0.0,
+                "spellcards": 0,
+                "graze": 0,
+                "point_items": 0,
+                "slow_percent": 0.0,
+                "high_score": 100,
             }
 
 
@@ -171,8 +188,12 @@ def _stub_app(tmp_path):
     from touhou.games.th07.view import GameApp
 
     stub = StubRenderer()
-    app = GameApp(StubGame, config_path=tmp_path / "config.json",
-                  score_path=tmp_path / "score.json", renderer=stub)
+    app = GameApp(
+        StubGame,
+        config_path=tmp_path / "config.json",
+        score_path=tmp_path / "score.json",
+        renderer=stub,
+    )
     return app, stub
 
 
@@ -197,23 +218,23 @@ def test_app_renderer_by_name_via_registry(tmp_path) -> None:
 def test_stub_renderer_full_scene_flow(tmp_path) -> None:
     """桩后端跑完整场景流: 标题 → 难度 → 角色 → 游玩 → 结算 → 回标题。"""
     app, stub = _stub_app(tmp_path)
-    app._run_title_menu((MenuAction.CONFIRM,))   # 开始游戏 → 难度
+    app._run_title_menu((MenuAction.CONFIRM,))  # 开始游戏 → 难度
     assert app._screen == Screen.DIFFICULTY
-    app._run_menu((MenuAction.CONFIRM,))         # 难度 → 角色
-    app._run_menu((MenuAction.CONFIRM,))         # 角色 → 游玩
+    app._run_menu((MenuAction.CONFIRM,))  # 难度 → 角色
+    app._run_menu((MenuAction.CONFIRM,))  # 角色 → 游玩
     assert app._screen == Screen.PLAYING
     kinds = [c[0] for c in stub.calls if c[0] != "se"]  # 滤掉菜单音效
     assert kinds[:3] == ["title", "difficulty", "character"]
     assert "begin_game" in kinds and "resize" in kinds
-    assert ("se", "ok") in stub.calls            # 菜单确认音走后端
-    app._run_game(FrameInput())                  # 第 1 帧: 渲染对局
-    app._run_game(FrameInput())                  # 第 2 帧: 出 result → 结算
+    assert ("se", "ok") in stub.calls  # 菜单确认音走后端
+    app._run_game(FrameInput())  # 第 1 帧: 渲染对局
+    app._run_game(FrameInput())  # 第 2 帧: 出 result → 结算
     assert app._screen == Screen.RESULT
-    assert ("game", 1) in stub.calls             # render_game 拿到 game 对象
-    app._run_result((MenuAction.CONFIRM,))       # 未入榜: 确认 → Save Replay? 询问
+    assert ("game", 1) in stub.calls  # render_game 拿到 game 对象
+    app._run_result((MenuAction.CONFIRM,))  # 未入榜: 确认 → Save Replay? 询问
     assert app._screen == Screen.RESULT
     assert app._result_save == "ask"
-    assert ("result", 1, None) in stub.calls     # render_result(帧号从 1 起)
+    assert ("result", 1, None) in stub.calls  # render_result(帧号从 1 起)
     # 询问态选 No → 保存回标题(原版 state 11 BACK → state 2)
     app._run_result((MenuAction.RIGHT, MenuAction.CONFIRM))
     assert app._screen == Screen.MAIN_MENU
@@ -225,8 +246,8 @@ def test_stub_renderer_pause_and_continue_paths(tmp_path) -> None:
     app._on_menu(MenuAction.CONFIRM)
     app._on_menu(MenuAction.CONFIRM)
     app._on_menu(MenuAction.CONFIRM)
-    app._run_game(FrameInput(esc=True))          # Esc → 暂停
+    app._run_game(FrameInput(esc=True))  # Esc → 暂停
     assert app._paused
-    assert stub.calls[-1][0] == "pause"          # 暂停面板渲染
+    assert stub.calls[-1][0] == "pause"  # 暂停面板渲染
     app._run_game(FrameInput(menu_actions=(MenuAction.BACK,)))
     assert not app._paused

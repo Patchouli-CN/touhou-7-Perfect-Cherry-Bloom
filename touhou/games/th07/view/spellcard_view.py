@@ -35,6 +35,7 @@
 另含 SpellcardBgView: 符卡宣言后的背景变化 (Stage.cpp spellCardState),
 见类 docstring。
 """
+
 from __future__ import annotations
 
 import pygame
@@ -48,19 +49,19 @@ _ANM_OFFSET_FACE = 0x4A0
 _ANM_OFFSET_FACE_STAGE = 0x4AD
 
 # ShowSpellcard 调用点实参 (Gui.cpp:365-394)
-_SCR_PORTRAIT = 1187          # 立绘脚本 (face 链局部 3)
-_SCR_REL1, _SCR_REL2 = 1189, 1191   # 左右装饰脚本
-_SPR_DECOR = 1196             # 装饰 sprite (局部 12)
-_SCR_NAME_BG = 0              # ascii.anm 符卡名底条 (Gui.cpp:659)
-_SCR_INDICATOR = 2            # ascii.anm 捕获分指示 (Gui.cpp:660)
-_SCR_NAME_TEXT = 5            # text.anm 局部 5 = 全局 1797 (Gui.cpp:389)
-_NAME_SPRITE_W = 320          # text.anm sprite 5 宽 (右对齐基准)
+_SCR_PORTRAIT = 1187  # 立绘脚本 (face 链局部 3)
+_SCR_REL1, _SCR_REL2 = 1189, 1191  # 左右装饰脚本
+_SPR_DECOR = 1196  # 装饰 sprite (局部 12)
+_SCR_NAME_BG = 0  # ascii.anm 符卡名底条 (Gui.cpp:659)
+_SCR_INDICATOR = 2  # ascii.anm 捕获分指示 (Gui.cpp:660)
+_SCR_NAME_TEXT = 5  # text.anm 局部 5 = 全局 1797 (Gui.cpp:389)
+_NAME_SPRITE_W = 320  # text.anm sprite 5 宽 (右对齐基准)
 
 _FACE_ANM = ("face_rm00.anm", "face_mr00.anm", "face_sk00.anm")
 
 # 本模块画在 640x480 窗口层 (脚本坐标即窗口坐标, 不换算; 见模块 docstring)
 
-_NAME_COLOR = (255, 240, 240)   # DrawStringFormat 0xfff0f0 (Gui.cpp:390)
+_NAME_COLOR = (255, 240, 240)  # DrawStringFormat 0xfff0f0 (Gui.cpp:390)
 
 # ---- 符卡背景 (Stage.cpp spellCardState + spellcardVms) ----
 # 宣言时 SetAnmIdxAndExecuteScript(&spellcardVms[i], i + spellcardVmsIdx + 732)
@@ -79,7 +80,7 @@ _SC_BG_VMS: dict[int, tuple[tuple[str, int, tuple[int, ...]], ...]] = {
     7: (("eff07.anm", 0x2DD, (0x2DD, 0x2DE)),),
     8: (("eff08.anm", 0x2DE, (0x2DE, 0x2DF)),),
 }
-_SC_BG_FADE = 60          # state 1 时长 (Stage.cpp:482 ticks==60 → state++)
+_SC_BG_FADE = 60  # state 1 时长 (Stage.cpp:482 ticks==60 → state++)
 
 
 class SpellcardBgView:
@@ -100,7 +101,7 @@ class SpellcardBgView:
     与 VM)。
     """
 
-    FADE_FRAMES = _SC_BG_FADE   # state 1 时长 (GameView 据此切 3D 停画)
+    FADE_FRAMES = _SC_BG_FADE  # state 1 时长 (GameView 据此切 3D 停画)
 
     def __init__(self, bank, tcache: TransformCache) -> None:
         self.bank = bank
@@ -108,13 +109,13 @@ class SpellcardBgView:
         self._sbanks: dict[tuple[str, int], AnmScriptBank] = {}
         self._stage = 1
         self._vms: list[Vm2d] = []
-        self._dark = pygame.Surface((1, 1))     # 尺寸惰性匹配游戏区
+        self._dark = pygame.Surface((1, 1))  # 尺寸惰性匹配游戏区
         # ---- 测试断言用: 本帧背景 VM 绘制调用数 ----
         self.bg_draws = 0
 
     def set_stage(self, stage_no: int) -> None:
         self._stage = stage_no
-        self._vms = []                  # 换关后下次宣言按新关脚本表重建
+        self._vms = []  # 换关后下次宣言按新关脚本表重建
 
     def _sbank(self, name: str, base: int) -> AnmScriptBank | None:
         key = (name, base)
@@ -131,7 +132,7 @@ class SpellcardBgView:
         active = bool(probe()) if callable(probe) else bool(probe)
         boss = getattr(game, "boss", None)
         if not active or boss is None:
-            self._vms = []              # EndSpellcard: state=0, VM 停画
+            self._vms = []  # EndSpellcard: state=0, VM 停画
             return None
         if not self._vms:
             self._start()
@@ -217,24 +218,28 @@ class SpellcardView:
         self._sbanks: dict[tuple[str, int], AnmScriptBank] = {}
         self._text_scripts: dict[int, list] | None = None
         # ---- 运行期状态 (每次宣言重建) ----
-        self._key: tuple[int, int] | None = None   # (id(boss), spellcard_idx)
+        self._key: tuple[int, int] | None = None  # (id(boss), spellcard_idx)
         self._cutin: list[tuple[Vm2d, bool]] = []  # (vm, no_rotation)
-        self._name: AnmVm | None = None            # text.anm 运动 VM (无贴图)
+        self._name: AnmVm | None = None  # text.anm 运动 VM (无贴图)
         self._name_bg: Vm2d | None = None
         self._indicator: Vm2d | None = None
         self._name_text = ""
-        self._game = None                  # 捕获分数字数据源 (render 每帧更新)
+        self._game = None  # 捕获分数字数据源 (render 每帧更新)
         self._ascii_sb: AnmScriptBank | None = None  # 数字 sprite 132+ 取图
-        self._sc_idx = -1                  # 宣言时的 catk 全局符卡号
-        self._bonus_remaining = 0          # 剩余捕获分最后值 (boss 撤掉后沿用)
+        self._sc_idx = -1  # 宣言时的 catk 全局符卡号
+        self._bonus_remaining = 0  # 剩余捕获分最后值 (boss 撤掉后沿用)
         # ---- 测试断言用: 本帧宣言绘制调用数 ----
         self.gui_draws = 0
 
     @property
     def gui_active(self) -> bool:
         """宣言 VM 仍在活动 (GameView 据此决定是否加载字体)。"""
-        return (bool(self._cutin) or self._name is not None
-                or self._name_bg is not None or self._indicator is not None)
+        return (
+            bool(self._cutin)
+            or self._name is not None
+            or self._name_bg is not None
+            or self._indicator is not None
+        )
 
     def _sbank(self, name: str, base: int) -> AnmScriptBank | None:
         key = (name, base)
@@ -266,7 +271,7 @@ class SpellcardView:
             else:
                 self._start(game, boss)
             self._key = cur
-        self._game = game     # 捕获分数字取 boss/store 数据 (Gui.cpp:1736-1739)
+        self._game = game  # 捕获分数字取 boss/store 数据 (Gui.cpp:1736-1739)
         if not self.gui_active:
             return
         self._tick(surf, font)
@@ -277,7 +282,7 @@ class SpellcardView:
         stage = getattr(game, "stage_no", 1)
         char = getattr(game, "character", 0)
         gui_id = getattr(boss, "spellcard_face", 0)
-        self._sc_idx = boss.spellcard_idx   # catk 下标 (EndSpellcard 不清, 见
+        self._sc_idx = boss.spellcard_idx  # catk 下标 (EndSpellcard 不清, 见
         # EclManager.cpp:837 只清 isActive; 滑出期间历史仍按本卡显示)
         self._cutin = []
         self._name = None
@@ -287,39 +292,48 @@ class SpellcardView:
         face = self._sbank(_FACE_ANM[char // 2], _ANM_OFFSET_FACE)
         face_st = self._sbank(f"face_{stage:02d}_00.anm", _ANM_OFFSET_FACE_STAGE)
         if face is None:
-            log.warning("符卡宣言 face 链 anm 缺失: {}, cutin 整体跳过",
-                        _FACE_ANM[char // 2])
+            log.warning(
+                "符卡宣言 face 链 anm 缺失: {}, cutin 整体跳过", _FACE_ANM[char // 2]
+            )
         else:
             # 立绘 (Gui.cpp:363-383): sprite<0 时无立绘 (如非 boss 符卡)
             portrait = Vm2d(face, self.tcache)
             if gui_id >= 0:
                 if not portrait.start(_SCR_PORTRAIT):
-                    log.warning("符卡宣言立绘脚本 {} 在 {} 缺失, 跳过立绘",
-                                _SCR_PORTRAIT, face.name)
+                    log.warning(
+                        "符卡宣言立绘脚本 {} 在 {} 缺失, 跳过立绘",
+                        _SCR_PORTRAIT,
+                        face.name,
+                    )
                 else:
                     gid = _ANM_OFFSET_FACE_STAGE + gui_id
                     if face_st is None:
                         log.warning(
                             "符卡宣言立绘 face_{:02d}_00.anm 加载失败, "
                             "sprite {} 替换跳过 (回落脚本默认=自机脸)",
-                            stage, gid)
+                            stage,
+                            gid,
+                        )
                     else:
-                        pic = face_st.sprite_surf(gui_id)   # 全局 1197+gui_id
+                        pic = face_st.sprite_surf(gui_id)  # 全局 1197+gui_id
                         if pic is None:
                             log.warning(
                                 "符卡宣言立绘 sprite {} (={}+{}) 在 {} 不存在, "
                                 "回落脚本默认 sprite (自机脸)",
-                                gid, _ANM_OFFSET_FACE_STAGE, gui_id,
-                                face_st.name)
+                                gid,
+                                _ANM_OFFSET_FACE_STAGE,
+                                gui_id,
+                                face_st.name,
+                            )
                         else:
                             portrait.surf = pic
                             portrait.vm.active_sprite_idx = gid
                     # offset.x 按 sprite 宽分档 (Gui.cpp:369-382)
-                    w = portrait.surf.get_width() \
-                        if portrait.surf is not None else 0
-                    portrait.vm.offset[0] = \
+                    w = portrait.surf.get_width() if portrait.surf is not None else 0
+                    portrait.vm.offset[0] = (
                         -288.0 if w > 256 else (-112.0 if w > 128 else 0.0)
-                    self._cutin.append((portrait, True))     # DrawNoRotation
+                    )
+                    self._cutin.append((portrait, True))  # DrawNoRotation
             for gid, no_rot in ((_SCR_REL1, True), (_SCR_REL2, False)):
                 vm = Vm2d(face, self.tcache)
                 if vm.start(gid):
@@ -337,7 +351,7 @@ class SpellcardView:
                 self._name_bg = bg
             ind = Vm2d(ascii_sb, self.tcache)
             if ind.start(_SCR_INDICATOR):
-                ind.vm.pending_interrupt = 1            # Gui.cpp:395
+                ind.vm.pending_interrupt = 1  # Gui.cpp:395
                 self._indicator = ind
         instrs = self._text_script(_SCR_NAME_TEXT)
         if instrs:
@@ -355,8 +369,15 @@ class SpellcardView:
             self._indicator.vm.pending_interrupt = 2
 
     # ---- 每帧推进/绘制 ----
-    def _draw(self, vm: Vm2d, surf: pygame.Surface, x: float, y: float,
-              *, no_rotation: bool = False) -> None:
+    def _draw(
+        self,
+        vm: Vm2d,
+        surf: pygame.Surface,
+        x: float,
+        y: float,
+        *,
+        no_rotation: bool = False,
+    ) -> None:
         if not vm.alive:
             return
         # ANM_22 anchor=3 (立绘脚本 1187/装饰脚本 1189 带): pos 是 quad 左上
@@ -430,8 +451,7 @@ class SpellcardView:
             self.gui_draws += 1
         if ind is not None:
             # DrawNoRotation(spellcardBonusIndicator) (Gui.cpp:1733), 自身脚本位
-            self._draw(ind, surf, ind.vm.pos[0], ind.vm.pos[1],
-                       no_rotation=True)
+            self._draw(ind, surf, ind.vm.pos[0], ind.vm.pos[1], no_rotation=True)
             self._draw_capture_bonus(surf, ind)
 
     # ---- 捕获分递减数字 + 历史 (Gui.cpp:1734-1795, captureBonusVm) ----
@@ -439,12 +459,12 @@ class SpellcardView:
         sb = self._ascii_sb
         return sb.sprite_surf(132 + d) if sb is not None else None
 
-    def _blit_digit(self, surf: pygame.Surface, d: int, x: float,
-                    y: float) -> None:
+    def _blit_digit(self, surf: pygame.Surface, d: int, x: float, y: float) -> None:
         img = self._digit(d)
         if img is not None:
-            surf.blit(img, (int(x) - img.get_width() // 2,
-                            int(y) - img.get_height() // 2))
+            surf.blit(
+                img, (int(x) - img.get_width() // 2, int(y) - img.get_height() // 2)
+            )
             self.gui_draws += 1
 
     def _draw_capture_bonus(self, surf: pygame.Surface, ind: Vm2d) -> None:
@@ -460,8 +480,7 @@ class SpellcardView:
             # 保留 (EclManager.cpp:837) → 滑出期间定格显示最终分; boss 对象
             # 撤掉后沿用最后值 (C++ 的 spellcardInfo 是独立常驻槽)。
             if getattr(boss, "is_capturing", False):
-                self._bonus_remaining = (boss.capture_score
-                                         + boss.graze_bonus_score)
+                self._bonus_remaining = boss.capture_score + boss.graze_bonus_score
             else:
                 self._bonus_remaining = 0
         remaining = self._bonus_remaining

@@ -3,6 +3,7 @@
 数值权威来源: th07/src/th07/ScreenEffect.cpp (OnUpdateScreenShake) 与
 BombData.cpp / EnemyEclInstr.cpp 的 BombEffects::RegisterChain(1, ...) 注册点。
 """
+
 from __future__ import annotations
 
 import random
@@ -27,8 +28,12 @@ from touhou.utils import Vec2  # noqa: E402
 from touhou.engine.view.shake_view import ScreenShake  # noqa: E402
 from tests.test_exins import _ex_machine, _fire  # noqa: E402
 
-CTX = BombContext(player_pos=Vec2(100.0, 300.0), cherry=101000.0,
-                  cherry_start=1000.0, difficulty=DIFF_NORMAL)
+CTX = BombContext(
+    player_pos=Vec2(100.0, 300.0),
+    cherry=101000.0,
+    cherry_start=1000.0,
+    difficulty=DIFF_NORMAL,
+)
 
 
 def _run(character: int, focus: bool, frames: int) -> list[list[tuple]]:
@@ -44,6 +49,7 @@ def _run(character: int, focus: bool, frames: int) -> list[list[tuple]]:
 
 
 # ---- BombData.cpp 各注册点 (type=1, duration, amp_start, amp_end) ----
+
 
 def test_shake_reimu_b_unfocused() -> None:
     """灵梦B 非集中: 首帧 (60,2,6) (BombData.cpp:559) + timer==60 (80,20,0) (:566)。"""
@@ -67,10 +73,10 @@ def test_shake_marisa_a_unfocused_first_frame() -> None:
 def test_shake_marisa_a_focused_per_star() -> None:
     """魔理沙A 集中: 每颗星出生帧 (120,4,1) (:867, timer%6==0 且 i<24)。"""
     frames = _run(CHAR_MARISA_A, True, 20)
-    assert frames[0] == [(120, 4, 1)]    # 首帧即放 i=0
+    assert frames[0] == [(120, 4, 1)]  # 首帧即放 i=0
     assert frames[6] == [(120, 4, 1)]
     assert frames[12] == [(120, 4, 1)]
-    assert frames[1] == []               # 非 6 倍数帧不震
+    assert frames[1] == []  # 非 6 倍数帧不震
 
 
 def test_shake_marisa_b_unfocused() -> None:
@@ -110,6 +116,7 @@ def test_shake_reimu_a_orb_explosion() -> None:
 
 # ---- ECL ExIns 注册点 (EnemyEclInstr.cpp) ----
 
+
 def test_shake_exins_effect1e_accel() -> None:
     """ExIns idx9 effect1e 加速: (80,8,0) (EnemyEclInstr.cpp:551)。"""
     m, host, _world = _ex_machine(9)
@@ -130,6 +137,7 @@ def test_shake_exins_alice_curve_and_turn() -> None:
 
 
 # ---- view 侧衰减 (ScreenEffect.cpp:249-293 OnUpdateScreenShake) ----
+
 
 def test_screen_shake_decay_linear() -> None:
     """振幅从 amp_start 线性插值到 amp_end (:267-269), 偏移 ∈ {0,±amp}。"""
@@ -171,18 +179,22 @@ def test_screen_shake_latest_wins() -> None:
 
 # ---- impl 帧末快照 ----
 
+
 def test_impl_frame_shakes_snapshot() -> None:
     """bomb 触发帧的震屏事件收进 game.frame_shakes (引擎最小透出)。"""
     from touhou.paths import DEFAULT_DATA
+
     if not DEFAULT_DATA.exists():
         pytest.skip("th07.dat 不在默认路径")
     from touhou.games.th07.world import PerfectCherryBloom
+
     g = PerfectCherryBloom(data_path=DEFAULT_DATA, character=1)  # 灵梦B
     g.tick(keys=(False,) * 6, bomb=True)
     assert (60, 2, 6) in g.frame_shakes
 
 
 # ---- 渲染后端合成路径 (整帧位移 blit + 快照去重) ----
+
 
 class _ShakeStubGame:
     """render_game 最小夹具: 无贴图视图(None 走 fill 兜底) + frame_shakes。"""
@@ -203,13 +215,15 @@ def test_app_render_game_consumes_shakes_once() -> None:
     不重复注册 (按 (id(game), frame) 去重)。"""
     pygame = pytest.importorskip("pygame")
     import os
+
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     pygame.init()
     from touhou.games.th07.view import GameApp
+
     app = GameApp(lambda **kw: _ShakeStubGame())
     game = _ShakeStubGame()
     app._renderer.render_game(game)
     assert app._renderer._shake.active
-    app._renderer.render_game(game)   # 同帧再次 blit(暂停路径): 不得重复注册
+    app._renderer.render_game(game)  # 同帧再次 blit(暂停路径): 不得重复注册
     n_shakes = len(app._renderer._shake._active)
     assert n_shakes == 1

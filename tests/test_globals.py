@@ -1,4 +1,5 @@
 """Touhou: 全局状态(ZunGlobals)与 rng 测试。"""
+
 from __future__ import annotations
 
 import sys
@@ -167,6 +168,7 @@ def test_decrease_subrank_floors_at_min_rank() -> None:
 
 
 # ---- 得分弹字 / 状态横幅 (AsciiManager / Gui) ----
+
 
 def test_popup_rises_and_expires() -> None:
     """弹字每帧上浮 0.5px, 寿命 60 帧 (AsciiManager.cpp:55-60)。"""

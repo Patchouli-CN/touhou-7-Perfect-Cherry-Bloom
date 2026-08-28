@@ -1,4 +1,4 @@
-""" ECL 虚拟机框架基类 —— 作品无关的取指-译码-执行循环。
+"""ECL 虚拟机框架基类 —— 作品无关的取指-译码-执行循环。
 
 职责边界:
 - 本模块只有 VM 框架: 主循环(step/_run_ecl)、调用栈、wait timer、O(1) handler
@@ -57,6 +57,7 @@ _F = TypeVar("_F", bound=Callable[..., Any])
 
 
 # ---- 插值 easing(AnmManager 的 ANM_EASE_*) ----
+
 
 def _ease(t: float, mode: int) -> float:
     if mode == 1:
@@ -119,9 +120,15 @@ class EclMachineBase:
 
         return deco
 
-    def __init__(self, ecl_file: EclFile, enemy: Optional[EclEnemyState] = None,
-                 world: Optional[EclWorld] = None, host: Optional[EclHost] = None,
-                 *, strict: bool = False) -> None:
+    def __init__(
+        self,
+        ecl_file: EclFile,
+        enemy: Optional[EclEnemyState] = None,
+        world: Optional[EclWorld] = None,
+        host: Optional[EclHost] = None,
+        *,
+        strict: bool = False,
+    ) -> None:
         self.file = ecl_file
         self.enemy = enemy if enemy is not None else EclEnemyState()
         self.world = world if world is not None else EclWorld()
@@ -169,13 +176,17 @@ class EclMachineBase:
 
     # ---- 参数解码(GET_INT_VALUE/GET_FLOAT_VALUE; bitIdx 可与 argIdx 不同) ----
 
-    def _int_arg(self, instr: EclInstr, arg_idx: int, bit_idx: Optional[int] = None) -> int:
+    def _int_arg(
+        self, instr: EclInstr, arg_idx: int, bit_idx: Optional[int] = None
+    ) -> int:
         bit = arg_idx if bit_idx is None else bit_idx
         if instr.param_mask & (1 << bit):
             return self._get_int(instr.arg_int(arg_idx))
         return instr.arg_int(arg_idx)
 
-    def _float_arg(self, instr: EclInstr, arg_idx: int, bit_idx: Optional[int] = None) -> float:
+    def _float_arg(
+        self, instr: EclInstr, arg_idx: int, bit_idx: Optional[int] = None
+    ) -> float:
         bit = arg_idx if bit_idx is None else bit_idx
         if instr.param_mask & (1 << bit):
             # C: GetFloatVarValue(enemy, args[i].f) —— 先按 f32 位型解读,
@@ -332,7 +343,9 @@ class EclMachineBase:
         mult = w.framerate_multiplier
 
         if e.move_mode == 3:
-            e.move_angle = add_normalize_angle(e.move_angle, mult * e.move_angular_velocity)
+            e.move_angle = add_normalize_angle(
+                e.move_angle, mult * e.move_angular_velocity
+            )
             e.move_radius = f32(mult * e.move_radial_velocity + e.move_radius)
             mx = math.cos(e.move_angle) * e.move_radius
             my = math.sin(e.move_angle) * e.move_radius
@@ -359,9 +372,15 @@ class EclMachineBase:
             if t < 0.0:
                 t = 0.0
             t = _ease(t, e.interp_easing)
-            e.axis_speed.x = f32(t * e.move_interp.x + e.move_interp_start_pos.x - e.pos.x)
-            e.axis_speed.y = f32(t * e.move_interp.y + e.move_interp_start_pos.y - e.pos.y)
-            e.axis_speed.z = f32(t * e.move_interp.z + e.move_interp_start_pos.z - e.pos.z)
+            e.axis_speed.x = f32(
+                t * e.move_interp.x + e.move_interp_start_pos.x - e.pos.x
+            )
+            e.axis_speed.y = f32(
+                t * e.move_interp.y + e.move_interp_start_pos.y - e.pos.y
+            )
+            e.axis_speed.z = f32(
+                t * e.move_interp.z + e.move_interp_start_pos.z - e.pos.z
+            )
             if e.mirror:
                 e.axis_speed.x = -e.axis_speed.x
             e.angle = f32(math.atan2(e.axis_speed.y, e.axis_speed.x))
@@ -437,7 +456,8 @@ class EclMachineBase:
         """未登记 handler 的指令: strict 抛异常, 否则交宿主钩子(记日志跳过)。"""
         if self.strict:
             raise NotImplementedEclError(
-                f"ECL 指令 id={instr.id} offset={instr.offset:#x}")
+                f"ECL 指令 id={instr.id} offset={instr.offset:#x}"
+            )
         self.host.on_unhandled_opcode(self, instr)
         return None
 

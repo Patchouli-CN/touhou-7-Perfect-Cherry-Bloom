@@ -51,7 +51,8 @@ class LoguruHandler(std_logging.Handler):
                 return
             message = record.getMessage()
             if message.startswith("Traceback") and (
-                "KeyboardInterrupt" in message or "asyncio.exceptions.CancelledError" in message
+                "KeyboardInterrupt" in message
+                or "asyncio.exceptions.CancelledError" in message
             ):
                 return
         if record.levelno == std_logging.DEBUG:
@@ -62,7 +63,9 @@ class LoguruHandler(std_logging.Handler):
             except ValueError:
                 level = record.levelno  # 未知级别名, 直接传数值(loguru 支持)
         frame, depth = inspect.currentframe(), 0
-        while frame and (depth == 0 or frame.f_code.co_filename == std_logging.__file__):
+        while frame and (
+            depth == 0 or frame.f_code.co_filename == std_logging.__file__
+        ):
             frame = frame.f_back
             depth += 1
         exc = (
@@ -70,7 +73,9 @@ class LoguruHandler(std_logging.Handler):
             if _LOGURU_FULL_TRACEBACK or record.levelno >= std_logging.ERROR
             else False
         )
-        logger.opt(depth=depth, exception=exc, colors=False).log(level, "{}", record.getMessage())
+        logger.opt(depth=depth, exception=exc, colors=False).log(
+            level, "{}", record.getMessage()
+        )
 
 
 def setup_logging(

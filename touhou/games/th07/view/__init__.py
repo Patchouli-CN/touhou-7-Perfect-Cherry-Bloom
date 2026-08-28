@@ -26,6 +26,7 @@ GameApp 经 ``@register_app("th07")`` 登记到 registry(TouhouWorld.run()
 符合性由运行时测试兜底(tests/test_registry.py —— 本包整体在 mypy
 豁免区, engine/apis 均不 import 本包, 静态断言无处安放)。
 """
+
 from .impl import GameApp
 from .pygame_backend import PygameRenderer, _load_font
 

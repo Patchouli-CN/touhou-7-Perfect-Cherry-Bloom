@@ -3,6 +3,7 @@
 对照 Gui.cpp LoadMsg/MsgRead/RunMsg/MsgWait/HasCurrentMsgIdx 与
 EnemyManager.cpp:332-336(时间轴 op8/9)。真实数据用例需要 th07.dat。
 """
+
 from __future__ import annotations
 
 import struct
@@ -28,6 +29,7 @@ _OP = MsgOpcode
 
 
 # ---- 手工构造 msg 二进制(不依赖 th07.dat) ----
+
 
 def _instr(time: int, opcode: int, args: bytes = b"") -> bytes:
     return struct.pack("<HBB", time, opcode, len(args)) + args
@@ -69,6 +71,7 @@ def _sample_msg() -> bytes:
 
 # ---- 解析器(合成数据) ----
 
+
 def test_parse_synthetic() -> None:
     f = MsgFile.parse(_sample_msg())
     assert f.num_messages == 2
@@ -93,16 +96,19 @@ def test_parse_errors() -> None:
 
 
 def test_shift_jis_bad_bytes_tolerated() -> None:
-    blob = _build_msg([
-        _instr(0, _OP.DIALOGUE, struct.pack("<hh", 0, 0) + b"\x82\xff\x82\x20\x00"),
-        _instr(0, _OP.DELETE),
-    ])
+    blob = _build_msg(
+        [
+            _instr(0, _OP.DIALOGUE, struct.pack("<hh", 0, 0) + b"\x82\xff\x82\x20\x00"),
+            _instr(0, _OP.DELETE),
+        ]
+    )
     f = MsgFile.parse(blob)
     text = f.messages[0][0].dialogue[2]
     assert isinstance(text, str) and text  # 坏字节容错替换, 不炸
 
 
 # ---- MsgVm 状态机(合成数据) ----
+
 
 def test_vm_pause_and_advance() -> None:
     vm = MsgVm(MsgFile.parse(_sample_msg()))
@@ -117,9 +123,9 @@ def test_vm_pause_and_advance() -> None:
     # Z 提前结束: 停满 12 帧前按 Z 无效
     while vm.frames_elapsed_during_pause < 11:
         vm.step()
-    vm.step(advance_pressed=True)   # 11<12 → 仍按住
+    vm.step(advance_pressed=True)  # 11<12 → 仍按住
     assert vm.timer == 10 and vm.frames_elapsed_during_pause == 12
-    vm.step(advance_pressed=True)   # elapsed>=12 + Z 新按下 → 结束 PAUSE
+    vm.step(advance_pressed=True)  # elapsed>=12 + Z 新按下 → 结束 PAUSE
     assert vm.timer == 11
     # 跑完整个消息
     frames = 0
@@ -138,7 +144,7 @@ def test_vm_typewriter_reveal() -> None:
     assert 0 < line.reveal < len(line.text)  # 打字机推进中
     for _ in range(20):
         vm.step()
-    assert line.reveal == len(line.text)     # 全部显示
+    assert line.reveal == len(line.text)  # 全部显示
     assert line.shown_text == "さむ〜"
 
 
@@ -161,14 +167,16 @@ def test_vm_read_out_of_range_noop() -> None:
 
 def test_vm_switch_bright_dim_exit() -> None:
     """SWITCH interrupt: 3=说话方(亮), 4=非说话方(暗), 5=退场。"""
-    blob = _build_msg([
-        _instr(0, _OP.SHOW_PORTRAIT, struct.pack("<hh", 0, 0)),
-        _instr(0, _OP.SHOW_PORTRAIT, struct.pack("<hh", 1, 0)),
-        _instr(0, _OP.SWITCH, struct.pack("<hB", 0, 4)),   # 灵梦暗
-        _instr(0, _OP.SWITCH, struct.pack("<hB", 1, 3)),   # Boss 亮
-        _instr(1, _OP.SWITCH, struct.pack("<hB", 1, 5)),   # Boss 退场
-        _instr(2, _OP.DELETE),
-    ])
+    blob = _build_msg(
+        [
+            _instr(0, _OP.SHOW_PORTRAIT, struct.pack("<hh", 0, 0)),
+            _instr(0, _OP.SHOW_PORTRAIT, struct.pack("<hh", 1, 0)),
+            _instr(0, _OP.SWITCH, struct.pack("<hB", 0, 4)),  # 灵梦暗
+            _instr(0, _OP.SWITCH, struct.pack("<hB", 1, 3)),  # Boss 亮
+            _instr(1, _OP.SWITCH, struct.pack("<hB", 1, 5)),  # Boss 退场
+            _instr(2, _OP.DELETE),
+        ]
+    )
     vm = MsgVm(MsgFile.parse(blob))
     vm.read(0)
     vm.step()
@@ -179,9 +187,11 @@ def test_vm_switch_bright_dim_exit() -> None:
 
 # ---- 真实 msg1.dat ----
 
+
 @NEEDS_DAT
 def test_parse_msg1_real() -> None:
     from touhou.schema.archive import GameArchive
+
     a = GameArchive.open(DAT)
     f = MsgFile.parse(a.load("msg1.dat"))
     assert f.num_messages == 22
@@ -206,6 +216,7 @@ def test_parse_msg1_real() -> None:
 def test_vm_msg1_appear_enemy_window() -> None:
     """APPEAR_ENEMY: 当帧 MsgWait 放行(ignoreWaitCounter), 次帧恢复停轴。"""
     from touhou.schema.archive import GameArchive
+
     a = GameArchive.open(DAT)
     vm = MsgVm(MsgFile.parse(a.load("msg1.dat")))
     vm.read(0)
@@ -224,6 +235,7 @@ def test_vm_msg1_next_level_end() -> None:
     """msg1(过关结算): NEXT_LEVEL → currentMsgIdx=-2, HasCurrentMsgIdx 仍真,
     MsgWait 放行(时间轴不再停)。"""
     from touhou.schema.archive import GameArchive
+
     a = GameArchive.open(DAT)
     vm = MsgVm(MsgFile.parse(a.load("msg1.dat")))
     vm.read(1)
@@ -232,13 +244,14 @@ def test_vm_msg1_next_level_end() -> None:
         frames += 1
         assert frames < 20000
     assert vm.current_msg_idx == -2
-    assert vm.has_current_msg_idx()       # 世界仍门控(C: -2 也算)
-    assert not vm.msg_wait()              # 但时间轴放行
+    assert vm.has_current_msg_idx()  # 世界仍门控(C: -2 也算)
+    assert not vm.msg_wait()  # 但时间轴放行
     events = vm.take_events()
     assert "stage_results" in events and "next_level" in events
 
 
 # ---- 接入: 时间轴停轴与世界门控(真实 ecldata1) ----
+
 
 def _game() -> PerfectCherryBloom:
     return PerfectCherryBloom(data_path=DAT, character=0, difficulty=1)

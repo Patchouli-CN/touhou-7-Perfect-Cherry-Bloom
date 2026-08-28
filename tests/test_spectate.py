@@ -7,6 +7,7 @@
 - headless: callable auto_input 直接作流默认 policy; save_replay 录像
   round-trip + 同种子逐帧喂回的确定性复现
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -26,8 +27,7 @@ from touhou.engine.render import FrameInput
 from touhou.engine.replay import decode_input, load_replay
 from touhou.paths import DEFAULT_DATA
 
-pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(),
-                                reason="需要真实 th07.dat")
+pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
 
 
 # ---- Game._from_impl ----
@@ -36,7 +36,7 @@ def test_from_impl_wraps_live_impl() -> None:
     game = Game(seed=1)
     impl = game._impl
     facade = Game._from_impl(impl, game.spec, "th07")
-    assert facade._impl is impl            # 同一个对局, 未重新构造
+    assert facade._impl is impl  # 同一个对局, 未重新构造
     assert facade.spec is game.spec and facade.game_name == "th07"
     for _ in range(300):
         game.step(Input(shoot=True))
@@ -60,15 +60,19 @@ class ProbeableStubGame:
         self.lives = 3.0
         self.seed = 0x5EED
         self.globals = SimpleNamespace(
-            deaths=0, bombs_used=0.0, spell_cards_captured=0,
-            lives_remaining=3.0, score=0)
+            deaths=0,
+            bombs_used=0.0,
+            spell_cards_captured=0,
+            lives_remaining=3.0,
+            score=0,
+        )
         self.game_over = False
         self.cleared = False
         self.ending = None
         self.result = None
         self.stage_results = None
         self.boss = None
-        self.player = SimpleNamespace(fire_time=0)   # 射击键沿检测日志用
+        self.player = SimpleNamespace(fire_time=0)  # 射击键沿检测日志用
         self.ticks: list[dict] = []
 
     def tick(self, **kw):  # noqa: D102
@@ -80,7 +84,7 @@ class StubRenderer:
     """插桩渲染后端: 按脚本喂 FrameInput, 渲染全 no-op。"""
 
     def __init__(self, script):
-        self._script = script   # list[FrameInput], 用尽后循环最后一帧
+        self._script = script  # list[FrameInput], 用尽后循环最后一帧
         self._idx = 0
 
     def open(self, *, scale):  # noqa: D102
@@ -117,8 +121,12 @@ def _spectate_app(tmp_path, policy, script):
     from touhou.games.th07.view import GameApp
 
     game = ProbeableStubGame()
-    app = GameApp(lambda **kw: game, config_path=tmp_path / "config.json",
-                  renderer=StubRenderer(script), spectate=policy)
+    app = GameApp(
+        lambda **kw: game,
+        config_path=tmp_path / "config.json",
+        renderer=StubRenderer(script),
+        spectate=policy,
+    )
     return app, game
 
 
@@ -128,18 +136,19 @@ def test_spectate_input_comes_from_policy(tmp_path) -> None:
 
     def policy(game):
         policy_calls.append(game.frame)
-        return Input(left=True, down=True)   # 与键盘脚本(右+射击)刻意不同
+        return Input(left=True, down=True)  # 与键盘脚本(右+射击)刻意不同
 
-    script = [FrameInput(held=frozenset({"right", "shoot"}))] * 5 \
-        + [FrameInput(quit=True)]
+    script = [FrameInput(held=frozenset({"right", "shoot"}))] * 5 + [
+        FrameInput(quit=True)
+    ]
     app, game = _spectate_app(tmp_path, policy, script)
     app.run()
     assert len(game.ticks) >= 5
-    assert len(policy_calls) == len(game.ticks)   # 每帧一次策略调用
+    assert len(policy_calls) == len(game.ticks)  # 每帧一次策略调用
     for kw in game.ticks:
         assert kw["keys"] == (True, False, False, True, False, False)
         assert kw["bomb"] is False
-    assert app._screen.name == "PLAYING"          # 跳过标题直接进游戏
+    assert app._screen.name == "PLAYING"  # 跳过标题直接进游戏
 
 
 def test_spectate_esc_aborts(tmp_path) -> None:
@@ -147,7 +156,7 @@ def test_spectate_esc_aborts(tmp_path) -> None:
     script = [FrameInput(), FrameInput(), FrameInput(esc=True)]
     app, game = _spectate_app(tmp_path, lambda g: Input(shoot=True), script)
     app.run()
-    assert len(game.ticks) == 2                   # 第 3 帧 Esc 中止, 不再 tick
+    assert len(game.ticks) == 2  # 第 3 帧 Esc 中止, 不再 tick
     assert app._finished and not app._paused
 
 
@@ -158,7 +167,7 @@ def test_spectate_records_replay(tmp_path) -> None:
     app.run()
     assert app._recorder is not None
     assert app._recorder.frames == len(game.ticks)
-    assert app._recorder.meta["seed"] == 0x5EED   # 构造注入的默认种子
+    assert app._recorder.meta["seed"] == 0x5EED  # 构造注入的默认种子
 
 
 # ---- TouhouWorld 接线(假 App 捕获构造实参) ----
@@ -184,8 +193,13 @@ def test_spectate_kwarg_and_make_game_override() -> None:
     角色/难度/残机/种子以 TouhouWorld 自身属性为准。"""
     policy = lambda g: Input.none()
     tw = _tw_with_capture_app(
-        character=ShotType.MARISA_A, difficulty=Difficulty.HARD, lives=5,
-        seed=42, headless=False, auto_input=policy)
+        character=ShotType.MARISA_A,
+        difficulty=Difficulty.HARD,
+        lives=5,
+        seed=42,
+        headless=False,
+        auto_input=policy,
+    )
     tw.run()
     cap = _CaptureApp.captured
     assert cap["spectate"] is policy
@@ -208,10 +222,14 @@ def test_plain_input_auto_input_keeps_keyboard_path() -> None:
 
 # ---- headless: callable auto_input 作流默认 policy ----
 def test_headless_callable_auto_input_is_stream_policy() -> None:
-    tw = TouhouWorld(headless=True, seed=1, difficulty=Difficulty.NORMAL,
-                     auto_input=lambda g: Input(left=True, shoot=True))
+    tw = TouhouWorld(
+        headless=True,
+        seed=1,
+        difficulty=Difficulty.NORMAL,
+        auto_input=lambda g: Input(left=True, shoot=True),
+    )
     frames0 = tw.game.frame
-    for ev in tw.run():          # 不显式设 policy: 流默认用 auto_input
+    for ev in tw.run():  # 不显式设 policy: 流默认用 auto_input
         if tw.game.frame >= frames0 + 120:
             break
     assert tw.game.frame >= frames0 + 100
@@ -221,9 +239,13 @@ def test_headless_callable_auto_input_is_stream_policy() -> None:
 
 # ---- headless 录像: round-trip + 确定性复现 ----
 def test_stream_save_replay_round_trip(tmp_path) -> None:
-    tw = TouhouWorld(headless=True, seed=7, difficulty=Difficulty.NORMAL,
-                     lives=3,
-                     auto_input=lambda g: Input(shoot=True, advance=True))
+    tw = TouhouWorld(
+        headless=True,
+        seed=7,
+        difficulty=Difficulty.NORMAL,
+        lives=3,
+        auto_input=lambda g: Input(shoot=True, advance=True),
+    )
     stream = tw.run()
     for ev in stream:
         if tw.game.frame >= 300 or tw.game.phase != GamePhase.RUNNING:
@@ -237,8 +259,7 @@ def test_stream_save_replay_round_trip(tmp_path) -> None:
     assert meta["frames"] == len(r["codes"]) == tw.game.frame
 
     # 确定性复现: 同种子新对局逐帧喂回输入, 终态一致
-    g2 = Game(difficulty=Difficulty.NORMAL, character=ShotType.REIMU_A,
-              seed=7, lives=3)
+    g2 = Game(difficulty=Difficulty.NORMAL, character=ShotType.REIMU_A, seed=7, lives=3)
     for code in r["codes"]:
         keys, bomb, adv, skip = decode_input(code)
         g2._impl.tick(keys=keys, bomb=bomb, advance=adv, skip=skip)
@@ -253,5 +274,5 @@ def test_save_replay_before_iteration_is_empty(tmp_path) -> None:
     path = tw.events.save_replay(tmp_path / "empty.json")
     r = load_replay(path)
     assert r["codes"] == []
-    assert r["meta"]["seed"] == 0x5EED    # seed=None → impl 默认种子
+    assert r["meta"]["seed"] == 0x5EED  # seed=None → impl 默认种子
     assert r["meta"]["difficulty"] == 0

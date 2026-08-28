@@ -44,9 +44,9 @@ class ItemTypeBase:
 
 
 # 状态
-STATE_FALL = 0      # 下落
-STATE_ATTRACT = 1   # 向玩家吸附
-STATE_SPAWN = 2     # 生成动画(60帧飞向目标后转下落)
+STATE_FALL = 0  # 下落
+STATE_ATTRACT = 1  # 向玩家吸附
+STATE_SPAWN = 2  # 生成动画(60帧飞向目标后转下落)
 
 # 吸附速度/吸附半径默认值(.sht itemCollectSpeed/itemCollectRadius)
 ITEM_COLLECT_SPEED = 4.0
@@ -58,7 +58,7 @@ class ItemContextBase(msgspec.Struct):
 
     player_pos: Vec2 = Vec2(192, 400)
     player_alive: bool = True
-    player_state: int = 0       # PlayerState.SPAWNING 时道具缓降不吸附
+    player_state: int = 0  # PlayerState.SPAWNING 时道具缓降不吸附
     item_collect_speed: float = ITEM_COLLECT_SPEED
     item_collect_radius: float = ITEM_COLLECT_RADIUS
 
@@ -72,11 +72,11 @@ class ItemBase(msgspec.Struct):
     (th07: Item 加 ``type: ItemType`` 字段)。"""
 
     pos: Vec2 = Vec2.zero()
-    start: Vec2 = Vec2.zero()   # 每帧落速/吸附速度
+    start: Vec2 = Vec2.zero()  # 每帧落速/吸附速度
     state: int = STATE_FALL
     auto_collect: bool = False
     timer: int = 0
-    target: Vec2 | None = None     # 生成动画目标(若非空)
+    target: Vec2 | None = None  # 生成动画目标(若非空)
     start_pos: Vec2 | None = None  # 生成动画起点
 
     def drop(self) -> None:
@@ -105,7 +105,7 @@ class ItemBase(msgspec.Struct):
 class CollectResultBase(msgspec.Struct):
     """收集一个道具后的通用结算字段(作品层子类追加专属轨道, 如 th07 樱点)。"""
 
-    score: int = 0            # 显示分变化(需上层加)
+    score: int = 0  # 显示分变化(需上层加)
     delta_power: float = 0.0
     delta_bombs: int = 0
     delta_lives: int = 0
@@ -137,7 +137,9 @@ class ItemWorldBase(msgspec.Struct, Generic[ItemT, CtxT]):
                     item.state = STATE_FALL
                     item.start = Vec2.zero()
             elif item.state == STATE_ATTRACT:
-                item.start = (ctx.player_pos - item.pos).normalized() * ctx.item_collect_speed
+                item.start = (
+                    ctx.player_pos - item.pos
+                ).normalized() * ctx.item_collect_speed
                 item.pos = item.pos + item.start * dt
             else:  # STATE_FALL
                 item.step(dt)  # 速度渐变

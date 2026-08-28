@@ -1,4 +1,4 @@
-""" .anm 贴图包解析 —— Pythonic。
+""".anm 贴图包解析 —— Pythonic。
 
 对照 th07 反编译源码 `AnmManager.cpp/.hpp` 还原:
 entry 头(AnmRawEntry) / sprite 表(AnmRawSprite) / 内嵌纹理(ZunImageInfoEmbedded)。
@@ -27,9 +27,9 @@ from ..registry import register_anm
 # AnmManager.cpp:44 g_TextureBytesPerPixel(索引即 format)
 _BYTES_PER_PIXEL = {1: 4, 2: 2, 3: 2, 4: 3, 5: 2}
 
-_ENTRY_HEADER_SIZE = 64      # AnmRawEntry 到 spriteOffsets 之前
-_SPRITE_SIZE = 20            # AnmRawSprite: i32 id + f32 x,y,w,h
-_EMBEDDED_HEADER_SIZE = 16   # ZunImageInfoEmbedded 到 data 之前
+_ENTRY_HEADER_SIZE = 64  # AnmRawEntry 到 spriteOffsets 之前
+_SPRITE_SIZE = 20  # AnmRawSprite: i32 id + f32 x,y,w,h
+_EMBEDDED_HEADER_SIZE = 16  # ZunImageInfoEmbedded 到 data 之前
 
 # 进程级解析缓存 (BUGS.md 增量#3): 同一 .anm 被多个视图/SpriteBank 实例
 # 各自重复解码(实测 ascii.anm 被 4 个实例各解一次, 单次 ~300ms)。raw bytes
@@ -62,19 +62,21 @@ class AnmEntry(msgspec.Struct):
 
     name: str
     format: int
-    width: int                   # 逻辑宽(entry 头), 内嵌纹理时等于纹理宽
+    width: int  # 逻辑宽(entry 头), 内嵌纹理时等于纹理宽
     height: int
     tex_width: int
     tex_height: int
-    rgba: bytes   # 整图 RGBA, 长 tex_width*tex_height*4
+    rgba: bytes  # 整图 RGBA, 长 tex_width*tex_height*4
     sprites: dict[int, AnmSprite] = msgspec.field(default_factory=dict)
 
     def __repr__(self) -> str:
         # rgba 是整图字节串, 不进 repr (对照原 dataclass 的 field(repr=False))
-        return (f"AnmEntry(name={self.name!r}, format={self.format!r}, "
-                f"width={self.width!r}, height={self.height!r}, "
-                f"tex_width={self.tex_width!r}, tex_height={self.tex_height!r}, "
-                f"sprites={self.sprites!r})")
+        return (
+            f"AnmEntry(name={self.name!r}, format={self.format!r}, "
+            f"width={self.width!r}, height={self.height!r}, "
+            f"tex_width={self.tex_width!r}, tex_height={self.tex_height!r}, "
+            f"sprites={self.sprites!r})"
+        )
 
 
 def _decode_texture(fmt: int, width: int, height: int, data: bytes) -> bytes:
@@ -147,23 +149,37 @@ class AnmFile:
 
     @staticmethod
     def _parse_entry(data: bytes, base: int) -> AnmEntry:
-        (num_sprites, _num_scripts, _tex_idx, width, height, fmt, _color_key,
-         name_offset, _sprite_idx_offset, _mipmap_name_offset, version,
-         _priority, texture_offset) = struct.unpack_from("<13i", data, base)
+        (
+            num_sprites,
+            _num_scripts,
+            _tex_idx,
+            width,
+            height,
+            fmt,
+            _color_key,
+            name_offset,
+            _sprite_idx_offset,
+            _mipmap_name_offset,
+            version,
+            _priority,
+            texture_offset,
+        ) = struct.unpack_from("<13i", data, base)
         if version != 2:
             raise ValueError(f"anm 版本不符: {version}")
-        has_data = data[base + 52]   # AnmRawEntry.hasData(13×i32 之后的 u8)
+        has_data = data[base + 52]  # AnmRawEntry.hasData(13×i32 之后的 u8)
         end = data.index(b"\0", base + name_offset)
-        name = data[base + name_offset:end].decode("latin-1")
+        name = data[base + name_offset : end].decode("latin-1")
 
         if not has_data:
-            raise ValueError(
-                f"{name}: 外链纹理暂不支持(需要连同外部图像文件一起解析)")
+            raise ValueError(f"{name}: 外链纹理暂不支持(需要连同外部图像文件一起解析)")
         # ZunImageInfoEmbedded: magic 等 6 个 i16 + i32 unused, 像素从 +16 起
         t = base + texture_offset
         img_fmt, tex_w, tex_h = struct.unpack_from("<3h", data, t + 6)
-        raw = data[t + _EMBEDDED_HEADER_SIZE:
-                   t + _EMBEDDED_HEADER_SIZE + tex_w * tex_h * _BYTES_PER_PIXEL[img_fmt]]
+        raw = data[
+            t + _EMBEDDED_HEADER_SIZE : t
+            + _EMBEDDED_HEADER_SIZE
+            + tex_w * tex_h * _BYTES_PER_PIXEL[img_fmt]
+        ]
         rgba = _decode_texture(img_fmt, tex_w, tex_h, raw)
 
         sprites: dict[int, AnmSprite] = {}
@@ -174,23 +190,26 @@ class AnmFile:
             so = struct.unpack_from("<i", data, base + _ENTRY_HEADER_SIZE + i * 4)[0]
             sid, x, y, w, h = struct.unpack_from("<iffff", data, base + so)
             sprites[sid] = AnmSprite(
-                sid, round(x * sx), round(y * sy), round(w * sx), round(h * sy))
+                sid, round(x * sx), round(y * sy), round(w * sx), round(h * sy)
+            )
         return AnmEntry(name, fmt, width, height, tex_w, tex_h, rgba, sprites)
 
-    def sprite_image(self, sprite_id: int, entry: int | None = None
-                     ) -> tuple[int, int, bytes]:
+    def sprite_image(
+        self, sprite_id: int, entry: int | None = None
+    ) -> tuple[int, int, bytes]:
         """取 sprite 图像: (w, h, rgba_bytes)。纹理只解码一次, 这里只裁剪。"""
         if entry is None:
             # 默认选 sprite 数最多的 entry(标题素材的主纹理)
-            entry = max(range(len(self.entries)),
-                        key=lambda i: len(self.entries[i].sprites))
+            entry = max(
+                range(len(self.entries)), key=lambda i: len(self.entries[i].sprites)
+            )
         e = self.entries[entry]
         spr = e.sprites[sprite_id]
         out = bytearray(spr.w * spr.h * 4)
         stride = e.tex_width * 4
         for row in range(spr.h):
             src = ((spr.y + row) * e.tex_width + spr.x) * 4
-            out[row * spr.w * 4:(row + 1) * spr.w * 4] = e.rgba[src:src + spr.w * 4]
+            out[row * spr.w * 4 : (row + 1) * spr.w * 4] = e.rgba[src : src + spr.w * 4]
         return spr.w, spr.h, bytes(out)
 
 

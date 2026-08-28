@@ -1,4 +1,4 @@
-""" .std 驱动的 3D 关卡背景 —— 场景层(脚本推进/资源装配), 对照 th07 反编译还原。
+""".std 驱动的 3D 关卡背景 —— 场景层(脚本推进/资源装配), 对照 th07 反编译还原。
 
 渲染(相机/投影/剔除/光栅化/雾/帧缓冲)全部在
 ``engine.render.d3dx_render.D3DXLikeRender``(D3DX 工具库 + D3D8 固定管
@@ -43,7 +43,7 @@ from ...schema.stage import Stage
 from ..render.d3dx_render import GAME_H, GAME_W, D3DXLikeRender
 from .anm_vm import AnmVm, ScriptRef, SpriteTex, chain_offsets, reset_and_run
 
-_ANM_OFFSET_BG1 = 0x300          # ANM_OFFSET_STAGE_BG1 (AnmIdx.hpp)
+_ANM_OFFSET_BG1 = 0x300  # ANM_OFFSET_STAGE_BG1 (AnmIdx.hpp)
 
 # StageEaseMode (Stage.hpp): 注意与 anm ease 编号不同
 _EASE_OUT_QUAD, _EASE_OUT_CUBIC, _EASE_OUT_QUART = 1, 2, 3
@@ -98,9 +98,13 @@ class StageScene:
     雾/清屏色/世界原点即渲染器同名字段。
     """
 
-    def __init__(self, stage: Stage, scripts: dict[int, ScriptRef],
-                 sprites: dict[int, SpriteTex],
-                 render_scale: float = 0.45) -> None:
+    def __init__(
+        self,
+        stage: Stage,
+        scripts: dict[int, ScriptRef],
+        sprites: dict[int, SpriteTex],
+        render_scale: float = 0.45,
+    ) -> None:
         self.stage = stage
         self._scripts = scripts
         self._sprites = sprites
@@ -121,13 +125,12 @@ class StageScene:
         # 相机 4 路(pos/lookAt/up/fov)插值通道(UpdateScriptAndCamera)
         self._ch = [_CameraChannel() for _ in range(4)]
         self._ch[0].start = self._ch[0].end = self._renderer.cam_pos.copy()
-        self._ch[3].start = self._ch[3].end = np.array(
-            [self._renderer.cam_fov, 0, 0])
+        self._ch[3].start = self._ch[3].end = np.array([self._renderer.cam_fov, 0, 0])
         self._timers_max = [0, 0, 0, 0]
         self._timers = [0, 0, 0, 0]
         self._ease_modes = [0, 0, 0, 0]
         # quad VM(LoadStageData: ExecuteAnmIdx(anmScript + 0x300))
-        self._obj_vms: list[list[AnmVm]] = []       # per object quads
+        self._obj_vms: list[list[AnmVm]] = []  # per object quads
         self._obj_active: list[bool] = []
         for obj in stage.objects:
             vms = []
@@ -166,8 +169,9 @@ class StageScene:
 
     # ---- 资源表 ----
     @classmethod
-    def load(cls, archive, stage_no: int,
-             render_scale: float = 0.45) -> "StageScene | None":
+    def load(
+        cls, archive, stage_no: int, render_scale: float = 0.45
+    ) -> "StageScene | None":
         """从 GameArchive 加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。"""
         t0 = time.perf_counter()
         try:
@@ -182,8 +186,7 @@ class StageScene:
                 return None
             stage = Stage.read(std_raw, stage_no)
         except Exception as e:
-            log.warning("stage{} 背景(std)解析失败, 回退无 3D 背景: {}",
-                        stage_no, e)
+            log.warning("stage{} 背景(std)解析失败, 回退无 3D 背景: {}", stage_no, e)
             return None
         names = [f"stg{stage_no}bg.anm"]
         if stage_no == 4:
@@ -205,13 +208,16 @@ class StageScene:
                 break
             anm = parse_cached(raw)  # 进程级缓存 (BUGS.md 增量#3)
             per_entry_scripts = parse_scripts(raw)
-            for entry, escr, off in zip(anm.entries, per_entry_scripts,
-                                        chain_offsets(anm, per_entry_scripts)):
+            for entry, escr, off in zip(
+                anm.entries, per_entry_scripts, chain_offsets(anm, per_entry_scripts)
+            ):
                 tex = np.frombuffer(entry.rgba, dtype=np.uint8).reshape(
-                    entry.tex_height, entry.tex_width, 4)
+                    entry.tex_height, entry.tex_width, 4
+                )
                 for sid, spr in entry.sprites.items():
                     sprites[base + off + sid] = SpriteTex(
-                        tex, spr.x, spr.y, spr.w, spr.h)
+                        tex, spr.x, spr.y, spr.w, spr.h
+                    )
                 for sid, instrs in escr.items():
                     scripts[base + off + sid] = ScriptRef(instrs, base + off)
             base += 0x10
@@ -228,6 +234,7 @@ class StageScene:
                 return
             vm.sprite = spr
             vm.active_sprite_idx = gid
+
         return cb
 
     def _exec_anm_idx(self, vm: AnmVm, gid: int) -> None:
@@ -250,11 +257,13 @@ class StageScene:
                     self.wait_time = 0
                     break
         instrs = self._instrs
-        while self.instr_idx < len(instrs) \
-                and self.script_time >= instrs[self.instr_idx].frame:
+        while (
+            self.instr_idx < len(instrs)
+            and self.script_time >= instrs[self.instr_idx].frame
+        ):
             ins = instrs[self.instr_idx]
             if ins.opcode == 3 and self.wait_time == 0:
-                break   # C: goto LAB(不推进 instructionIndex, 脚本停轴)
+                break  # C: goto LAB(不推进 instructionIndex, 脚本停轴)
             self._dispatch(ins)
             self.instr_idx += 1
         # 相机 4 路插值(UpdateScriptAndCamera)
@@ -272,13 +281,16 @@ class StageScene:
                 a = (c0 >> shift) & 255
                 b = (c1 >> shift) & 255
                 interp_c |= (int((a - b) * t + b) & 255) << shift
-            alpha = int((((c0 >> 24) & 255) - ((c1 >> 24) & 255)) * t
-                        + ((c1 >> 24) & 255)) & 255
+            alpha = (
+                int((((c0 >> 24) & 255) - ((c1 >> 24) & 255)) * t + ((c1 >> 24) & 255))
+                & 255
+            )
             r = self._renderer
             r.sky_fog_rgba = (alpha << 24) | interp_c
-            r.sky_fog_color = np.array([(interp_c >> 16) & 255,
-                                        (interp_c >> 8) & 255,
-                                        interp_c & 255], dtype=float)
+            r.sky_fog_color = np.array(
+                [(interp_c >> 16) & 255, (interp_c >> 8) & 255, interp_c & 255],
+                dtype=float,
+            )
             r.sky_fog_near = (n0 - n1) * t + n1
             r.sky_fog_far = (f0 - f1) * t + f1
             if self._fog_interp_timer >= self._fog_interp_duration:
@@ -312,8 +324,9 @@ class StageScene:
         elif op == 1:
             r.sky_fog_rgba = ins.args_i[0] & 0xFFFFFFFF
             c = r.sky_fog_rgba
-            r.sky_fog_color = np.array([(c >> 16) & 255, (c >> 8) & 255,
-                                        c & 255], dtype=float)
+            r.sky_fog_color = np.array(
+                [(c >> 16) & 255, (c >> 8) & 255, c & 255], dtype=float
+            )
             r.sky_fog_near = ins.args_f[1]
             r.sky_fog_far = ins.args_f[2]
             self._fog_start = (c, r.sky_fog_near, r.sky_fog_far)
@@ -326,7 +339,7 @@ class StageScene:
             if self.wait_time != 0:
                 self.wait_time = 0
         elif op == 4:
-            self.instr_idx = ins.args_i[0] - 1   # tick 循环会 +1
+            self.instr_idx = ins.args_i[0] - 1  # tick 循环会 +1
             self.script_time = ins.args_i[1]
             self._timers_max[0] = 0
         elif op == 5:
@@ -405,9 +418,14 @@ class StageScene:
             t = _stage_ease(t, self._ease_modes[idx])
             cur = (ch.end - ch.start) * t + ch.start
         else:
-            cur = np.array([
-                _interp_cubic(ch.start[k], ch.end[k], ch.tan_start[k],
-                              ch.tan_end[k], t) for k in range(3)])
+            cur = np.array(
+                [
+                    _interp_cubic(
+                        ch.start[k], ch.end[k], ch.tan_start[k], ch.tan_end[k], t
+                    )
+                    for k in range(3)
+                ]
+            )
         if idx == 0:
             self._renderer.cam_pos = cur
         elif idx == 1:
@@ -427,7 +445,8 @@ class StageScene:
         """渲染一帧并(按需放大)blit 到 384x448 的游戏区 surface。"""
         fb = self._renderer.render(self.vm1, self.vm2)
         img = pygame.image.frombuffer(
-            fb.tobytes(), (self._renderer.buf_w, self._renderer.buf_h), "RGB")
+            fb.tobytes(), (self._renderer.buf_w, self._renderer.buf_h), "RGB"
+        )
         if (self._renderer.buf_w, self._renderer.buf_h) != (GAME_W, GAME_H):
             img = pygame.transform.smoothscale(img, (GAME_W, GAME_H))
         surf.blit(img, (0, 0))

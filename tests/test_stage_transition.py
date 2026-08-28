@@ -4,6 +4,7 @@
 对照: Gui.cpp RunMsg(MSG_STAGERESULTS/MSG_NEXT_LEVEL)、
 GameManager.cpp AddedCallback(换关重置)、Ending.cpp(结局文件选择)。
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,8 +24,12 @@ NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
 
 
 def _make(stage: int = 1, difficulty: int = 1) -> PerfectCherryBloom:
-    g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=difficulty,
-                           score_store=ScoreStore(spellcard_count=141))
+    g = PerfectCherryBloom(
+        data_path=DAT,
+        character=0,
+        difficulty=difficulty,
+        score_store=ScoreStore(spellcard_count=141),
+    )
     if stage != 1:
         g.enter_stage(stage)
     return g
@@ -36,6 +41,7 @@ def _force_timelines_done(g: PerfectCherryBloom) -> None:
 
 
 # ---- STAGERESULTS 过关结算 (Gui.cpp:972-991 / :1357-1417) ----
+
 
 @NEEDS_DAT
 def test_stage_results_bonus_normal() -> None:
@@ -52,8 +58,12 @@ def test_stage_results_bonus_normal() -> None:
     assert g.globals.score - before == 405000
     sr = g.stage_results
     assert sr is not None and not sr["all_clear"]
-    assert sr["lines"] == [("Clear", 1000000), ("Point", 5000000),
-                           ("Graze", 100000), ("Cherry", 2000000)]
+    assert sr["lines"] == [
+        ("Clear", 1000000),
+        ("Point", 5000000),
+        ("Graze", 100000),
+        ("Cherry", 2000000),
+    ]
     assert sr["rank_line"] == "Normal Rank  *1.0"
     assert sr["penalty_line"] == "Player Penalty*0.5"
     assert sr["total"] == 405000
@@ -82,13 +92,13 @@ def test_stage_results_bonus_final_stage() -> None:
 @NEEDS_DAT
 def test_stage_results_difficulty_modifiers() -> None:
     """难度修正: Easy /2, Lunatic *1.5, Extra *2 (Extra 无 lifeCount 惩罚)。"""
-    g = _make(1, 0)   # Easy
+    g = _make(1, 0)  # Easy
     g._on_stage_results()
     assert g.stage_results["total"] == 300000 // 2 * 5 // 10  # 75000 (难度+残机惩罚)
-    g = _make(1, 3)   # Lunatic: cherryMax=+300000 → base 400000
+    g = _make(1, 3)  # Lunatic: cherryMax=+300000 → base 400000
     g._on_stage_results()
     assert g.stage_results["total"] == (400000 * 15 // 10) * 5 // 10  # 300000
-    g = _make(7, 4)   # Extra: 7 面 → 残机/炸弹奖, difficulty>=4 无惩罚
+    g = _make(7, 4)  # Extra: 7 面 → 残机/炸弹奖, difficulty>=4 无惩罚
     g.globals.lives_remaining = 2.0
     g.globals.bombs_remaining = 3.0
     g._on_stage_results()
@@ -98,6 +108,7 @@ def test_stage_results_difficulty_modifiers() -> None:
 
 
 # ---- NEXT_LEVEL 换关 ----
+
 
 @NEEDS_DAT
 def test_next_level_event_advances() -> None:
@@ -109,8 +120,8 @@ def test_next_level_event_advances() -> None:
     assert g._pending_next_level
     g.tick()  # 帧首换关
     assert g.stage_no == 2
-    assert g.stage_results is None       # 面板随换关撤下
-    assert g.msg_vm is not None          # msg2.dat 已装载
+    assert g.stage_results is None  # 面板随换关撤下
+    assert g.msg_vm is not None  # msg2.dat 已装载
     # 换关后玩家重建回出生点: SPAWNING(首帧即转 INVULNERABLE, C++ 同)
     assert g.player.state in (PlayerState.SPAWNING, PlayerState.INVULNERABLE)
     assert g.boss is None and not g.host.alive()
@@ -131,6 +142,7 @@ def test_next_level_repeat_reregisters() -> None:
 
 # ---- 6 面结局 / 7·8 面总结算 ----
 
+
 @NEEDS_DAT
 def test_stage6_clear_goes_ending_then_result() -> None:
     """6 面通关 → 结局(冻结) → finish_ending → 总结算 + CLRD。"""
@@ -139,7 +151,7 @@ def test_stage6_clear_goes_ending_then_result() -> None:
     g.tick()
     assert g.ending is not None and g.result is None
     assert not g.ending.bad and g.ending.path == "end00.end"  # ReimuA 正常结局
-    assert g.ending.segments and g.ending.lines               # 文本解析出内容
+    assert g.ending.segments and g.ending.lines  # 文本解析出内容
     frame = g.frame
     g.tick()
     assert g.frame == frame  # 结局期间游戏冻结
@@ -188,6 +200,7 @@ def test_stage8_phantasm_clear_goes_result_directly() -> None:
 
 # ---- .end 解析 ----
 
+
 def test_ending_path_mapping() -> None:
     assert ending_path(0, bad=False) == "end00.end"
     assert ending_path(5, bad=False) == "end21.end"
@@ -196,9 +209,11 @@ def test_ending_path_mapping() -> None:
 
 
 def test_parse_end_minimal() -> None:
-    data = (b"@mbgm/x.mid\x00\n@bdata/end/end00.jpg\x00\n"
-            b"\x81@\x81@line1\x00\nline2\x00\n"
-            b"@bdata/end/end03.jpg\x00\nline3\x00\n")
+    data = (
+        b"@mbgm/x.mid\x00\n@bdata/end/end00.jpg\x00\n"
+        b"\x81@\x81@line1\x00\nline2\x00\n"
+        b"@bdata/end/end03.jpg\x00\nline3\x00\n"
+    )
     segs = parse_end(data)
     assert [s.bg for s in segs] == ["end00.jpg", "end03.jpg"]
     assert segs[0].lines == ["line1", "line2"]
@@ -209,6 +224,7 @@ def test_parse_end_minimal() -> None:
 def test_real_end_files_parse() -> None:
     """真实 end00/end10/end20b: 全部能解出文本与背景段。"""
     from touhou.schema.archive import GameArchive
+
     arc = GameArchive.open(DAT)
     for path in ("end00.end", "end10.end", "end20b.end"):
         segs = parse_end(arc.load(path))
@@ -218,6 +234,7 @@ def test_real_end_files_parse() -> None:
 
 # ---- 1→2 面真连打(压血 harness, 与 test_stage_smoke 同语义) ----
 
+
 @NEEDS_DAT
 def test_stage1_to_2_continuous_run() -> None:
     """从 1 面真打到 3 面开场: msg STAGERESULTS/NEXT_LEVEL 驱动换关,
@@ -225,8 +242,12 @@ def test_stage1_to_2_continuous_run() -> None:
     from touhou.utils import Vec2
     from tests.test_stage_smoke import _bosses, _crush, _move_keys, _signature
 
-    g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1,
-                           score_store=ScoreStore(spellcard_count=141))
+    g = PerfectCherryBloom(
+        data_path=DAT,
+        character=0,
+        difficulty=1,
+        score_store=ScoreStore(spellcard_count=141),
+    )
     results_fired = 0
     orig = g._on_stage_results
 
@@ -274,7 +295,7 @@ def test_stage1_to_2_continuous_run() -> None:
             _crush(g)
             last_change = g.frame
     assert [t[0] for t in transitions] == [1, 2]
-    assert results_fired == 2              # 两面都走了 STAGERESULTS 结算
+    assert results_fired == 2  # 两面都走了 STAGERESULTS 结算
     assert stalls == 0
     assert g._point_items_prev_stages > 0  # 过关面的点道具累计入账
     assert g.result is None and not g.cleared  # 未到终面不结算

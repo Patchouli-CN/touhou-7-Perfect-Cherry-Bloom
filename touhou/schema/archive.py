@@ -1,4 +1,4 @@
-""" 数据解包: LZSS 解压 + Pbg4 容器读取 —— Pythonic。
+"""数据解包: LZSS 解压 + Pbg4 容器读取 —— Pythonic。
 
 把两种格式封装成 GameArchive: 可以从 th0X.dat 按名字取出某个已解压的资源。
 """
@@ -37,13 +37,13 @@ class LzssDecompressor:
         out = bytearray()
         pos = 0
         n = len(src)
-        buf = 0          # 位缓冲, 下一位在 MSB 侧
-        cnt = 0          # 缓冲有效位数
+        buf = 0  # 位缓冲, 下一位在 MSB 侧
+        cnt = 0  # 缓冲有效位数
         mask = MASK
         lit8 = self._LIT8_FLAGS
         while True:
             while cnt < 72:
-                take = src[pos:pos + 9]
+                take = src[pos : pos + 9]
                 pos += len(take)
                 if take:
                     buf = (buf << (8 * len(take))) | int.from_bytes(take, "big")
@@ -51,13 +51,12 @@ class LzssDecompressor:
                 else:
                     buf <<= 8
                     cnt += 8
-            buf &= (1 << cnt) - 1       # 截断陈旧高位, 防 bigint 膨胀
+            buf &= (1 << cnt) - 1  # 截断陈旧高位, 防 bigint 膨胀
             chunk = (buf >> (cnt - 72)) & ((1 << 72) - 1)
             if (chunk & lit8) == lit8:
                 # 快径: 8 个连续字面量 (flag=1 + 8bit, 共 72bit)
                 cnt -= 72
-                out += bytes((chunk >> (9 * k)) & 0xFF
-                             for k in range(7, -1, -1))
+                out += bytes((chunk >> (9 * k)) & 0xFF for k in range(7, -1, -1))
             else:
                 cnt -= 9
                 tok = (buf >> cnt) & 0x1FF
@@ -69,9 +68,9 @@ class LzssDecompressor:
                     cnt -= 9
                     tok2 = (buf >> cnt) & 0x1FF
                     off = ((tok & 0xFF) << 5) | (tok2 >> 4)
-                    if off == 0:                # EOD
+                    if off == 0:  # EOD
                         break
-                    run = (tok2 & 0xF) + 3      # 实际长度 = 编码 + 2, 含端点 +1
+                    run = (tok2 & 0xF) + 3  # 实际长度 = 编码 + 2, 含端点 +1
                     w = len(out)
                     # 环读位置 off 对应的输出流距离 (写头 = w%8192+1);
                     # d0=0 即整环 8192; 首 8192 字节内引用未写区 → 零填充
@@ -81,7 +80,7 @@ class LzssDecompressor:
                     if d0 > w:
                         pat = b"\x00" * (d0 - w) + bytes(out)
                     else:
-                        pat = bytes(out[w - d0:])
+                        pat = bytes(out[w - d0 :])
                     out += (pat * (run // d0 + 1))[:run]
             if out_len is not None and len(out) >= out_len:
                 break
@@ -90,8 +89,8 @@ class LzssDecompressor:
 
 class ArchiveEntry(msgspec.Struct, frozen=True):
     name: str
-    offset: int       # 数据在文件中的绝对偏移
-    size: int         # 解压后大小
+    offset: int  # 数据在文件中的绝对偏移
+    size: int  # 解压后大小
 
 
 class GameArchive:
@@ -105,8 +104,9 @@ class GameArchive:
     # (dat 路径, 条目名) → 解压后字节
     _DECOMP_CACHE: dict[tuple[str, str], bytes] = {}
 
-    def __init__(self, entries: list[ArchiveEntry], bytes_: bytes,
-                 path: Path | None = None) -> None:
+    def __init__(
+        self, entries: list[ArchiveEntry], bytes_: bytes, path: Path | None = None
+    ) -> None:
         self._entries = entries
         self._by_name = {e.name: e for e in entries}
         self._data = bytes_
@@ -121,7 +121,9 @@ class GameArchive:
     def _load(cls, data: bytes, path: Path | None = None) -> "GameArchive":
         if data[:4] != b"PBG4":
             raise ArchiveFormatError("不是 Pbg4 容器")
-        num_entries, header_size, decompressed_size = struct.unpack_from("<III", data, 4)
+        num_entries, header_size, decompressed_size = struct.unpack_from(
+            "<III", data, 4
+        )
         # 尾部是一段 LZSS 压缩的条目表
         table = LzssDecompressor().decompress(data[header_size:], decompressed_size)
         entries: list[ArchiveEntry] = []

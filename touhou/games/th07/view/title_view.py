@@ -1,4 +1,4 @@
-""" 标题界面渲染(pygame) —— 对照 th07 MainMenu.cpp / title01.anm 还原。
+"""标题界面渲染(pygame) —— 对照 th07 MainMenu.cpp / title01.anm 还原。
 
 布局数值来源(开发期对 title01.anm 脚本做静态求值得到, 对照
 MainMenu.cpp OnUpdatePreInput 的 VM 使用):
@@ -90,8 +90,9 @@ def _make_petal_surface() -> pygame.Surface:
 class TitleScreen:
     """标题画面渲染器。资源懒加载(首次 render/ensure_loaded 时才开包)。"""
 
-    def __init__(self, data_path: str | Path | None = None, *,
-                 seed: int | None = None) -> None:
+    def __init__(
+        self, data_path: str | Path | None = None, *, seed: int | None = None
+    ) -> None:
         self._data_path = resolve_data_path(data_path)
         self._loaded = False
         self.background: pygame.Surface | None = None
@@ -119,20 +120,19 @@ class TitleScreen:
 
         self.logo = _surf(0, entry=0)
         self.menu_sprites = [
-            (_surf(sid, entry=1), _surf(sid + 1, entry=1))
-            for sid in MENU_SPRITE_BASE
+            (_surf(sid, entry=1), _surf(sid + 1, entry=1)) for sid in MENU_SPRITE_BASE
         ]
         if pygame.mixer.get_init():
-            for key, name in (("select", "se_select00.wav"),
-                              ("ok", "se_ok00.wav"),
-                              ("cancel", "se_cancel00.wav")):
-                self.sounds[key] = pygame.mixer.Sound(
-                    file=io.BytesIO(arc.load(name)))
+            for key, name in (
+                ("select", "se_select00.wav"),
+                ("ok", "se_ok00.wav"),
+                ("cancel", "se_cancel00.wav"),
+            ):
+                self.sounds[key] = pygame.mixer.Sound(file=io.BytesIO(arc.load(name)))
         self._font = pygame.font.Font(None, 20)
         self._font_small = pygame.font.Font(None, 16)
         self._petal_img = _make_petal_surface()
-        self._petals = [self._new_petal(anywhere=True)
-                        for _ in range(_PETAL_COUNT)]
+        self._petals = [self._new_petal(anywhere=True) for _ in range(_PETAL_COUNT)]
         self._loaded = True
 
     def play_sound(self, key: str) -> None:
@@ -167,8 +167,14 @@ class TitleScreen:
                 self._petals[i] = self._new_petal()
 
     # ---- 渲染 ----
-    def render(self, surf: pygame.Surface, cursor: int, frame: int,
-               *, show_unimplemented: bool = False) -> None:
+    def render(
+        self,
+        surf: pygame.Surface,
+        cursor: int,
+        frame: int,
+        *,
+        show_unimplemented: bool = False,
+    ) -> None:
         """把标题画面画到 640x480 的 surf 上。"""
         self.ensure_loaded()
         surf.blit(self.background, (0, 0))
@@ -211,5 +217,7 @@ class TitleScreen:
         if show_unimplemented and self._font is not None:
             # 未知菜单项的兜底提示(现菜单项均已接线, 正常不会触发)
             hint = self._font.render("Not implemented yet", True, (255, 120, 120))
-            surf.blit(hint, hint.get_rect(center=(MENU_X_REST + 60,
-                                                  MENU_Y0 + 8 * MENU_DY + 20)))
+            surf.blit(
+                hint,
+                hint.get_rect(center=(MENU_X_REST + 60, MENU_Y0 + 8 * MENU_DY + 20)),
+            )

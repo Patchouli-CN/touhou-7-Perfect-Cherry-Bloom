@@ -1,4 +1,4 @@
-""" musiccmt.txt 解析 —— TH07 Music Room 曲目名与评论。
+"""musiccmt.txt 解析 —— TH07 Music Room 曲目名与评论。
 
 对照 MusicRoom.cpp AddedCallback (:233-383) 的解析语义:
 
@@ -22,8 +22,8 @@ MAX_COMMENT_LINES = 8  # TrackDescriptor.description[8]
 class TrackDescriptor(msgspec.Struct, frozen=True):
     """Music Room 一首曲目。"""
 
-    path: str                        # "bgm/th07_01.mid" ('@' 行原文)
-    title: str                       # 曲名(紧随 '@' 行的一行)
+    path: str  # "bgm/th07_01.mid" ('@' 行原文)
+    title: str  # 曲名(紧随 '@' 行的一行)
     comment: tuple[str, ...] = msgspec.field(default_factory=tuple)  # 评论行(≤8)
 
     @property

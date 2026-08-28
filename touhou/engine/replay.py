@@ -1,4 +1,4 @@
-""" 回放(replay)录制/播放 —— 自定义 JSON 格式, 不兼容原版 .rpy。
+"""回放(replay)录制/播放 —— 自定义 JSON 格式, 不兼容原版 .rpy。
 
 原理: 游戏逻辑是逐帧确定的(impl.tick 只依赖输入帧与初始种子,
 engine/rng.py 确定性 LCG, seed 注入见 games/th07/world.py), 所以回放只需记录
@@ -86,8 +86,9 @@ def _unrle(pairs: list[list[int]]) -> list[int]:
     return codes
 
 
-def make_meta(*, difficulty: int, character: int, stage: int, seed: int,
-              initial_lives: int) -> dict:
+def make_meta(
+    *, difficulty: int, character: int, stage: int, seed: int, initial_lives: int
+) -> dict:
     return {
         "difficulty": int(difficulty),
         "character": int(character),
@@ -116,8 +117,7 @@ class ReplayRecorder:
     def to_dict(self) -> dict:
         meta = dict(self.meta)
         meta["frames"] = len(self._codes)
-        return {"version": FORMAT_VERSION, "meta": meta,
-                "inputs": _rle(self._codes)}
+        return {"version": FORMAT_VERSION, "meta": meta, "inputs": _rle(self._codes)}
 
     def save(self, path: str | Path) -> Path:
         """原子写盘(同 score_store 容错风格); 返回实际路径。"""

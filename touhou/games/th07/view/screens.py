@@ -1,4 +1,4 @@
-""" 标题/菜单场景 —— 纯逻辑层(不含渲染)。
+"""标题/菜单场景 —— 纯逻辑层(不含渲染)。
 
 用带键盘选择的场景状态机组织:
   Title(原版 8 项主菜单) → (Difficulty → Character → 开始游戏 | 退出)
@@ -20,8 +20,15 @@ from ....paths import DEFAULT_DATA
 from ....registry import get_game
 from ....schema.archive import GameArchive
 from ....schema.musiccmt import parse_musiccmt
-from ....engine.config import (LIVES_MAX, LIVES_MIN, SCALE_MAX, SCALE_MIN, VOLUME_MAX,
-                      VOLUME_MIN, GameConfig)
+from ....engine.config import (
+    LIVES_MAX,
+    LIVES_MIN,
+    SCALE_MAX,
+    SCALE_MIN,
+    VOLUME_MAX,
+    VOLUME_MIN,
+    GameConfig,
+)
 
 # 内置兜底名单(与 games/th07/data.py 同值; 仅在注册表未登记 th07 时使用,
 # 正常经 ``import touhou`` 链注册表必命中 —— touhou/__init__ 先登记 th07
@@ -44,17 +51,28 @@ def _default_game_data():
 _gd = _default_game_data()
 
 # 默认名单 = 注册表 th07 表(作品级覆盖走 GameApp(game_data=...))
-DIFFICULTIES = list(_gd.difficulties) if _gd is not None and _gd.difficulties \
+DIFFICULTIES = (
+    list(_gd.difficulties)
+    if _gd is not None and _gd.difficulties
     else list(_FALLBACK_DIFFICULTIES)
-CHARACTERS = list(_gd.characters) if _gd is not None and _gd.characters \
+)
+CHARACTERS = (
+    list(_gd.characters)
+    if _gd is not None and _gd.characters
     else list(_FALLBACK_CHARACTERS)
+)
 # Extra Start 后的关卡选择(简化: 原版 Phantasm 需 Extra 通关后才会出现)
-EXTRA_STAGES = list(_gd.extra_stages) if _gd is not None and _gd.extra_stages \
+EXTRA_STAGES = (
+    list(_gd.extra_stages)
+    if _gd is not None and _gd.extra_stages
     else list(_FALLBACK_EXTRA_STAGES)
-_TH07_PRACTICE_DIFF_COUNT = _gd.practice_difficulty_count \
-    if _gd is not None else _FALLBACK_PRACTICE_DIFF_COUNT
-_TH07_MAIN_DIFF_COUNT = _gd.main_difficulty_count \
-    if _gd is not None else _FALLBACK_PRACTICE_DIFF_COUNT
+)
+_TH07_PRACTICE_DIFF_COUNT = (
+    _gd.practice_difficulty_count if _gd is not None else _FALLBACK_PRACTICE_DIFF_COUNT
+)
+_TH07_MAIN_DIFF_COUNT = (
+    _gd.main_difficulty_count if _gd is not None else _FALLBACK_PRACTICE_DIFF_COUNT
+)
 _TH07_STAGE_COUNT = _gd.stage_count if _gd is not None else _FALLBACK_STAGE_COUNT
 
 # 本篇 Start 的难度名单(不含 Extra/Phantasm —— 那是额外关卡, 走 Extra Start
@@ -83,10 +101,19 @@ def load_tracks(data_path=DEFAULT_DATA) -> list:
     except Exception:
         return []
 
+
 # 原版主菜单 8 项(MainMenu.cpp g_MainMenuStrings 对应的菜单项, 见 title01.anm 贴图)。
 # index 0 / 7 必须保持 "开始游戏" / "退出"(测试依赖)。
-MAIN_MENU_ITEMS = ["开始游戏", "Extra Start", "Practice Start", "Replay",
-                   "Player Data", "Music Room", "Option", "退出"]
+MAIN_MENU_ITEMS = [
+    "开始游戏",
+    "Extra Start",
+    "Practice Start",
+    "Replay",
+    "Player Data",
+    "Music Room",
+    "Option",
+    "退出",
+]
 
 
 class MenuAction(IntEnum):
@@ -95,7 +122,7 @@ class MenuAction(IntEnum):
     DOWN = 2
     CONFIRM = 3
     BACK = 4
-    LEFT = 5    # Option 菜单左右调值
+    LEFT = 5  # Option 菜单左右调值
     RIGHT = 6
 
 
@@ -106,14 +133,14 @@ class Screen(IntEnum):
     CHARACTER = 3
     PLAYING = 4
     RESULT = 5
-    EXTRA_LEVEL = 6   # Extra Start 后选 Extra/Phantasm(简化, 原版无此页)
-    ENDING = 7        # 6 面通关后的结局画面
-    OPTION = 8        # Option 设置页(MainMenu.cpp STATE_OPTIONS)
-    PLAYER_DATA = 9   # Player Data(Result 画面, MainMenu.cpp:430 curState=5)
+    EXTRA_LEVEL = 6  # Extra Start 后选 Extra/Phantasm(简化, 原版无此页)
+    ENDING = 7  # 6 面通关后的结局画面
+    OPTION = 8  # Option 设置页(MainMenu.cpp STATE_OPTIONS)
+    PLAYER_DATA = 9  # Player Data(Result 画面, MainMenu.cpp:430 curState=5)
     PRACTICE_STAGE = 10  # Practice 选关(MainMenu.cpp STATE_SELECT_PRACTICE_STAGE)
-    MUSIC_ROOM = 11   # Music Room(MusicRoom.cpp RegisterChain)
-    REPLAY = 12       # Replay 选择(MainMenu.cpp STATE_SELECT_REPLAY)
-    KEY_CONFIG = 13   # 键位设置(MainMenu.cpp STATE_KEY_CONFIG)
+    MUSIC_ROOM = 11  # Music Room(MusicRoom.cpp RegisterChain)
+    REPLAY = 12  # Replay 选择(MainMenu.cpp STATE_SELECT_REPLAY)
+    KEY_CONFIG = 13  # 键位设置(MainMenu.cpp STATE_KEY_CONFIG)
 
 
 class MenuCursor(msgspec.Struct):
@@ -155,10 +182,14 @@ class TitleFlow(msgspec.Struct):
     - 按取消(BACK)光标直接跳到最后一项 Quit(MainMenu.cpp:455-466)。
     """
 
-    cursor: MenuCursor = msgspec.field(default_factory=lambda: MenuCursor(
-        MAIN_MENU_ITEMS, index=0))
-    step: MenuCursor = msgspec.field(default_factory=lambda: MenuCursor(
-        ["Normal", "Hard", "Lunatic", "Extra"], index=0))
+    cursor: MenuCursor = msgspec.field(
+        default_factory=lambda: MenuCursor(MAIN_MENU_ITEMS, index=0)
+    )
+    step: MenuCursor = msgspec.field(
+        default_factory=lambda: MenuCursor(
+            ["Normal", "Hard", "Lunatic", "Extra"], index=0
+        )
+    )
 
     def handle(self, action: MenuAction) -> "dict | None":
         """处理一次按键。返回非空 dict = 得出当前选择(由调用方决定是否开始)。"""
@@ -193,8 +224,15 @@ class TitleFlow(msgspec.Struct):
 # ---- Option 设置菜单(MainMenu.cpp OnUpdateOptionsMenu, :503-848) ----
 # 原版 9 项见 engine/config.py docstring; 本期接 5 项 + KeyConfig + 退出
 # (KeyConfig 贴图 = title01.anm entry1 sprite 30/31)。
-OPTION_ITEMS = ["BGM 音量", "SE 音量", "音源", "窗口缩放", "初始残机",
-                "Key Config", "退出"]
+OPTION_ITEMS = [
+    "BGM 音量",
+    "SE 音量",
+    "音源",
+    "窗口缩放",
+    "初始残机",
+    "Key Config",
+    "退出",
+]
 
 _OPTION_VOLUME_STEP = 10
 
@@ -217,8 +255,9 @@ class OptionFlow(msgspec.Struct):
     """
 
     config: "GameConfig" = msgspec.field(default_factory=GameConfig)
-    cursor: MenuCursor = msgspec.field(default_factory=lambda: MenuCursor(
-        OPTION_ITEMS, index=0))
+    cursor: MenuCursor = msgspec.field(
+        default_factory=lambda: MenuCursor(OPTION_ITEMS, index=0)
+    )
 
     def handle(self, action: MenuAction) -> "dict | None":
         """处理一次按键。changed = 值被改(调用方应用+落盘), quit = 离开本页。"""
@@ -245,12 +284,15 @@ class OptionFlow(msgspec.Struct):
         item = self.cursor.current
         cfg = self.config
         if item == "BGM 音量":
-            cfg.bgm_volume = max(VOLUME_MIN, min(
-                VOLUME_MAX, cfg.bgm_volume + delta * _OPTION_VOLUME_STEP))
+            cfg.bgm_volume = max(
+                VOLUME_MIN,
+                min(VOLUME_MAX, cfg.bgm_volume + delta * _OPTION_VOLUME_STEP),
+            )
             value = cfg.bgm_volume
         elif item == "SE 音量":
-            cfg.se_volume = max(VOLUME_MIN, min(
-                VOLUME_MAX, cfg.se_volume + delta * _OPTION_VOLUME_STEP))
+            cfg.se_volume = max(
+                VOLUME_MIN, min(VOLUME_MAX, cfg.se_volume + delta * _OPTION_VOLUME_STEP)
+            )
             value = cfg.se_volume
         elif item == "音源":
             cfg.bgm_source = "midi" if cfg.bgm_source == "wav" else "wav"
@@ -271,14 +313,20 @@ class OptionFlow(msgspec.Struct):
 # 条目 = 8 个动作(顺序同原版: shoot/bomb/focus/skip + 方向; 原版还有
 # menu 键与 shotSlow 开关, 这里 menu 语义已由 Esc/Enter 固定承担, 不接)
 # + 恢复默认(原版 cursor10: controlMapping = g_ControllerMapping) + 返回。
-KEYCONFIG_ACTIONS = ["shoot", "bomb", "focus", "skip",
-                     "up", "down", "left", "right"]
+KEYCONFIG_ACTIONS = ["shoot", "bomb", "focus", "skip", "up", "down", "left", "right"]
 KEYCONFIG_ITEMS = KEYCONFIG_ACTIONS + ["reset", "back"]
 # 显示标签(英文, 避免字体依赖, 同 option_view 说明文字风格)
 KEYCONFIG_LABELS = {
-    "shoot": "Shot", "bomb": "Bomb", "focus": "Focus", "skip": "Skip Msg",
-    "up": "Up", "down": "Down", "left": "Left", "right": "Right",
-    "reset": "Reset to Default", "back": "Back",
+    "shoot": "Shot",
+    "bomb": "Bomb",
+    "focus": "Focus",
+    "skip": "Skip Msg",
+    "up": "Up",
+    "down": "Down",
+    "left": "Left",
+    "right": "Right",
+    "reset": "Reset to Default",
+    "back": "Back",
 }
 
 
@@ -293,9 +341,10 @@ class KeyConfigFlow(msgspec.Struct):
     """
 
     config: "GameConfig" = msgspec.field(default_factory=GameConfig)
-    cursor: MenuCursor = msgspec.field(default_factory=lambda: MenuCursor(
-        KEYCONFIG_ITEMS, index=0))
-    capturing: str | None = None   # 正在捕获按键的动作名(None=非捕获状态)
+    cursor: MenuCursor = msgspec.field(
+        default_factory=lambda: MenuCursor(KEYCONFIG_ITEMS, index=0)
+    )
+    capturing: str | None = None  # 正在捕获按键的动作名(None=非捕获状态)
 
     def handle(self, action: MenuAction) -> "dict | None":
         """处理一次菜单按键。capture=进入捕获, changed=键位被改, quit=离开。"""
@@ -361,9 +410,9 @@ PLAYERDATA_SECTIONS = ["分数榜", "符卡", "统计"]
 class PlayerDataFlow(msgspec.Struct):
     """Player Data 画面的翻页状态。emit quit(返回标题), 其余只改页。"""
 
-    section: int = 0       # PLAYERDATA_SECTIONS 下标
-    difficulty: int = 1    # 0..5, 默认 Normal(同 build_difficulty_cursor)
-    character: int = 0     # 0..5
+    section: int = 0  # PLAYERDATA_SECTIONS 下标
+    difficulty: int = 1  # 0..5, 默认 Normal(同 build_difficulty_cursor)
+    character: int = 0  # 0..5
 
     def handle(self, action: MenuAction) -> "dict | None":
         if action == MenuAction.UP:
@@ -399,7 +448,8 @@ def practice_max_stage(store, character: int, difficulty: int) -> int:
     max_stage = len(PRACTICE_STAGE_ITEMS)
     try:
         v = store.clrd[int(character) % len(CHARACTERS)]["without_retries"][
-            int(difficulty) % len(DIFFICULTIES)]
+            int(difficulty) % len(DIFFICULTIES)
+        ]
     except (TypeError, IndexError, KeyError, AttributeError):
         return 1
     if v >= 99:
@@ -491,9 +541,9 @@ NAME_ALPHABET = (
     "0123456789#!?'\"$(){}[]<>&\\|~^ --"
 )
 NAME_ALPHABET_COLS = 16
-NAME_LEN = 8            # Hscr name[9] = 8 字符 + NUL
-NAME_CELL_SPACE = 94    # 确认 = 该槽写空格
-NAME_CELL_END = 95      # 确认 = 完成输入
+NAME_LEN = 8  # Hscr name[9] = 8 字符 + NUL
+NAME_CELL_SPACE = 94  # 确认 = 该槽写空格
+NAME_CELL_END = 95  # 确认 = 完成输入
 
 
 class NameEntryFlow(msgspec.Struct):
@@ -510,7 +560,7 @@ class NameEntryFlow(msgspec.Struct):
     handle 返回 None(继续)或 {"action": "finish", "name": 8 字符名字}。
     """
 
-    initial: str = ""       # 初始名(LSNM 或默认名)
+    initial: str = ""  # 初始名(LSNM 或默认名)
     has_lsnm: bool = False  # 是否有上次输入的名字(定字表光标初始位)
     # 以下三个由 __post_init__ 按 initial/has_lsnm 派生(msgspec 无 init=False,
     # 声明为带默认值的字段再覆盖; 外部不应显式传入)

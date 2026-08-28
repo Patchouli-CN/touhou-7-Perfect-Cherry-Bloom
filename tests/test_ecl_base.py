@@ -4,6 +4,7 @@
 未命中走宿主钩子、trace、handler 表继承隔离(子类注册不污染父类/兄弟类)、
 变量系统 stub 的 NotImplementedError、th07 全 opcode 注册完整性。
 """
+
 from __future__ import annotations
 
 import sys
@@ -83,15 +84,17 @@ class _SpyHost(EclHost):
 
 # ---- 框架主循环: wait timer + 调用栈 ----
 
+
 def _program() -> EclFile:
     """sub0: t0 WAIT(2) → t3 CALL sub1 → t6 JUMP t9 → t9 UNIMP; sub1: t0 noop → t1 RET。"""
     return build_ecl(
-        [_instr(0, OP.SET_WAIT_TIMER, (2,)),
-         _instr(3, OP.SUB_CALL, (1,)),
-         _instr(6, OP.JUMP, (9, 20)),      # byte_offset 相对本条: 20 = 下一条
-         _instr(9, OP.UNIMP)],
-        [_instr(0, 0),
-         _instr(1, OP.SUB_RET)],
+        [
+            _instr(0, OP.SET_WAIT_TIMER, (2,)),
+            _instr(3, OP.SUB_CALL, (1,)),
+            _instr(6, OP.JUMP, (9, 20)),  # byte_offset 相对本条: 20 = 下一条
+            _instr(9, OP.UNIMP),
+        ],
+        [_instr(0, 0), _instr(1, OP.SUB_RET)],
     )
 
 
@@ -105,8 +108,7 @@ def test_step_wait_timer_and_call_stack() -> None:
         assert m.step() is True
     # 第 10 帧: JUMP 到 t9 的 UNIMP → 脚本结束
     assert m.step() is False and m.finished
-    assert m.trace == [OP.SET_WAIT_TIMER, OP.SUB_CALL, 0, OP.SUB_RET,
-                       OP.JUMP, OP.UNIMP]
+    assert m.trace == [OP.SET_WAIT_TIMER, OP.SUB_CALL, 0, OP.SUB_RET, OP.JUMP, OP.UNIMP]
     assert m.stack == [] and m.current.sub_id == 0  # 栈已平衡弹回
 
 
@@ -118,6 +120,7 @@ def test_sub_ret_underflow_is_error() -> None:
 
 
 # ---- 未命中分发 ----
+
 
 def test_unhandled_strict_raises() -> None:
     m = TinyMachine(build_ecl([_instr(0, 777)]), strict=True)
@@ -136,6 +139,7 @@ def test_unhandled_goes_to_host_hook() -> None:
 
 # ---- 变量系统 stub ----
 
+
 def test_base_var_stubs_raise() -> None:
     m = EclMachineBase(build_ecl([_instr(0, 0)]))
     with pytest.raises(NotImplementedError):
@@ -150,9 +154,10 @@ def test_base_var_stubs_raise() -> None:
 
 # ---- handler 表继承隔离 ----
 
+
 def test_handler_table_isolation() -> None:
     """子类注册不污染父类/基类/兄弟作品 VM。"""
-    assert EclMachineBase._handlers == {}            # 裸基类永远空表
+    assert EclMachineBase._handlers == {}  # 裸基类永远空表
     assert OP.SET_WAIT_TIMER in TinyMachine._handlers
 
     class TinyMachine2(TinyMachine):
@@ -162,10 +167,10 @@ def test_handler_table_isolation() -> None:
     def _tiny2_marker(m, instr):
         return None
 
-    assert 901 in TinyMachine2._handlers             # 自身注册生效
+    assert 901 in TinyMachine2._handlers  # 自身注册生效
     assert OP.SET_WAIT_TIMER in TinyMachine2._handlers  # 继承父类表
-    assert 901 not in TinyMachine._handlers          # 不污染父类
-    assert 901 not in EclMachineBase._handlers       # 不污染基类
+    assert 901 not in TinyMachine._handlers  # 不污染父类
+    assert 901 not in EclMachineBase._handlers  # 不污染基类
     # 兄弟隔离: th07 的弹幕 9 合一(64..72) 不在 Tiny 系, Tiny 的记号不在 th07
     assert 64 not in TinyMachine._handlers
     assert 901 not in EclMachineTh07._handlers

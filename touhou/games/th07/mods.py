@@ -7,6 +7,7 @@
 樱点系并入核心命名空间 ``api.player``, 结界系自成新命名空间
 ``api.border``。作品包内摸 ``game._impl`` 是同层操作, 不算破封装。
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
@@ -38,7 +39,8 @@ class Th07Mods:
         if not 0 <= value <= g.cherry_max:
             raise ValueError(
                 f"樱点 {value} 超出合法范围 0..{g.cherry_max}"
-                f"(cherryMax 为引擎当前实况值)")
+                f"(cherryMax 为引擎当前实况值)"
+            )
         g.cherry = value
 
     @mod_namespace("player")
@@ -49,13 +51,16 @@ class Th07Mods:
         if not lo <= value <= hi:
             raise ValueError(
                 f"樱点上限 {value} 超出合法范围 {lo}..{hi}"
-                f"(CHERRY_MAX_RANGE={CHERRY_MAX_RANGE}, 见 games/th07/globals.py)")
+                f"(CHERRY_MAX_RANGE={CHERRY_MAX_RANGE}, 见 games/th07/globals.py)"
+            )
         g.cherry_max = value
 
     @mod_namespace("border")
     def border_break(self) -> None:
         """强制破裂当前樱之结界(主动破账: 全屏清弹圆+破结界无敌; 无结界报错)。"""
         if self._impl.border.has_border == BorderState.NONE:
-            raise ValueError("当前没有结界可破(has_border=NONE; 满樱 READY/ACTIVE 时才可破)")
+            raise ValueError(
+                "当前没有结界可破(has_border=NONE; 满樱 READY/ACTIVE 时才可破)"
+            )
         # 与 bomb 键主动破同一入口(world._break_border 的 BreakBorder 账)
         self._impl._break_border(by_bomb_key=True)

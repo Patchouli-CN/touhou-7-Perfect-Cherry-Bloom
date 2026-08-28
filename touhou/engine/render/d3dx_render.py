@@ -58,8 +58,17 @@ if TYPE_CHECKING:
 
     # prepare 产物: (sort_z, pts4x2, uv4x2, w4, fog4, sprite, color, blend,
     # zwrite_disable)
-    _DrawItem = tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray,
-                      SpriteTex, list[int], int, int]
+    _DrawItem = tuple[
+        float,
+        np.ndarray,
+        np.ndarray,
+        np.ndarray,
+        np.ndarray,
+        SpriteTex,
+        list[int],
+        int,
+        int,
+    ]
 
 __all__ = [
     "D3DXLikeRender",
@@ -79,18 +88,19 @@ __all__ = [
     "rotation_xyz",
 ]
 
-WIN_W, WIN_H = 640, 480          # 原版 3D 视口(UpdateCamera 用其纵横比)
-GAME_X, GAME_Y = 32, 16          # 游戏区在窗口中的位置
+WIN_W, WIN_H = 640, 480  # 原版 3D 视口(UpdateCamera 用其纵横比)
+GAME_X, GAME_Y = 32, 16  # 游戏区在窗口中的位置
 GAME_W, GAME_H = 384, 448
 
-_NEAR, _FAR = 30.0, 1800.0       # UpdateCamera 投影近远面
-_CULL_DIST_SQ = 1690000.0        # RenderObjects: 1300^2
-_CULL_NEAR_DOT = 60.0            # RenderObjects: dotProd < 60 剔除
+_NEAR, _FAR = 30.0, 1800.0  # UpdateCamera 投影近远面
+_CULL_DIST_SQ = 1690000.0  # RenderObjects: 1300^2
+_CULL_NEAR_DOT = 60.0  # RenderObjects: dotProd < 60 剔除
 _CULL_RADIUS_PAD = 880.0
-_COV_TILE = 4                    # 遮挡剔除 tile 边长(内部缓冲像素)
+_COV_TILE = 4  # 遮挡剔除 tile 边长(内部缓冲像素)
 
 
 # ---- D3DX 工具层(矩阵/向量/雾公式) ----
+
 
 def normalize(v: np.ndarray) -> np.ndarray:
     """D3DXVec3Normalize: 单位化; 近零向量返回零向量(避免除零)。"""
@@ -100,8 +110,9 @@ def normalize(v: np.ndarray) -> np.ndarray:
     return v / n
 
 
-def look_at_lh(pos: np.ndarray, direction: np.ndarray,
-               up: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def look_at_lh(
+    pos: np.ndarray, direction: np.ndarray, up: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """D3DXMatrixLookAtLH(方向版): 返回 (view 4x4, cam_right)。
 
     原版 UpdateCamera 的 lookAt 是相对 pos 的朝向向量, 故此处第二参数
@@ -115,15 +126,14 @@ def look_at_lh(pos: np.ndarray, direction: np.ndarray,
     v[0, :3] = [x[0], y[0], z[0]]
     v[1, :3] = [x[1], y[1], z[1]]
     v[2, :3] = [x[2], y[2], z[2]]
-    v[3, :3] = [-float(np.dot(x, pos)),
-                -float(np.dot(y, pos)),
-                -float(np.dot(z, pos))]
+    v[3, :3] = [-float(np.dot(x, pos)), -float(np.dot(y, pos)), -float(np.dot(z, pos))]
     cam_right = normalize(np.cross(z, up))
     return v, cam_right
 
 
-def perspective_fov_lh(fov_y: float, aspect: float, near: float,
-                       far: float) -> np.ndarray:
+def perspective_fov_lh(
+    fov_y: float, aspect: float, near: float, far: float
+) -> np.ndarray:
     """D3DXMatrixPerspectiveFovLH: 垂直视场角透视投影(左手系)。"""
     tan = math.tan(fov_y / 2.0)
     p = np.zeros((4, 4))
@@ -146,15 +156,22 @@ def rotation_xyz(rot: Sequence[float]) -> tuple[float, ...]:
     cx_, sx_ = math.cos(rot[0]), math.sin(rot[0])
     cy_, sy_ = math.cos(rot[1]), math.sin(rot[1])
     cz_, sz_ = math.cos(rot[2]), math.sin(rot[2])
-    return (cy_ * cz_, cy_ * sz_, -sy_,
-            sx_ * sy_ * cz_ - cx_ * sz_, sx_ * sy_ * sz_ + cx_ * cz_,
-            sx_ * cy_,
-            cx_ * sy_ * cz_ + sx_ * sz_, cx_ * sy_ * sz_ - sx_ * cz_,
-            cx_ * cy_)
+    return (
+        cy_ * cz_,
+        cy_ * sz_,
+        -sy_,
+        sx_ * sy_ * cz_ - cx_ * sz_,
+        sx_ * sy_ * sz_ + cx_ * cz_,
+        sx_ * cy_,
+        cx_ * sy_ * cz_ + sx_ * sz_,
+        cx_ * sy_ * sz_ - sx_ * cz_,
+        cx_ * cy_,
+    )
 
 
-def quad_corner_offsets(hw: float, hh: float,
-                        rot: Sequence[float]) -> tuple[float, ...]:
+def quad_corner_offsets(
+    hw: float, hh: float, rot: Sequence[float]
+) -> tuple[float, ...]:
     """Draw3: world = diag(hw,hh) · Rx·Ry·Rz + pos 的角点偏移(12 元组)。
 
     对角线缩放已并入角点(±hw,±hh), 平移 +pos 由调用方逐实例加。
@@ -165,9 +182,7 @@ def quad_corner_offsets(hw: float, hh: float,
     m00, m01, m02, m10, m11, m12, m20, m21, m22 = rotation_xyz(rot)
     coff: list[float] = []
     for bx, by in ((-hw, -hh), (hw, -hh), (-hw, hh), (hw, hh)):
-        coff += [bx * m00 + by * m10,
-                 bx * m01 + by * m11,
-                 bx * m02 + by * m12]
+        coff += [bx * m00 + by * m10, bx * m01 + by * m11, bx * m02 + by * m12]
     return tuple(coff)
 
 
@@ -181,8 +196,7 @@ def linear_fog_factor(view_z: float, near: float, far: float) -> float:
     return 0.0 if f < 0.0 else (1.0 if f > 1.0 else f)
 
 
-def linear_fog_factor_vec(view_z: np.ndarray, near: float,
-                          far: float) -> np.ndarray:
+def linear_fog_factor_vec(view_z: np.ndarray, near: float, far: float) -> np.ndarray:
     """linear_fog_factor 的向量化版(逐元素同式, np.clip 与分支同值)。"""
     inv = 1.0 / max(1e-6, far - near)
     return np.clip((far - view_z) * inv, 0.0, 1.0)
@@ -228,8 +242,8 @@ class D3DXLikeRender:
         self.cam_lookat = np.array([0.0, 0.0, 0.0])
         self.cam_up = np.array([0.0, 1.0, 0.0])
         self.cam_fov = math.pi / 6.0
-        self.world_origin = np.zeros(3)         # .std opcode 0 世界原点
-        self.clear_color = 0                    # .std opcode 13; 0 = 不清屏
+        self.world_origin = np.zeros(3)  # .std opcode 0 世界原点
+        self.clear_color = 0  # .std opcode 13; 0 = 不清屏
         self.sky_fog_color = np.array([0.0, 0.0, 0.0])
         self.sky_fog_rgba = 0xFF000000
         self.sky_fog_near = 200.0
@@ -252,14 +266,15 @@ class D3DXLikeRender:
         self.cam_pos_t = (0.0, 0.0, 1000.0)
         self.cam_right_t = (1.0, 0.0, 0.0)
         self._vps: tuple[tuple[float, ...], ...] = tuple(
-            tuple(1.0 if r == c else 0.0 for c in range(4))
-            for r in range(4))
+            tuple(1.0 if r == c else 0.0 for c in range(4)) for r in range(4)
+        )
         self._vzs = (0.0, 0.0, 1.0, 0.0)
         # prepare 缓存: 每帧(render 一次)每 vm 的世界角点偏移/uv,
         # 同对象多实例(雾块等)仅平移不同, 旋转/uv 不必逐实例重算
         self._prep_seq = 0
-        self._vm_cache: dict[int, tuple[int, tuple[float, ...], float, float,
-                                        np.ndarray]] = {}
+        self._vm_cache: dict[
+            int, tuple[int, tuple[float, ...], float, float, np.ndarray]
+        ] = {}
 
     # ---- 动态分辨率(帧超预算时降档; 纯视觉取舍, 不影响逻辑) ----
     def set_render_scale(self, scale: float) -> None:
@@ -275,23 +290,33 @@ class D3DXLikeRender:
         self._stage = stage
         self._obj_vms = obj_vms
         objs = stage.objects
-        self._obj_pos = np.array([o.pos for o in objs], dtype=float
-                                 ).reshape(-1, 3) if objs else np.zeros((0, 3))
-        self._obj_size = np.array([o.size for o in objs], dtype=float
-                                  ).reshape(-1, 3) if objs else np.zeros((0, 3))
-        self._obj_zlevel = np.array([o.z_level for o in objs])
-        self._obj_radius = np.linalg.norm(self._obj_size, axis=1) / 2.0 \
-            + _CULL_RADIUS_PAD if objs else np.zeros(0)
-        self._inst_obj = np.array([i.object_idx for i in stage.instances])
-        self._inst_pos = np.array([i.pos for i in stage.instances], dtype=float
-                                  ).reshape(-1, 3) if stage.instances \
+        self._obj_pos = (
+            np.array([o.pos for o in objs], dtype=float).reshape(-1, 3)
+            if objs
             else np.zeros((0, 3))
+        )
+        self._obj_size = (
+            np.array([o.size for o in objs], dtype=float).reshape(-1, 3)
+            if objs
+            else np.zeros((0, 3))
+        )
+        self._obj_zlevel = np.array([o.z_level for o in objs])
+        self._obj_radius = (
+            np.linalg.norm(self._obj_size, axis=1) / 2.0 + _CULL_RADIUS_PAD
+            if objs
+            else np.zeros(0)
+        )
+        self._inst_obj = np.array([i.object_idx for i in stage.instances])
+        self._inst_pos = (
+            np.array([i.pos for i in stage.instances], dtype=float).reshape(-1, 3)
+            if stage.instances
+            else np.zeros((0, 3))
+        )
 
     # ---- 相机矩阵(UpdateCamera: LookAtLH + PerspectiveFovLH, 行向量约定) ----
     def update_camera(self) -> None:
         """从 cam_* 字段重建 view/proj/vp 与标量行缓存(每帧渲染一次)。"""
-        view, cam_right = look_at_lh(self.cam_pos, self.cam_lookat,
-                                     self.cam_up)
+        view, cam_right = look_at_lh(self.cam_pos, self.cam_lookat, self.cam_up)
         proj = perspective_fov_lh(self.cam_fov, WIN_W / WIN_H, _NEAR, _FAR)
         vp = view @ proj
         self.view = view
@@ -300,18 +325,26 @@ class D3DXLikeRender:
         self.look_at_dir = normalize(self.cam_lookat)
         self.cam_right = cam_right
         # 标量缓存(逐元素 float(); 投影热路径不再碰 numpy 小数组)
-        self._vps = tuple(
-            tuple(float(vp[r, c]) for c in range(4)) for r in range(4))
-        self._vzs = (float(view[0, 2]), float(view[1, 2]),
-                     float(view[2, 2]), float(view[3, 2]))
-        self.cam_pos_t = (float(self.cam_pos[0]), float(self.cam_pos[1]),
-                          float(self.cam_pos[2]))
-        self.cam_right_t = (float(cam_right[0]), float(cam_right[1]),
-                            float(cam_right[2]))
+        self._vps = tuple(tuple(float(vp[r, c]) for c in range(4)) for r in range(4))
+        self._vzs = (
+            float(view[0, 2]),
+            float(view[1, 2]),
+            float(view[2, 2]),
+            float(view[3, 2]),
+        )
+        self.cam_pos_t = (
+            float(self.cam_pos[0]),
+            float(self.cam_pos[1]),
+            float(self.cam_pos[2]),
+        )
+        self.cam_right_t = (
+            float(cam_right[0]),
+            float(cam_right[1]),
+            float(cam_right[2]),
+        )
 
     # ---- 世界 → 裁剪/视口(行向量 v·M, 逐元素表达式标量/向量版同序) ----
-    def _clip(self, x: float, y: float,
-              z: float) -> tuple[float, float, float, float]:
+    def _clip(self, x: float, y: float, z: float) -> tuple[float, float, float, float]:
         m = self._vps
         c3 = m[3][3] + x * m[0][3] + y * m[1][3] + z * m[2][3]
         c0 = m[3][0] + x * m[0][0] + y * m[1][0] + z * m[2][0]
@@ -328,20 +361,24 @@ class D3DXLikeRender:
         c0, c1, c2, c3 = self._clip(x, y, z)
         if c3 < 1.0:
             return None
-        return Projection((c0 / c3 + 1.0) * (WIN_W / 2.0) - GAME_X,
-                          (1.0 - c1 / c3) * (WIN_H / 2.0) - GAME_Y,
-                          c2, c3)
+        return Projection(
+            (c0 / c3 + 1.0) * (WIN_W / 2.0) - GAME_X,
+            (1.0 - c1 / c3) * (WIN_H / 2.0) - GAME_Y,
+            c2,
+            c3,
+        )
 
-    def project_no_clip(self, x: float, y: float,
-                        z: float) -> tuple[float, float]:
+    def project_no_clip(self, x: float, y: float, z: float) -> tuple[float, float]:
         """不做近裁剪的投影(DrawFacingCamera 边缘点: 原版不检查直接除)。"""
         c0, c1, _c2, c3 = self._clip(x, y, z)
-        return ((c0 / c3 + 1.0) * (WIN_W / 2.0) - GAME_X,
-                (1.0 - c1 / c3) * (WIN_H / 2.0) - GAME_Y)
+        return (
+            (c0 / c3 + 1.0) * (WIN_W / 2.0) - GAME_X,
+            (1.0 - c1 / c3) * (WIN_H / 2.0) - GAME_Y,
+        )
 
-    def project_points(self, x: np.ndarray, y: np.ndarray,
-                       z: np.ndarray) -> tuple[np.ndarray, np.ndarray,
-                                               np.ndarray]:
+    def project_points(
+        self, x: np.ndarray, y: np.ndarray, z: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """向量化投影: (N,...) 世界坐标 → (视口 x, 视口 y, clip_w)。
 
         不做近裁剪(调用方按 clip_w 自行掩码, 与标量版剔除同式)。
@@ -350,16 +387,18 @@ class D3DXLikeRender:
         c3 = m[3][3] + x * m[0][3] + y * m[1][3] + z * m[2][3]
         c0 = m[3][0] + x * m[0][0] + y * m[1][0] + z * m[2][0]
         c1 = m[3][1] + x * m[0][1] + y * m[1][1] + z * m[2][1]
-        return ((c0 / c3 + 1.0) * (WIN_W / 2.0) - GAME_X,
-                (1.0 - c1 / c3) * (WIN_H / 2.0) - GAME_Y, c3)
+        return (
+            (c0 / c3 + 1.0) * (WIN_W / 2.0) - GAME_X,
+            (1.0 - c1 / c3) * (WIN_H / 2.0) - GAME_Y,
+            c3,
+        )
 
     def view_z(self, x: float, y: float, z: float) -> float:
         """view 空间 z(= clip w; 雾因子/排序键用, view 矩阵第 3 列点乘)。"""
         vz = self._vzs
         return vz[0] * x + vz[1] * y + vz[2] * z + vz[3]
 
-    def view_z_points(self, x: np.ndarray, y: np.ndarray,
-                      z: np.ndarray) -> np.ndarray:
+    def view_z_points(self, x: np.ndarray, y: np.ndarray, z: np.ndarray) -> np.ndarray:
         """view_z 的向量化版(逐元素同序)。"""
         vz = self._vzs
         return vz[0] * x + vz[1] * y + vz[2] * z + vz[3]
@@ -381,7 +420,7 @@ class D3DXLikeRender:
             c = self.clear_color
             fb[:, :] = ((c >> 16) & 255, (c >> 8) & 255, c & 255)
         self.update_camera()
-        self._prep_seq += 1                     # prepare 缓存帧标签
+        self._prep_seq += 1  # prepare 缓存帧标签
         for pass_levels in ((0, 1), (2, 3)):
             self._render_pass(fb, pass_levels)
         return fb
@@ -409,14 +448,14 @@ class D3DXLikeRender:
         if vm.anchor & 2:
             for p in pts:
                 p[1] += hh
-        uv = np.array([[spr.u0, spr.v0], [spr.u1, spr.v0],
-                       [spr.u0, spr.v1], [spr.u1, spr.v1]])
+        uv = np.array(
+            [[spr.u0, spr.v0], [spr.u1, spr.v0], [spr.u0, spr.v1], [spr.u1, spr.v1]]
+        )
         uv[:, 0] += vm.uv_scroll[0]
         uv[:, 1] += vm.uv_scroll[1]
         w = np.ones(4)
         fog = np.ones(4)
-        self._raster_quad(fb, np.array(pts), uv, w, fog, spr, vm.color,
-                          vm.blend_mode)
+        self._raster_quad(fb, np.array(pts), uv, w, fog, spr, vm.color, vm.blend_mode)
 
     def _render_pass(self, fb: np.ndarray, levels: tuple[int, int]) -> None:
         stage = self._stage
@@ -425,13 +464,20 @@ class D3DXLikeRender:
         # 实例剔除(向量化; RenderObjects 同式)
         oi = self._inst_obj
         valid = oi < len(stage.objects)
-        centers = (self._obj_pos[oi[valid]] + self._inst_pos[valid]
-                   - self.world_origin + self._obj_size[oi[valid]] / 2.0)
+        centers = (
+            self._obj_pos[oi[valid]]
+            + self._inst_pos[valid]
+            - self.world_origin
+            + self._obj_size[oi[valid]] / 2.0
+        )
         rel = centers - self.cam_pos
         dist2 = np.einsum("ij,ij->i", rel, rel)
         dot = rel @ self.look_at_dir
-        keep = (dist2 <= _CULL_DIST_SQ) & (dot <= self._obj_radius[oi[valid]]) \
+        keep = (
+            (dist2 <= _CULL_DIST_SQ)
+            & (dot <= self._obj_radius[oi[valid]])
             & (dot >= _CULL_NEAR_DOT)
+        )
         zmask = np.isin(self._obj_zlevel[oi[valid]], list(levels))
         inst_ids = np.nonzero(valid)[0][keep & zmask]
         # quad 准备: 同 (object,quad) 的实例分组, ≥3 只走向量化 prepare
@@ -453,15 +499,13 @@ class D3DXLikeRender:
             quad = obj.quads[qi]
             vm = self._obj_vms[obj_i][qi]
             if len(pis) >= 3 and vm.auto_rotate != 2:
-                res = self._prepare_quad_group(
-                    vm, quad, [pairs[pi][0] for pi in pis])
+                res = self._prepare_quad_group(vm, quad, [pairs[pi][0] for pi in pis])
                 for pi in pis:
                     slots[pi] = res.get(pairs[pi][0])
             else:
                 ip = [pairs[pi][0] for pi in pis]
                 for pi, ii in zip(pis, ip):
-                    slots[pi] = self._prepare_quad(
-                        vm, quad, self._inst_pos[ii])
+                    slots[pi] = self._prepare_quad(vm, quad, self._inst_pos[ii])
         draw_list = [it for it in slots if it is not None]
         # 两阶段(等价原版 zbuffer 的近似, 见模块 docstring):
         # A. 不透明 quad 近→远, 逐像素 filled 掩码保证近者胜,
@@ -470,8 +514,7 @@ class D3DXLikeRender:
         opaque = []
         trans = []
         for item in draw_list:
-            if item[7] == 0 and item[6][3] == 255 and item[5].opaque \
-                    and not item[8]:
+            if item[7] == 0 and item[6][3] == 255 and item[5].opaque and not item[8]:
                 opaque.append(item)
             else:
                 trans.append(item)
@@ -480,7 +523,7 @@ class D3DXLikeRender:
         tw = (self.buf_w + _COV_TILE - 1) // _COV_TILE
         th = (self.buf_h + _COV_TILE - 1) // _COV_TILE
         covered = np.zeros((th, tw), dtype=bool)
-        tile_depth = np.full((th, tw), np.inf)   # 各 tile 最近不透明深度
+        tile_depth = np.full((th, tw), np.inf)  # 各 tile 最近不透明深度
         filled = np.zeros((self.buf_h, self.buf_w), dtype=bool)
         # 同纹理/同混合的连续普通 quad 走批量光栅化(保序; 快路径 quad
         # 不参与, 仍逐只走 _raster_quad)。批量只是合并采样/着色的 numpy
@@ -495,8 +538,7 @@ class D3DXLikeRender:
                 while j < n and self._gen_batch_key(opaque[j]) == key:
                     j += 1
                 if j - i >= 2:
-                    self._raster_gen_batch(fb, opaque[i:j], covered,
-                                           tile_depth, filled)
+                    self._raster_gen_batch(fb, opaque[i:j], covered, tile_depth, filled)
                     i = j
                     continue
             pts = item[1]
@@ -505,12 +547,21 @@ class D3DXLikeRender:
                 tx1 = min(tw, int(pts[:, 0].max()) // _COV_TILE + 1)
                 ty0 = max(0, int(pts[:, 1].min()) // _COV_TILE)
                 ty1 = min(th, int(pts[:, 1].max()) // _COV_TILE + 1)
-                if tx1 > tx0 and ty1 > ty0 \
-                        and covered[ty0:ty1, tx0:tx1].all():
+                if tx1 > tx0 and ty1 > ty0 and covered[ty0:ty1, tx0:tx1].all():
                     i += 1
                     continue
-            self._raster_quad(fb, item[1], item[2], item[3], item[4],
-                              item[5], item[6], item[7], covered, filled)
+            self._raster_quad(
+                fb,
+                item[1],
+                item[2],
+                item[3],
+                item[4],
+                item[5],
+                item[6],
+                item[7],
+                covered,
+                filled,
+            )
             # 记录已覆盖 tile 的最近不透明深度(供半透明阶段遮挡剔除)
             tx0 = max(0, int(pts[:, 0].min()) // _COV_TILE)
             tx1 = min(tw, int(pts[:, 0].max()) // _COV_TILE + 1)
@@ -520,8 +571,7 @@ class D3DXLikeRender:
                 zmin = float(item[3].min())
                 region = tile_depth[ty0:ty1, tx0:tx1]
                 cov_region = covered[ty0:ty1, tx0:tx1]
-                np.minimum(region, np.where(cov_region, zmin, np.inf),
-                           out=region)
+                np.minimum(region, np.where(cov_region, zmin, np.inf), out=region)
             i += 1
         i = 0
         n = len(trans)
@@ -533,8 +583,7 @@ class D3DXLikeRender:
                 while j < n and self._gen_batch_key(trans[j]) == key:
                     j += 1
                 if j - i >= 2:
-                    self._raster_gen_batch(fb, trans[i:j], covered,
-                                           tile_depth, None)
+                    self._raster_gen_batch(fb, trans[i:j], covered, tile_depth, None)
                     i = j
                     continue
             # 被更近不透明几何完全遮住的半透明 quad 整只跳过
@@ -546,17 +595,30 @@ class D3DXLikeRender:
                 ty1 = min(th, int(pts[:, 1].max()) // _COV_TILE + 1)
                 if tx1 > tx0 and ty1 > ty0:
                     zmin = float(item[3].min())
-                    if (covered[ty0:ty1, tx0:tx1]
-                            & (tile_depth[ty0:ty1, tx0:tx1] < zmin)).all():
+                    if (
+                        covered[ty0:ty1, tx0:tx1]
+                        & (tile_depth[ty0:ty1, tx0:tx1] < zmin)
+                    ).all():
                         i += 1
                         continue
-            self._raster_quad(fb, item[1], item[2], item[3], item[4],
-                              item[5], item[6], item[7], None, None)
+            self._raster_quad(
+                fb,
+                item[1],
+                item[2],
+                item[3],
+                item[4],
+                item[5],
+                item[6],
+                item[7],
+                None,
+                None,
+            )
             i += 1
 
     # ---- quad prepare(世界变换 + 投影 + 雾因子; Draw3/DrawFacingCamera) ----
-    def _prepare_quad(self, vm: AnmVm, quad: StdQuad,
-                      ipos: np.ndarray) -> _DrawItem | None:
+    def _prepare_quad(
+        self, vm: AnmVm, quad: StdQuad, ipos: np.ndarray
+    ) -> _DrawItem | None:
         """返回 _DrawItem 或 None(剔除)。
 
         投影/雾经标量热路径(update_camera 已缓存矩阵行)。
@@ -568,12 +630,9 @@ class D3DXLikeRender:
         if vm.color[3] < 8:
             return None
         # RenderObjects case 0: vm.pos = offset + quad.pos + inst.pos - stage.pos
-        px = float(vm.offset[0]) + quad.pos[0] + float(ipos[0]) \
-            - self.world_origin[0]
-        py = float(vm.offset[1]) + quad.pos[1] + float(ipos[1]) \
-            - self.world_origin[1]
-        pz = float(vm.offset[2]) + quad.pos[2] + float(ipos[2]) \
-            - self.world_origin[2]
+        px = float(vm.offset[0]) + quad.pos[0] + float(ipos[0]) - self.world_origin[0]
+        py = float(vm.offset[1]) + quad.pos[1] + float(ipos[1]) - self.world_origin[1]
+        pz = float(vm.offset[2]) + quad.pos[2] + float(ipos[2]) - self.world_origin[2]
         sx, sy = vm.scale
         if quad.size[0] != 0.0:
             sx = quad.size[0] / spr.w
@@ -596,7 +655,7 @@ class D3DXLikeRender:
             y = coff[i + 1] + ty
             z = coff[i + 2] + pz
             pr = self.project(x, y, z)
-            if pr is None:                      # 顶点穿近面(w<1), 整只丢弃
+            if pr is None:  # 顶点穿近面(w<1), 整只丢弃
                 return None
             pts.append((pr.x * rs, pr.y * rs))
             ws.append(pr.clip_w)
@@ -605,17 +664,23 @@ class D3DXLikeRender:
             fogs.append(linear_fog_factor(zv, fog_near, fog_far))
         xs = [p[0] for p in pts]
         ys = [p[1] for p in pts]
-        if max(xs) < 0 or min(xs) >= self.buf_w or max(ys) < 0 \
-                or min(ys) >= self.buf_h:
+        if max(xs) < 0 or min(xs) >= self.buf_w or max(ys) < 0 or min(ys) >= self.buf_h:
             return None
-        return (zsum * 0.25, np.array(pts), uv, np.array(ws),
-                np.array(fogs), spr, vm.color, vm.blend_mode,
-                vm.zwrite_disable)
+        return (
+            zsum * 0.25,
+            np.array(pts),
+            uv,
+            np.array(ws),
+            np.array(fogs),
+            spr,
+            vm.color,
+            vm.blend_mode,
+            vm.zwrite_disable,
+        )
 
-    def _quad_vm_cache(self, vm: AnmVm, quad: StdQuad, spr: SpriteTex,
-                       sx: float, sy: float) -> tuple[tuple[float, ...],
-                                                      float, float,
-                                                      np.ndarray]:
+    def _quad_vm_cache(
+        self, vm: AnmVm, quad: StdQuad, spr: SpriteTex, sx: float, sy: float
+    ) -> tuple[tuple[float, ...], float, float, np.ndarray]:
         """每帧每 vm 缓存: 旋转后世界角点偏移(12 float)/锚点位移/uv。
 
         同对象多实例(雾块等)共享 vm, 仅平移不同, 命中后省去旋转矩阵
@@ -632,15 +697,20 @@ class D3DXLikeRender:
         # (旋转/零角优化在 quad_corner_offsets)
         coff = quad_corner_offsets(hw, hh, vm.rotation)
         su, sv = vm.uv_scroll[0], vm.uv_scroll[1]
-        uv = np.array([[spr.u0 + su, spr.v0 + sv],
-                       [spr.u1 + su, spr.v0 + sv],
-                       [spr.u0 + su, spr.v1 + sv],
-                       [spr.u1 + su, spr.v1 + sv]])
+        uv = np.array(
+            [
+                [spr.u0 + su, spr.v0 + sv],
+                [spr.u1 + su, spr.v0 + sv],
+                [spr.u0 + su, spr.v1 + sv],
+                [spr.u1 + su, spr.v1 + sv],
+            ]
+        )
         self._vm_cache[id(vm)] = (self._prep_seq, coff, ax, ay, uv)
         return coff, ax, ay, uv
 
-    def _prepare_quad_group(self, vm: AnmVm, quad: StdQuad,
-                            iis: list[int]) -> dict[int, _DrawItem]:
+    def _prepare_quad_group(
+        self, vm: AnmVm, quad: StdQuad, iis: list[int]
+    ) -> dict[int, _DrawItem]:
         """同 (object,quad) 多实例的向量化 prepare, 返回 {instance_idx: item}。
 
         同组共享 vm(可见性检查结果一致, 检查一次); 投影/雾/bbox 剔除按
@@ -652,10 +722,10 @@ class D3DXLikeRender:
             return {}
         if vm.color[3] < 8:
             return {}
-        coff, ax, ay, uv = self._quad_vm_cache(vm, quad, spr,
-                                               *self._quad_scale(vm, quad,
-                                                                 spr))
-        IP = self._inst_pos[np.asarray(iis)]            # (N,3)
+        coff, ax, ay, uv = self._quad_vm_cache(
+            vm, quad, spr, *self._quad_scale(vm, quad, spr)
+        )
+        IP = self._inst_pos[np.asarray(iis)]  # (N,3)
         # 与标量版相同的加括号顺序: ((off+qpos)+ipos)-spos (+anchor)
         b0 = float(vm.offset[0]) + quad.pos[0]
         b1 = float(vm.offset[1]) + quad.pos[1]
@@ -664,7 +734,7 @@ class D3DXLikeRender:
         ty = (b1 + IP[:, 1]) - self.world_origin[1] + ay
         pz = (b2 + IP[:, 2]) - self.world_origin[2]
         C = np.asarray(coff).reshape(4, 3)
-        X = C[None, :, 0] + tx[:, None]               # (N,4) 世界角点
+        X = C[None, :, 0] + tx[:, None]  # (N,4) 世界角点
         Y = C[None, :, 1] + ty[:, None]
         Z = C[None, :, 2] + pz[:, None]
         sx_b, sy_b, c3 = self.project_points(X, Y, Z)
@@ -675,23 +745,31 @@ class D3DXLikeRender:
         zsum = zv[:, 0] + zv[:, 1] + zv[:, 2] + zv[:, 3]
         fg = linear_fog_factor_vec(zv, self.sky_fog_near, self.sky_fog_far)
         keep = (c3 >= 1.0).all(axis=1)
-        keep &= ~((sx_px.max(axis=1) < 0)
-                  | (sx_px.min(axis=1) >= self.buf_w)
-                  | (sy_px.max(axis=1) < 0)
-                  | (sy_px.min(axis=1) >= self.buf_h))
+        keep &= ~(
+            (sx_px.max(axis=1) < 0)
+            | (sx_px.min(axis=1) >= self.buf_w)
+            | (sy_px.max(axis=1) < 0)
+            | (sy_px.min(axis=1) >= self.buf_h)
+        )
         out = {}
         for k, ii in enumerate(iis):
             if not keep[k]:
                 continue
-            out[ii] = (float(zsum[k]) * 0.25,
-                       np.stack((sx_px[k], sy_px[k]), axis=1), uv,
-                       c3[k].copy(), fg[k].copy(), spr, vm.color,
-                       vm.blend_mode, vm.zwrite_disable)
+            out[ii] = (
+                float(zsum[k]) * 0.25,
+                np.stack((sx_px[k], sy_px[k]), axis=1),
+                uv,
+                c3[k].copy(),
+                fg[k].copy(),
+                spr,
+                vm.color,
+                vm.blend_mode,
+                vm.zwrite_disable,
+            )
         return out
 
     @staticmethod
-    def _quad_scale(vm: AnmVm, quad: StdQuad,
-                    spr: SpriteTex) -> tuple[float, float]:
+    def _quad_scale(vm: AnmVm, quad: StdQuad, spr: SpriteTex) -> tuple[float, float]:
         sx, sy = vm.scale
         if quad.size[0] != 0.0:
             sx = quad.size[0] / spr.w
@@ -699,13 +777,18 @@ class D3DXLikeRender:
             sy = quad.size[1] / spr.h
         return sx, sy
 
-    def _prepare_billboard(self, vm: AnmVm, quad: StdQuad,
-                           pos: tuple[float, float, float], spr: SpriteTex,
-                           sx: float) -> _DrawItem | None:
+    def _prepare_billboard(
+        self,
+        vm: AnmVm,
+        quad: StdQuad,
+        pos: tuple[float, float, float],
+        spr: SpriteTex,
+        sx: float,
+    ) -> _DrawItem | None:
         """autoRotate==2: 面向相机 quad(RenderObjects 特判 + DrawFacingCamera)。"""
         x, y, z = pos
         pr = self.project(x, y, z)
-        if pr is None:                          # 中心点穿近面(w<1)
+        if pr is None:  # 中心点穿近面(w<1)
             return None
         ndc_z = pr.ndc_z
         if ndc_z < 0.0 or ndc_z > 1.0:
@@ -716,7 +799,7 @@ class D3DXLikeRender:
         x2 = x + cr[0] * off
         y2 = y + cr[1] * off
         z2 = z + cr[2] * off
-        ex_b, ey_b = self.project_no_clip(x2, y2, z2)   # 边缘点原版不裁剪
+        ex_b, ey_b = self.project_no_clip(x2, y2, z2)  # 边缘点原版不裁剪
         rs = self.render_scale
         cx = pr.x * rs
         cy = pr.y * rs
@@ -728,27 +811,47 @@ class D3DXLikeRender:
         # 手动雾(3D 距离; alpha 也衰减, 见 RenderObjects)
         color = vm.color
         cam = self.cam_pos_t
-        dist = math.sqrt((x - cam[0]) ** 2 + (y - cam[1]) ** 2
-                         + (z - cam[2]) ** 2)
+        dist = math.sqrt((x - cam[0]) ** 2 + (y - cam[1]) ** 2 + (z - cam[2]) ** 2)
         if self.sky_fog_near < dist:
-            f = (self.sky_fog_near - dist) / (self.sky_fog_near
-                                              - self.sky_fog_far)
+            f = (self.sky_fog_near - dist) / (self.sky_fog_near - self.sky_fog_far)
             if f >= 1.0:
                 return None
             fc = self.sky_fog_color
-            color = [int(color[k] - (color[k] - float(fc[k])) * f)
-                     for k in range(3)] + [int(color[3] * (1.0 - f))]
+            color = [
+                int(color[k] - (color[k] - float(fc[k])) * f) for k in range(3)
+            ] + [int(color[3] * (1.0 - f))]
         if vm.anchor & 1:
             cx += hw
         if vm.anchor & 2:
             cy += hh
-        pts = np.array([[cx - hw, cy - hh], [cx + hw, cy - hh],
-                        [cx - hw, cy + hh], [cx + hw, cy + hh]])
+        pts = np.array(
+            [
+                [cx - hw, cy - hh],
+                [cx + hw, cy - hh],
+                [cx - hw, cy + hh],
+                [cx + hw, cy + hh],
+            ]
+        )
         su, sv = vm.uv_scroll[0], vm.uv_scroll[1]
-        uv = np.array([[spr.u0 + su, spr.v0 + sv], [spr.u1 + su, spr.v0 + sv],
-                       [spr.u0 + su, spr.v1 + sv], [spr.u1 + su, spr.v1 + sv]])
-        return (pr.clip_z, pts, uv, np.full(4, pr.clip_w), np.ones(4), spr,
-                color, vm.blend_mode, vm.zwrite_disable)
+        uv = np.array(
+            [
+                [spr.u0 + su, spr.v0 + sv],
+                [spr.u1 + su, spr.v0 + sv],
+                [spr.u0 + su, spr.v1 + sv],
+                [spr.u1 + su, spr.v1 + sv],
+            ]
+        )
+        return (
+            pr.clip_z,
+            pts,
+            uv,
+            np.full(4, pr.clip_w),
+            np.ones(4),
+            spr,
+            color,
+            vm.blend_mode,
+            vm.zwrite_disable,
+        )
 
     # ---- 光栅化(两三角形, bbox 向量化, 透视矫正 uv, 最近邻) ----
     def _gen_batch_key(self, item: _DrawItem) -> tuple[int, int] | None:
@@ -759,16 +862,27 @@ class D3DXLikeRender:
         记存在粒度差(原版逐只处理亦然), 单独走原路径。
         """
         fog = item[4]
-        if fog[0] <= 0.004 and fog[1] <= 0.004 and fog[2] <= 0.004 \
-                and fog[3] <= 0.004:
+        if fog[0] <= 0.004 and fog[1] <= 0.004 and fog[2] <= 0.004 and fog[3] <= 0.004:
             return None
         p = item[1]
-        x0, x1, x2, x3 = (float(p[0, 0]), float(p[1, 0]),
-                          float(p[2, 0]), float(p[3, 0]))
-        y0, y1, y2, y3 = (float(p[0, 1]), float(p[1, 1]),
-                          float(p[2, 1]), float(p[3, 1]))
-        if abs(x0 - x2) < 0.02 and abs(x1 - x3) < 0.02 \
-                and abs(y0 - y1) < 0.02 and abs(y2 - y3) < 0.02:
+        x0, x1, x2, x3 = (
+            float(p[0, 0]),
+            float(p[1, 0]),
+            float(p[2, 0]),
+            float(p[3, 0]),
+        )
+        y0, y1, y2, y3 = (
+            float(p[0, 1]),
+            float(p[1, 1]),
+            float(p[2, 1]),
+            float(p[3, 1]),
+        )
+        if (
+            abs(x0 - x2) < 0.02
+            and abs(x1 - x3) < 0.02
+            and abs(y0 - y1) < 0.02
+            and abs(y2 - y3) < 0.02
+        ):
             w = item[3]
             wmin = min(float(w[0]), float(w[1]), float(w[2]), float(w[3]))
             wmax = max(float(w[0]), float(w[1]), float(w[2]), float(w[3]))
@@ -781,12 +895,17 @@ class D3DXLikeRender:
         by1 = min(H, int(math.ceil(max(y0, y1, y2, y3))))
         bw, bh = bx1 - bx0, by1 - by0
         if bw * bh > (H * W) // 5 and min(bw, bh) >= 8:
-            return None                      # step==2 大 quad 不批量
+            return None  # step==2 大 quad 不批量
         return (id(item[5].tex), item[7])
 
-    def _raster_gen_batch(self, fb: np.ndarray, items: list[_DrawItem],
-                          covered: np.ndarray, tile_depth: np.ndarray,
-                          filled: np.ndarray | None) -> None:
+    def _raster_gen_batch(
+        self,
+        fb: np.ndarray,
+        items: list[_DrawItem],
+        covered: np.ndarray,
+        tile_depth: np.ndarray,
+        filled: np.ndarray | None,
+    ) -> None:
         """同纹理/同混合的连续普通 quad 批量光栅化(保序)。
 
         逐 quad 保持 _render_pass + _raster_quad_pts 的顺序语义(遮挡剔
@@ -798,12 +917,12 @@ class D3DXLikeRender:
         H, W = fb.shape[:2]
         th, tw = covered.shape
         opaque = filled is not None
-        recs = []                # (gi, gj) 帧缓冲像素下标
+        recs = []  # (gi, gj) 帧缓冲像素下标
         counts = []
-        Xs, Ys = [], []          # 像素屏幕坐标(float32)
-        inAs = []                # (mA, yi, xi) 延迟 gather(仅雾变化时用)
-        coef = []                # (au,bu,cu, av,bv,cv, ai,bi,ci)
-        fogcf = []               # (aA,bA,cA, aB,bB,cB) 雾仿射系数
+        Xs, Ys = [], []  # 像素屏幕坐标(float32)
+        inAs = []  # (mA, yi, xi) 延迟 gather(仅雾变化时用)
+        coef = []  # (au,bu,cu, av,bv,cv, ai,bi,ci)
+        fogcf = []  # (aA,bA,cA, aB,bB,cB) 雾仿射系数
         tints = []
         any_fog = False
         vary_fog = False
@@ -822,21 +941,21 @@ class D3DXLikeRender:
             ty1 = min(th, int(ymax) // _COV_TILE + 1)
             zmin = min(wl)
 
-            def upd_tile() -> None:   # 与 _render_pass 相同的 tile 深度更新
+            def upd_tile() -> None:  # 与 _render_pass 相同的 tile 深度更新
                 if opaque and tx1 > tx0 and ty1 > ty0:
                     cr = covered[ty0:ty1, tx0:tx1]
-                    if cr.any():   # 无覆盖 tile 时与原版的 minimum 同效(空操作)
+                    if cr.any():  # 无覆盖 tile 时与原版的 minimum 同效(空操作)
                         region = tile_depth[ty0:ty1, tx0:tx1]
-                        np.minimum(region, np.where(cr, zmin, np.inf),
-                                   out=region)
+                        np.minimum(region, np.where(cr, zmin, np.inf), out=region)
 
             # 遮挡剔除(与 _render_pass 同序同式)
             if covered.any() and tx1 > tx0 and ty1 > ty0:
                 if opaque:
                     if covered[ty0:ty1, tx0:tx1].all():
                         continue
-                elif (covered[ty0:ty1, tx0:tx1]
-                        & (tile_depth[ty0:ty1, tx0:tx1] < zmin)).all():
+                elif (
+                    covered[ty0:ty1, tx0:tx1] & (tile_depth[ty0:ty1, tx0:tx1] < zmin)
+                ).all():
                     continue
             # bbox(与 _raster_quad_pts 同式)
             x0 = max(0, int(math.floor(xmin)))
@@ -858,8 +977,17 @@ class D3DXLikeRender:
                 d = (yb - yc) * (xa - xc) + (xc - xb) * (ya - yc)
                 if abs(d) < 1e-9:
                     continue
-                cfs.append((tri, (yb - yc) / d, (xc - xb) / d,
-                            (yc - ya) / d, (xa - xc) / d, xc, yc))
+                cfs.append(
+                    (
+                        tri,
+                        (yb - yc) / d,
+                        (xc - xb) / d,
+                        (yc - ya) / d,
+                        (xa - xc) / d,
+                        xc,
+                        yc,
+                    )
+                )
             if not cfs:
                 upd_tile()
                 continue
@@ -871,15 +999,15 @@ class D3DXLikeRender:
                 C = np.array([cfs[0][1:], (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)])
             xc_ = C[:, 4][:, None, None]
             yc_ = C[:, 5][:, None, None]
-            du = xr[None, None, :] - xc_                # (2,1,bw)
-            dv = yr[None, :, None] - yc_                # (2,bh,1)
+            du = xr[None, None, :] - xc_  # (2,1,bw)
+            dv = yr[None, :, None] - yc_  # (2,bh,1)
             l0 = C[:, 0][:, None, None] * du + C[:, 1][:, None, None] * dv
             l1 = C[:, 2][:, None, None] * du + C[:, 3][:, None, None] * dv
             m = (l0 >= -1e-4) & (l1 >= -1e-4)
             l0 += l1
             m &= l0 <= 1.0001
             if len(cfs) == 1:
-                m[1] = False                            # 屏蔽缺失的第二三角
+                m[1] = False  # 屏蔽缺失的第二三角
             tris = [(cfs[0][0], m[0]) + cfs[0][1:]]
             if len(cfs) == 2:
                 tris.append((cfs[1][0], m[1]) + cfs[1][1:])
@@ -889,7 +1017,7 @@ class D3DXLikeRender:
                 upd_tile()
                 continue
             if opaque:
-                assert filled is not None     # opaque == filled is not None
+                assert filled is not None  # opaque == filled is not None
                 keep = ~filled[yi + y0, xi + x0]
                 if not keep.any():
                     self._cov_mark(covered, mask, x0, y0)
@@ -904,36 +1032,31 @@ class D3DXLikeRender:
             tri0, mA, a0, b0, a1, b1, p2x, p2y = tris[0]
             i0, i1, i2 = tri0
 
-            def _fit(g0: float, g1: float,
-                     g2: float) -> tuple[float, float, float]:
+            def _fit(g0: float, g1: float, g2: float) -> tuple[float, float, float]:
                 A = a0 * (g0 - g2) + a1 * (g1 - g2)
                 B = b0 * (g0 - g2) + b1 * (g1 - g2)
                 return A, B, g2 - A * p2x - B * p2y
 
             w0, w1, w2 = wl[i0], wl[i1], wl[i2]
-            coef.append(_fit(uv[i0, 0] / w0, uv[i1, 0] / w1,
-                             uv[i2, 0] / w2)
-                        + _fit(uv[i0, 1] / w0, uv[i1, 1] / w1,
-                               uv[i2, 1] / w2)
-                        + _fit(1.0 / w0, 1.0 / w1, 1.0 / w2))
-            if fog[0] < 0.996 or fog[1] < 0.996 or fog[2] < 0.996 \
-                    or fog[3] < 0.996:
+            coef.append(
+                _fit(uv[i0, 0] / w0, uv[i1, 0] / w1, uv[i2, 0] / w2)
+                + _fit(uv[i0, 1] / w0, uv[i1, 1] / w1, uv[i2, 1] / w2)
+                + _fit(1.0 / w0, 1.0 / w1, 1.0 / w2)
+            )
+            if fog[0] < 0.996 or fog[1] < 0.996 or fog[2] < 0.996 or fog[3] < 0.996:
                 any_fog = True
                 if fog[0] == fog[1] == fog[2] == fog[3]:
                     c = float(fog[0])
                     fogcf.append((0.0, 0.0, c, 0.0, 0.0, c))
                 else:
                     vary_fog = True
-                    fA = _fit(float(fog[i0]), float(fog[i1]),
-                              float(fog[i2]))
+                    fA = _fit(float(fog[i0]), float(fog[i1]), float(fog[i2]))
                     if len(tris) == 2:
                         j0, j1, j2 = tris[1][0]
                         _mB, a0b, b0b, a1b, b1b, p2xb, p2yb = tris[1][1:]
                         fj2 = float(fog[j2])
-                        A = a0b * (float(fog[j0]) - fj2) \
-                            + a1b * (float(fog[j1]) - fj2)
-                        B = b0b * (float(fog[j0]) - fj2) \
-                            + b1b * (float(fog[j1]) - fj2)
+                        A = a0b * (float(fog[j0]) - fj2) + a1b * (float(fog[j1]) - fj2)
+                        B = b0b * (float(fog[j0]) - fj2) + b1b * (float(fog[j1]) - fj2)
                         fB = (A, B, fj2 - A * p2xb - B * p2yb)
                     else:
                         fB = fA
@@ -973,8 +1096,7 @@ class D3DXLikeRender:
             fgA = fgq[:, 0][gid] * X + fgq[:, 1][gid] * Y + fgq[:, 2][gid]
             if vary_fog:
                 inA = np.concatenate([mA[yi, xi] for mA, yi, xi in inAs])
-                fgB = fgq[:, 3][gid] * X + fgq[:, 4][gid] * Y \
-                    + fgq[:, 5][gid]
+                fgB = fgq[:, 3][gid] * X + fgq[:, 4][gid] * Y + fgq[:, 5][gid]
                 fg = np.where(inA, fgA, fgB)
             else:
                 fg = fgA
@@ -988,40 +1110,47 @@ class D3DXLikeRender:
             out_all = np.clip(rgb, 0, 255).astype(np.uint8)
             for gi, gj in recs:
                 n_ = gi.shape[0]
-                fb[gi, gj] = out_all[off:off + n_]
+                fb[gi, gj] = out_all[off : off + n_]
                 off += n_
         else:
             a_all = src[:, 3:4] * tg[:, 3:4]
             for gi, gj in recs:
                 n_ = gi.shape[0]
-                rgb_s = rgb[off:off + n_]
-                a = a_all[off:off + n_]
+                rgb_s = rgb[off : off + n_]
+                a = a_all[off : off + n_]
                 dst = fb[gi, gj].astype(np.float32)
-                if blend == 1:      # DESTBLEND ONE(加算)
+                if blend == 1:  # DESTBLEND ONE(加算)
                     out = dst + rgb_s * (a * (1.0 / 255.0))
-                else:               # SRCALPHA / INVSRCALPHA
-                    out = rgb_s * (a * (1.0 / 255.0)) \
-                        + dst * (1.0 - a * (1.0 / 255.0))
+                else:  # SRCALPHA / INVSRCALPHA
+                    out = rgb_s * (a * (1.0 / 255.0)) + dst * (1.0 - a * (1.0 / 255.0))
                 fb[gi, gj] = np.clip(out, 0, 255).astype(np.uint8)
                 off += n_
 
-    def _raster_quad(self, fb: np.ndarray, pts: np.ndarray, uv: np.ndarray,
-                     w: np.ndarray, fog: np.ndarray, spr: SpriteTex,
-                     color: Sequence[int], blend_mode: int,
-                     cov: np.ndarray | None = None,
-                     filled: np.ndarray | None = None) -> None:
+    def _raster_quad(
+        self,
+        fb: np.ndarray,
+        pts: np.ndarray,
+        uv: np.ndarray,
+        w: np.ndarray,
+        fog: np.ndarray,
+        spr: SpriteTex,
+        color: Sequence[int],
+        blend_mode: int,
+        cov: np.ndarray | None = None,
+        filled: np.ndarray | None = None,
+    ) -> None:
         # 全雾快捷路径: 4 顶点雾因子≈0 → 输出即雾色(D3D 雾压过纹理),
         # 不透明普通混合直接填矩形, 其余(加算/半透明)影响可忽略, 跳过
-        if fog[0] <= 0.004 and fog[1] <= 0.004 and fog[2] <= 0.004 \
-                and fog[3] <= 0.004:
+        if fog[0] <= 0.004 and fog[1] <= 0.004 and fog[2] <= 0.004 and fog[3] <= 0.004:
             if blend_mode == 0 and color[3] == 255:
                 x0 = max(0, int(math.floor(float(pts[:, 0].min()))))
                 x1 = min(self.buf_w, int(math.ceil(float(pts[:, 0].max()))))
                 y0 = max(0, int(math.floor(float(pts[:, 1].min()))))
                 y1 = min(self.buf_h, int(math.ceil(float(pts[:, 1].max()))))
                 if x1 > x0 and y1 > y0:
-                    fb[y0:y1, x0:x1] = np.clip(self.sky_fog_color, 0, 255
-                                               ).astype(np.uint8)
+                    fb[y0:y1, x0:x1] = np.clip(self.sky_fog_color, 0, 255).astype(
+                        np.uint8
+                    )
                     if cov is not None:
                         self._cov_fill(cov, x0, y0, x1, y1)
                     if filled is not None:
@@ -1030,20 +1159,29 @@ class D3DXLikeRender:
         # 轴对齐矩形快路径(billboard/2D overlay: 屏幕对齐 quad 的缩放 blit;
         # w 四顶点近似相等时仿射=透视, 误差不可测)
         p = pts
-        if abs(p[0, 0] - p[2, 0]) < 0.02 and abs(p[1, 0] - p[3, 0]) < 0.02 \
-                and abs(p[0, 1] - p[1, 1]) < 0.02 \
-                and abs(p[2, 1] - p[3, 1]) < 0.02:
+        if (
+            abs(p[0, 0] - p[2, 0]) < 0.02
+            and abs(p[1, 0] - p[3, 0]) < 0.02
+            and abs(p[0, 1] - p[1, 1]) < 0.02
+            and abs(p[2, 1] - p[3, 1]) < 0.02
+        ):
             wmin = float(w.min())
             if wmin > 0 and (float(w.max()) - wmin) < 0.005 * wmin:
-                self._blit_rect(fb, p, uv, spr, color, blend_mode, cov,
-                                filled)
+                self._blit_rect(fb, p, uv, spr, color, blend_mode, cov, filled)
                 return
-        self._raster_quad_pts(fb, pts, uv, w, fog, spr, color, blend_mode,
-                              cov, filled)
+        self._raster_quad_pts(fb, pts, uv, w, fog, spr, color, blend_mode, cov, filled)
 
-    def _blit_rect(self, fb: np.ndarray, p: np.ndarray, uv: np.ndarray,
-                   spr: SpriteTex, color: Sequence[int], blend_mode: int,
-                   cov: np.ndarray | None, filled: np.ndarray | None) -> None:
+    def _blit_rect(
+        self,
+        fb: np.ndarray,
+        p: np.ndarray,
+        uv: np.ndarray,
+        spr: SpriteTex,
+        color: Sequence[int],
+        blend_mode: int,
+        cov: np.ndarray | None,
+        filled: np.ndarray | None,
+    ) -> None:
         """屏幕轴对齐 quad 的最近邻缩放 blit(向量化切片, 无 barycentric)。
 
         角点序固定为局部 (-hw,-hh)..(hw,hh), 经 rotation.z ≈ ±90°/180° 旋转
@@ -1058,9 +1196,9 @@ class D3DXLikeRender:
         xb, yb = float(p[3, 0]), float(p[3, 1])
         ua, ub = float(uv[0, 0]), float(uv[3, 0])
         va, vb = float(uv[0, 1]), float(uv[3, 1])
-        if xb < xa:                     # 旋转 ≈90°/270°: x 序翻转, u 同步翻转
+        if xb < xa:  # 旋转 ≈90°/270°: x 序翻转, u 同步翻转
             xa, xb, ua, ub = xb, xa, ub, ua
-        if yb < ya:                     # 旋转 ≈180°: y 序翻转, v 同步翻转
+        if yb < ya:  # 旋转 ≈180°: y 序翻转, v 同步翻转
             ya, yb, va, vb = yb, ya, vb, va
         wdt = xb - xa
         hgt = yb - ya
@@ -1078,10 +1216,12 @@ class D3DXLikeRender:
         bw = dx1 - dx0
         bh = dy1 - dy0
         step = 2 if bw * bh > (H * W) // 4 and min(bw, bh) >= 8 else 1
-        us = ua + ((np.arange(dx0, dx1, dtype=np.float32)[::step] + 0.5 - xa)
-                   / wdt) * (ub - ua)
-        vs = va + ((np.arange(dy0, dy1, dtype=np.float32)[::step] + 0.5 - ya)
-                   / hgt) * (vb - va)
+        us = ua + ((np.arange(dx0, dx1, dtype=np.float32)[::step] + 0.5 - xa) / wdt) * (
+            ub - ua
+        )
+        vs = va + ((np.arange(dy0, dy1, dtype=np.float32)[::step] + 0.5 - ya) / hgt) * (
+            vb - va
+        )
         tu = (us * tw).astype(np.int32) % tw
         tv = (vs * th).astype(np.int32) % th
         src = tex[tv][:, tu].astype(np.float32)
@@ -1094,10 +1234,10 @@ class D3DXLikeRender:
             h2 = min(rgb.shape[0], dy1 - dy0)
             w2 = min(rgb.shape[1], dx1 - dx0)
             rgb = np.clip(rgb[:h2, :w2], 0, 255).astype(np.uint8)
-            keep = ~filled[dy0:dy0 + h2, dx0:dx0 + w2]
-            region = fb[dy0:dy0 + h2, dx0:dx0 + w2]
+            keep = ~filled[dy0 : dy0 + h2, dx0 : dx0 + w2]
+            region = fb[dy0 : dy0 + h2, dx0 : dx0 + w2]
             region[keep] = rgb[keep]
-            filled[dy0:dy0 + h2, dx0:dx0 + w2] = True
+            filled[dy0 : dy0 + h2, dx0 : dx0 + w2] = True
             if cov is not None:
                 self._cov_fill(cov, dx0, dy0, dx0 + w2, dy0 + h2)
             return
@@ -1112,12 +1252,12 @@ class D3DXLikeRender:
         else:
             h2 = dy1 - dy0
             w2 = dx1 - dx0
-        dst = fb[dy0:dy0 + h2, dx0:dx0 + w2].astype(np.float32)
+        dst = fb[dy0 : dy0 + h2, dx0 : dx0 + w2].astype(np.float32)
         if blend_mode == 1:
             out = dst + rgb * (a * (1.0 / 255.0))
         else:
             out = rgb * (a * (1.0 / 255.0)) + dst * (1.0 - a * (1.0 / 255.0))
-        fb[dy0:dy0 + h2, dx0:dx0 + w2] = np.clip(out, 0, 255).astype(np.uint8)
+        fb[dy0 : dy0 + h2, dx0 : dx0 + w2] = np.clip(out, 0, 255).astype(np.uint8)
 
     @staticmethod
     def _cov_mark(cov: np.ndarray, mask: np.ndarray, x0: int, y0: int) -> None:
@@ -1126,12 +1266,13 @@ class D3DXLikeRender:
         h4, w4 = h // _COV_TILE, w // _COV_TILE
         if h4 == 0 or w4 == 0:
             return
-        blocks = mask[:h4 * _COV_TILE, :w4 * _COV_TILE].reshape(
-            h4, _COV_TILE, w4, _COV_TILE)
+        blocks = mask[: h4 * _COV_TILE, : w4 * _COV_TILE].reshape(
+            h4, _COV_TILE, w4, _COV_TILE
+        )
         full = blocks.all(axis=(1, 3))
         th, tw = cov.shape
         gy, gx = y0 // _COV_TILE, x0 // _COV_TILE
-        cov[gy:gy + h4, gx:gx + w4] |= full[:th - gy, :tw - gx]
+        cov[gy : gy + h4, gx : gx + w4] |= full[: th - gy, : tw - gx]
 
     @staticmethod
     def _cov_fill(cov: np.ndarray, x0: int, y0: int, x1: int, y1: int) -> None:
@@ -1141,11 +1282,19 @@ class D3DXLikeRender:
         if gx1 > gx0 and gy1 > gy0:
             cov[gy0:gy1, gx0:gx1] = True
 
-    def _raster_quad_pts(self, fb: np.ndarray, pts: np.ndarray,
-                         uv: np.ndarray, w: np.ndarray, fog: np.ndarray,
-                         spr: SpriteTex, color: Sequence[int], blend_mode: int,
-                         cov: np.ndarray | None = None,
-                         filled: np.ndarray | None = None) -> None:
+    def _raster_quad_pts(
+        self,
+        fb: np.ndarray,
+        pts: np.ndarray,
+        uv: np.ndarray,
+        w: np.ndarray,
+        fog: np.ndarray,
+        spr: SpriteTex,
+        color: Sequence[int],
+        blend_mode: int,
+        cov: np.ndarray | None = None,
+        filled: np.ndarray | None = None,
+    ) -> None:
         """单 quad(两三角形共享 bbox 一次光栅化)。
 
         两三角形 mask → 透视矫正 uv → 最近邻采样 → 雾 → 混合。
@@ -1182,8 +1331,17 @@ class D3DXLikeRender:
             d = (yb - yc) * (xa - xc) + (xc - xb) * (ya - yc)
             if abs(d) < 1e-9:
                 continue
-            cfs.append((tri, (yb - yc) / d, (xc - xb) / d,
-                        (yc - ya) / d, (xa - xc) / d, xc, yc))
+            cfs.append(
+                (
+                    tri,
+                    (yb - yc) / d,
+                    (xc - xb) / d,
+                    (yc - ya) / d,
+                    (xa - xc) / d,
+                    xc,
+                    yc,
+                )
+            )
         if not cfs:
             return
         if len(cfs) == 2:
@@ -1192,13 +1350,13 @@ class D3DXLikeRender:
             C = np.array([cfs[0][1:], (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)])
         xc_ = C[:, 4][:, None, None]
         yc_ = C[:, 5][:, None, None]
-        du = xr[None, None, :] - xc_                    # (2,1,bw)
-        dv = yr[None, :, None] - yc_                    # (2,bh,1)
+        du = xr[None, None, :] - xc_  # (2,1,bw)
+        dv = yr[None, :, None] - yc_  # (2,bh,1)
         l0 = C[:, 0][:, None, None] * du + C[:, 1][:, None, None] * dv
         l1 = C[:, 2][:, None, None] * du + C[:, 3][:, None, None] * dv
         m = (l0 >= -1e-4) & (l1 >= -1e-4) & (l0 + l1 <= 1.0001)
         if len(cfs) == 1:
-            m[1] = False                                # 屏蔽缺失的第二三角
+            m[1] = False  # 屏蔽缺失的第二三角
         tris = [(cfs[0][0], m[0]) + cfs[0][1:]]
         if len(cfs) == 2:
             tris.append((cfs[1][0], m[1]) + cfs[1][1:])
@@ -1219,17 +1377,18 @@ class D3DXLikeRender:
         tri0, _mA, a0, b0, a1, b1, p2x, p2y = tris[0]
         i0, i1, i2 = tri0
 
-        def _fit(g0: float, g1: float,
-                 g2: float) -> tuple[float, float, float]:
+        def _fit(g0: float, g1: float, g2: float) -> tuple[float, float, float]:
             A = a0 * (g0 - g2) + a1 * (g1 - g2)
             B = b0 * (g0 - g2) + b1 * (g1 - g2)
             return A, B, g2 - A * p2x - B * p2y
 
         w0, w1, w2 = float(w[i0]), float(w[i1]), float(w[i2])
-        au, bu, cu = _fit(float(uv[i0, 0]) / w0, float(uv[i1, 0]) / w1,
-                          float(uv[i2, 0]) / w2)
-        av, bv, cv = _fit(float(uv[i0, 1]) / w0, float(uv[i1, 1]) / w1,
-                          float(uv[i2, 1]) / w2)
+        au, bu, cu = _fit(
+            float(uv[i0, 0]) / w0, float(uv[i1, 0]) / w1, float(uv[i2, 0]) / w2
+        )
+        av, bv, cv = _fit(
+            float(uv[i0, 1]) / w0, float(uv[i1, 1]) / w1, float(uv[i2, 1]) / w2
+        )
         ai, bi, ci = _fit(1.0 / w0, 1.0 / w1, 1.0 / w2)
         X = xr[xi]
         Y = yr[yi]
@@ -1247,24 +1406,19 @@ class D3DXLikeRender:
         rgb = src[:, :3] * tint[:3]
         # 雾(屏幕空间逐顶点线性插值, 近似 D3D 雾管线; 见模块 docstring):
         # 逐三角形仿射(=barycentric)拟合, 按像素所属三角形挑选
-        if fog[0] < 0.996 or fog[1] < 0.996 or fog[2] < 0.996 \
-                or fog[3] < 0.996:
+        if fog[0] < 0.996 or fog[1] < 0.996 or fog[2] < 0.996 or fog[3] < 0.996:
             if fog[0] == fog[1] == fog[2] == fog[3]:
                 fgc = float(fog[0])
-                rgb = rgb * fgc \
-                    + self.sky_fog_color.astype(np.float32) * (1.0 - fgc)
+                rgb = rgb * fgc + self.sky_fog_color.astype(np.float32) * (1.0 - fgc)
             else:
-                af, bf, cf = _fit(float(fog[i0]), float(fog[i1]),
-                                  float(fog[i2]))
+                af, bf, cf = _fit(float(fog[i0]), float(fog[i1]), float(fog[i2]))
                 fgA = af * X + bf * Y + cf
                 if len(tris) == 2:
                     j0, j1, j2 = tris[1][0]
                     _mB, a0b, b0b, a1b, b1b, p2xb, p2yb = tris[1][1:]
                     fj2 = float(fog[j2])
-                    A = a0b * (float(fog[j0]) - fj2) \
-                        + a1b * (float(fog[j1]) - fj2)
-                    B = b0b * (float(fog[j0]) - fj2) \
-                        + b1b * (float(fog[j1]) - fj2)
+                    A = a0b * (float(fog[j0]) - fj2) + a1b * (float(fog[j1]) - fj2)
+                    B = b0b * (float(fog[j0]) - fj2) + b1b * (float(fog[j1]) - fj2)
                     fgB = A * X + B * Y + (fj2 - A * p2xb - B * p2yb)
                     fg = np.where(tris[0][1][yi, xi], fgA, fgB)
                 else:
@@ -1283,13 +1437,12 @@ class D3DXLikeRender:
             out = np.clip(rgb, 0, 255).astype(np.uint8)
             filled[gi, gj] = True
         else:
-            a = src[:, 3:4] * tint[3]                 # 合成 alpha 0..255
+            a = src[:, 3:4] * tint[3]  # 合成 alpha 0..255
             dst = fb[gi, gj].astype(np.float32)
             if blend_mode == 1:  # DESTBLEND ONE(加算)
                 out = dst + rgb * (a * (1.0 / 255.0))
-            else:                # SRCALPHA / INVSRCALPHA
-                out = rgb * (a * (1.0 / 255.0)) \
-                    + dst * (1.0 - a * (1.0 / 255.0))
+            else:  # SRCALPHA / INVSRCALPHA
+                out = rgb * (a * (1.0 / 255.0)) + dst * (1.0 - a * (1.0 / 255.0))
             out = np.clip(out, 0, 255).astype(np.uint8)
         if step == 1:
             fb[gi, gj] = out

@@ -1,4 +1,4 @@
-""" Option 设置界面 + 游戏内暂停面板 —— 对照 MainMenu.cpp + title01.anm。
+"""Option 设置界面 + 游戏内暂停面板 —— 对照 MainMenu.cpp + title01.anm。
 
 Option 页(MainMenu.cpp OnUpdateOptionsMenu, :503-848):
 - 背景 title00.jpg(原版 Option 叠在标题画面上, 同一条 Chain);
@@ -31,8 +31,14 @@ import pygame
 
 from ....schema.anm import parse_cached
 from ....schema.archive import GameArchive
-from .screens import (KEYCONFIG_ITEMS, KEYCONFIG_LABELS, OPTION_ITEMS,
-                      PAUSE_CONFIRM_ITEMS, PAUSE_ITEMS, OptionFlow)
+from .screens import (
+    KEYCONFIG_ITEMS,
+    KEYCONFIG_LABELS,
+    OPTION_ITEMS,
+    PAUSE_CONFIRM_ITEMS,
+    PAUSE_ITEMS,
+    OptionFlow,
+)
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
 
 # 条目布局: x=条目贴图左上, y0=首项, dy=行距; 值列在右侧
@@ -75,7 +81,7 @@ _KC_HINT_TEXT = "Up/Down: Select   Z/Enter: Rebind   X/Esc: Cancel/Back"
 
 # 暂停面板(非原版贴图布局, 文字菜单; 菜单项 PAUSE_ITEMS 见 screens.py)
 _PAUSE_PANEL_W = 300
-_PAUSE_PANEL_H = 260   # 4 菜单项 + 二次确认行(Yes/No)
+_PAUSE_PANEL_H = 260  # 4 菜单项 + 二次确认行(Yes/No)
 
 
 class OptionView:
@@ -124,8 +130,17 @@ class OptionView:
         self._loaded = True
 
     # ---- 工具 ----
-    def _text(self, surf: pygame.Surface, s: str, x: int, y: int, *,
-              lit: bool, big: bool = False, center: bool = False) -> None:
+    def _text(
+        self,
+        surf: pygame.Surface,
+        s: str,
+        x: int,
+        y: int,
+        *,
+        lit: bool,
+        big: bool = False,
+        center: bool = False,
+    ) -> None:
         font = self._font_big if big else self._font
         if font is None:
             return
@@ -147,8 +162,7 @@ class OptionView:
             surf.blit(self.background, (0, 0))
         else:
             surf.fill((10, 10, 30))
-        self._text(surf, "Option", TITLE_W // 2, 56, lit=True, big=True,
-                   center=True)
+        self._text(surf, "Option", TITLE_W // 2, 56, lit=True, big=True, center=True)
         cfg = flow.config
         for i, name in enumerate(OPTION_ITEMS):
             lit = i == flow.cursor.index
@@ -167,8 +181,9 @@ class OptionView:
             hint = self._font_small.render(_HINT_TEXT, True, (200, 200, 220))
             surf.blit(hint, hint.get_rect(center=(TITLE_W // 2, TITLE_H - 52)))
 
-    def _render_value(self, surf: pygame.Surface, name: str, cfg, lit: bool,
-                      y: int) -> None:
+    def _render_value(
+        self, surf: pygame.Surface, name: str, cfg, lit: bool, y: int
+    ) -> None:
         if name == "BGM 音量":
             self._text(surf, f"{cfg.bgm_volume}", _VALUE_X, y, lit=lit)
         elif name == "SE 音量":
@@ -198,11 +213,11 @@ class OptionView:
             surf.fill((10, 10, 30))
         title_pair = self._item_sprites.get("Key Config")
         if title_pair is not None:
-            surf.blit(title_pair[0],
-                      title_pair[0].get_rect(center=(TITLE_W // 2, 64)))
+            surf.blit(title_pair[0], title_pair[0].get_rect(center=(TITLE_W // 2, 64)))
         else:
-            self._text(surf, "Key Config", TITLE_W // 2, 64, lit=True,
-                       big=True, center=True)
+            self._text(
+                surf, "Key Config", TITLE_W // 2, 64, lit=True, big=True, center=True
+            )
         cfg = flow.config
         for i, item in enumerate(KEYCONFIG_ITEMS):
             lit = i == flow.cursor.index
@@ -220,8 +235,13 @@ class OptionView:
             surf.blit(hint, hint.get_rect(center=(TITLE_W // 2, TITLE_H - 30)))
 
     # ---- 暂停面板 ----
-    def render_pause(self, surf: pygame.Surface, cursor: int, *,
-                     confirm: "tuple[str, int] | None" = None) -> None:
+    def render_pause(
+        self,
+        surf: pygame.Surface,
+        cursor: int,
+        *,
+        confirm: "tuple[str, int] | None" = None,
+    ) -> None:
         """把暂停面板画到 640x480 的 SRCALPHA surf 上(叠加在游戏画面上)。
 
         半透明遮罩 + 面板 + Pause 贴图(entry1 sprite 82) + 文字菜单项。
@@ -238,25 +258,40 @@ class OptionView:
         pygame.draw.rect(panel, (200, 200, 220, 255), panel.get_rect(), 1)
         surf.blit(panel, (px, py))
         if self._pause_sprite is not None:
-            surf.blit(self._pause_sprite,
-                      self._pause_sprite.get_rect(center=(TITLE_W // 2, py + 48)))
+            surf.blit(
+                self._pause_sprite,
+                self._pause_sprite.get_rect(center=(TITLE_W // 2, py + 48)),
+            )
         else:
-            self._text(surf, "PAUSE", TITLE_W // 2, py + 48, lit=True,
-                       big=True, center=True)
+            self._text(
+                surf, "PAUSE", TITLE_W // 2, py + 48, lit=True, big=True, center=True
+            )
         if confirm is not None:
             # 二次确认态: 主菜单项整组不画(原版确认子菜单直接盖掉主菜单,
             # AsciiManager.cpp PauseMenu case 5-8), 面板中部改画
             # "Retry?" / "Quit to Title?" + Yes/No (sprite[5]=Yes [6]=No)。
             # 提示语与 Yes/No 分两行居中, 避免长提示语和选项同行重叠。
             action, confirm_cursor = confirm
-            self._text(surf, f"{action}?", TITLE_W // 2, py + 96 + 2 * 32,
-                       lit=True, center=True)
+            self._text(
+                surf,
+                f"{action}?",
+                TITLE_W // 2,
+                py + 96 + 2 * 32,
+                lit=True,
+                center=True,
+            )
             for j, yn in enumerate(PAUSE_CONFIRM_ITEMS):
-                self._text(surf, yn, TITLE_W // 2 - 48 + j * 96,
-                           py + 96 + 3 * 32, lit=j == confirm_cursor,
-                           center=True)
+                self._text(
+                    surf,
+                    yn,
+                    TITLE_W // 2 - 48 + j * 96,
+                    py + 96 + 3 * 32,
+                    lit=j == confirm_cursor,
+                    center=True,
+                )
         else:
             for i, name in enumerate(PAUSE_ITEMS):
                 lit = i == cursor
-                self._text(surf, name, TITLE_W // 2, py + 96 + i * 32,
-                           lit=lit, center=True)
+                self._text(
+                    surf, name, TITLE_W // 2, py + 96 + i * 32, lit=lit, center=True
+                )

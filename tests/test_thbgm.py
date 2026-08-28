@@ -2,6 +2,7 @@
 
 对照 dsutil.hpp ThBgmFormat / Supervisor.cpp PlayAudio / dsutil.cpp CWaveFile::ResetFile。
 """
+
 from __future__ import annotations
 
 import io
@@ -27,24 +28,36 @@ DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 THBGM = DAT.with_name("thbgm.dat")
 NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
 NEEDS_THBGM = pytest.mark.skipif(
-    not (DAT.exists() and THBGM.exists()), reason="需要真实 thbgm.dat")
+    not (DAT.exists() and THBGM.exists()), reason="需要真实 thbgm.dat"
+)
 
 
-def _fmt_entry(name: str, start: int, preload: int, intro: int, total: int,
-               ch: int = 2, rate: int = 44100, bits: int = 16) -> bytes:
+def _fmt_entry(
+    name: str,
+    start: int,
+    preload: int,
+    intro: int,
+    total: int,
+    ch: int = 2,
+    rate: int = 44100,
+    bits: int = 16,
+) -> bytes:
     """造一条 52 字节 ThBgmFormat。"""
     raw = name.encode("latin-1").ljust(16, b"\x00")
     body = struct.pack("<iIii", start, preload, intro, total)
-    wfx = struct.pack("<HHIIHHH", 1, ch, rate, rate * ch * bits // 8,
-                      ch * bits // 8, bits, 0)
+    wfx = struct.pack(
+        "<HHIIHHH", 1, ch, rate, rate * ch * bits // 8, ch * bits // 8, bits, 0
+    )
     entry = raw + body + wfx
     return entry.ljust(52, b"\x00")
 
 
 def _synth_fmt() -> bytes:
-    return (_fmt_entry("th07_02.wav", 16, 2000, 400, 1000)
-            + _fmt_entry("th07_13b.wav", 1016, 3000, 0, 2000)
-            + b"\x00" * 52)  # 空条目终止
+    return (
+        _fmt_entry("th07_02.wav", 16, 2000, 400, 1000)
+        + _fmt_entry("th07_13b.wav", 1016, 3000, 0, 2000)
+        + b"\x00" * 52
+    )  # 空条目终止
 
 
 def _synth_thbgm(tmp_path: Path, pcm: bytes) -> Path:
@@ -55,6 +68,7 @@ def _synth_thbgm(tmp_path: Path, pcm: bytes) -> Path:
 
 
 # ---- fmt 解析(合成数据) ----
+
 
 def test_parse_fmt_synthetic() -> None:
     tracks = parse_fmt(_synth_fmt())
@@ -93,9 +107,11 @@ def test_build_wav_roundtrip() -> None:
 
 # ---- 真实文件验证 ----
 
+
 @NEEDS_THBGM
 def test_real_fmt_and_header() -> None:
     from touhou.schema.archive import GameArchive
+
     arc = GameArchive.open(DAT)
     key = "bgm/thbgm.fmt" if "bgm/thbgm.fmt" in arc else "thbgm.fmt"
     tracks = parse_fmt(arc.load(key))
@@ -112,6 +128,7 @@ def test_real_fmt_and_header() -> None:
 
 
 # ---- SoundPlayer 路由(fake mixer.music) ----
+
 
 class _FakeMusic:
     """替身 pygame.mixer.music: 记录调用, 不碰音频设备。"""
@@ -160,18 +177,28 @@ class _FakeArchive:
         return b"MThd fakemidi"
 
 
-def _player(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-            tracks: dict[str, ThbgmTrack] | None = None) -> tuple[SoundPlayer, _FakeMusic, _FakeArchive]:
+def _player(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tracks: dict[str, ThbgmTrack] | None = None,
+) -> tuple[SoundPlayer, _FakeMusic, _FakeArchive]:
     import pygame
+
     fake = _FakeMusic()
     monkeypatch.setattr(pygame.mixer, "music", fake)
     sp = SoundPlayer(tmp_path / "th07.dat")
     sp._enabled = True
     sp._loaded = True
     sp._archive = _FakeArchive()
-    sp._thbgm_tracks = tracks if tracks is not None else {
-        "th07_02.wav": ThbgmTrack("th07_02.wav", 16, 400_000, 1_000_000, 2, 44100, 16),
-    }
+    sp._thbgm_tracks = (
+        tracks
+        if tracks is not None
+        else {
+            "th07_02.wav": ThbgmTrack(
+                "th07_02.wav", 16, 400_000, 1_000_000, 2, 44100, 16
+            ),
+        }
+    )
     _synth_thbgm(tmp_path, b"\x00" * (16 + 1_000_000))
     sp._thbgm_path = tmp_path / "thbgm.dat"
     return sp, fake, sp._archive
@@ -182,14 +209,14 @@ def test_wav_preferred_when_track_in_fmt(tmp_path, monkeypatch) -> None:
     sp.play_music("th07_02.mid")
     assert sp._current_bgm == "th07_02.mid"
     assert sp._wav_bgm is not None and sp._wav_bgm.name == "th07_02.wav"
-    assert arc.loaded_names == []                    # 没碰 MIDI
-    assert fake.plays == [(0, 0.0)]                  # 播一遍, 循环靠轮询回卷
-    assert fake.loaded[0][:4] == b"RIFF"             # 封装成 wav 送出
-    assert len(fake.loaded[0]) == 44 + 1_000_000     # 头 + total_length
+    assert arc.loaded_names == []  # 没碰 MIDI
+    assert fake.plays == [(0, 0.0)]  # 播一遍, 循环靠轮询回卷
+    assert fake.loaded[0][:4] == b"RIFF"  # 封装成 wav 送出
+    assert len(fake.loaded[0]) == 44 + 1_000_000  # 头 + total_length
 
 
 def test_basename_and_ext_mapping(tmp_path, monkeypatch) -> None:
-    """"bgm/th07_02.mid" 按 basename + 换 .wav 扩展查 fmt (Supervisor.cpp:1397)。"""
+    """ "bgm/th07_02.mid" 按 basename + 换 .wav 扩展查 fmt (Supervisor.cpp:1397)。"""
     sp, fake, _ = _player(tmp_path, monkeypatch)
     sp.play_music("bgm/th07_02.mid")
     assert sp._wav_bgm is not None
@@ -197,16 +224,16 @@ def test_basename_and_ext_mapping(tmp_path, monkeypatch) -> None:
 
 def test_midi_fallback_when_track_missing(tmp_path, monkeypatch) -> None:
     sp, fake, arc = _player(tmp_path, monkeypatch)
-    sp.play_music("init.mid")                        # init.wav 不在 fmt
+    sp.play_music("init.mid")  # init.wav 不在 fmt
     assert sp._current_bgm == "init.mid"
     assert sp._wav_bgm is None
     assert arc.loaded_names == ["init.mid"]
-    assert fake.plays == [(-1, 0.0)]                 # MIDI 整曲循环
+    assert fake.plays == [(-1, 0.0)]  # MIDI 整曲循环
 
 
 def test_midi_fallback_when_thbgm_read_fails(tmp_path, monkeypatch) -> None:
     sp, fake, arc = _player(tmp_path, monkeypatch)
-    sp._thbgm_path = tmp_path / "gone.dat"           # thbgm.dat 读失败
+    sp._thbgm_path = tmp_path / "gone.dat"  # thbgm.dat 读失败
     sp.play_music("th07_02.mid")
     assert sp._current_bgm == "th07_02.mid"
     assert sp._wav_bgm is None
@@ -271,9 +298,11 @@ def test_stop_and_fadeout_clear_wav_state(tmp_path, monkeypatch) -> None:
 
 # ---- 真实文件 WAV 冒烟(dummy audio) ----
 
+
 @NEEDS_THBGM
 def test_real_wav_bgm_smoke() -> None:
     import pygame
+
     pygame.init()
     try:
         pygame.mixer.init()

@@ -17,9 +17,11 @@ INCIDENT_CYCLE_YEARS: int = 60
 
 # ── 内部工具 ──────────────────────────────────────
 
+
 def _season_to_date(season: int, month: int = 1, day: int = 1) -> date:
     """第 N 季 M 月 D 日 → 外界日期"""
     return date(HAKUREI_GREAT_BARRIER_BUILT_TIME.year + season, month, day)
+
 
 def _date_to_season(d: date) -> int:
     """外界日期 → 第 N 季（按年份算，一季=一年）"""
@@ -27,6 +29,7 @@ def _date_to_season(d: date) -> int:
 
 
 # ── 基础函数 ──────────────────────────────────────
+
 
 def gensokyo_current_season(today: date | None = None) -> int:
     """当前是第几季（第零季起算，只看年份）"""
@@ -51,11 +54,13 @@ def barrier_incident_number(today: date | None = None) -> int:
 
 # ── 数据结构 ──────────────────────────────────────
 
+
 class GensokyoSeasonTime(msgspec.Struct):
     """
     幻想乡季时间
     格式：第 N 季 MM 月 DD 日
     """
+
     season: int
     month: int = 1
     day: int = 1
@@ -88,6 +93,7 @@ class GensokyoSeasonTime(msgspec.Struct):
 
 class GensokyoIncident(msgspec.Struct):
     """幻想乡异变记录"""
+
     name: str
     """异变名称"""
     season_time: GensokyoSeasonTime

@@ -1,4 +1,5 @@
 """score_store 持久化层测试: JSON 往返/容错/Top10/catk/CLRD/PSCR/PLST。"""
+
 from __future__ import annotations
 
 import sys
@@ -26,6 +27,7 @@ def _rec(score: int, **kw) -> dict:
 
 # ---- JSON 往返 ----
 
+
 def test_json_roundtrip(tmp_path) -> None:
     s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     assert s.insert_score(_rec(123456)) == 0
@@ -49,14 +51,17 @@ def test_load_missing_file_returns_default(tmp_path) -> None:
     assert s.highscores == {} and len(s.catk) == SPELLCARD_COUNT
 
 
-@pytest.mark.parametrize("content", [
-    "",                        # 空文件
-    "{not json",               # JSON 语法损坏
-    "[]",                      # 顶层类型不对
-    '{"highscores": 42}',      # 字段类型不对
-    '{"highscores": {"1,0": [{"score": "abc"}]}}',  # 记录字段类型不对
-    '{"catk": [{"name": 1}]}', # catk 缺字段
-])
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",  # 空文件
+        "{not json",  # JSON 语法损坏
+        "[]",  # 顶层类型不对
+        '{"highscores": 42}',  # 字段类型不对
+        '{"highscores": {"1,0": [{"score": "abc"}]}}',  # 记录字段类型不对
+        '{"catk": [{"name": 1}]}',  # catk 缺字段
+    ],
+)
 def test_load_corrupted_falls_back_to_default(tmp_path, content) -> None:
     p = tmp_path / "score.json"
     p.write_text(content, encoding="utf-8")
@@ -73,7 +78,8 @@ def test_load_partial_keeps_good_fields(tmp_path) -> None:
         + __import__("json").dumps(_rec(50000, date="2026-01-01T00:00:00+00:00"))
         + ', {"score": -1}], "bad": []},'
         ' "plst": {"play_count": 7, "total_frames": "x"}}',
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     s = ScoreStore.load(p)
     assert [r["score"] for r in s.entries(1, 0)] == [50000]  # 坏记录丢弃
     assert s.plst["play_count"] == 7
@@ -81,6 +87,7 @@ def test_load_partial_keeps_good_fields(tmp_path) -> None:
 
 
 # ---- Top10 ----
+
 
 def test_insert_sorted_descending() -> None:
     s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
@@ -103,8 +110,8 @@ def test_insert_full_list_evicts_lowest() -> None:
     for i in range(10):
         s.insert_score(_rec(1000 + i))
     assert len(s.entries(1, 0)) == 10
-    assert s.insert_score(_rec(500)) == -1      # 比榜尾低, 不进榜
-    assert s.insert_score(_rec(10000)) == 0     # 新榜首, 挤出原榜尾
+    assert s.insert_score(_rec(500)) == -1  # 比榜尾低, 不进榜
+    assert s.insert_score(_rec(10000)) == 0  # 新榜首, 挤出原榜尾
     scores = [r["score"] for r in s.entries(1, 0)]
     assert scores[0] == 10000 and scores[-1] == 1001 and len(scores) == 10
 
@@ -141,6 +148,7 @@ def test_boards_are_per_difficulty_character() -> None:
 
 # ---- catk ----
 
+
 def test_catk_attempt_and_success() -> None:
     s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
     s.record_spellcard_attempt(10, "卡名", 2)
@@ -161,12 +169,13 @@ def test_catk_cap_and_bounds() -> None:
     s.catk[0]["attempts"][0] = CATK_CAP
     s.record_spellcard_attempt(0, "x", 0)
     assert s.catk[0]["attempts"][0] == CATK_CAP  # 封顶不再 ++
-    s.record_spellcard_attempt(-1, "x", 0)       # 越界忽略
+    s.record_spellcard_attempt(-1, "x", 0)  # 越界忽略
     s.record_spellcard_attempt(SPELLCARD_COUNT, "x", 0)
     s.record_spellcard_success(999, 0, 1)
 
 
 # ---- CLRD / PSCR / PLST ----
+
 
 def test_clrd_records_max_stage() -> None:
     s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
@@ -203,6 +212,7 @@ def test_default_name_and_date() -> None:
 
 
 # ---- LSNM(上次输入的名字)与入榜改名 ----
+
 
 def test_last_name_defaults_to_default_name() -> None:
     """从未输入过 → last_name = DEFAULT_NAME(原版 LSNM 缺省 8 空格, 本期 PLAYER)。"""

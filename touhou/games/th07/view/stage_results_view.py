@@ -30,8 +30,7 @@ class StageResultsView:
         self._font = _load_font(16)
         self._font_big = _load_font(22)
 
-    def _text(self, surf, font, s: str, x: int, y: int,
-              color=(240, 240, 240)) -> None:
+    def _text(self, surf, font, s: str, x: int, y: int, color=(240, 240, 240)) -> None:
         surf.blit(font.render(s, True, color), (x, y))
 
     def render(self, surf: pygame.Surface, results: dict, frame: int) -> None:
@@ -43,24 +42,30 @@ class StageResultsView:
 
         # C: currentStage<6 → "Stage Clear", 否则 "All Clear!"
         title = "All Clear!" if results.get("all_clear") else "Stage Clear"
-        self._text(surf, self._font_big, title, px + 24, py + 14,
-                   (255, 230, 130))
+        self._text(surf, self._font_big, title, px + 24, py + 14, (255, 230, 130))
         y = py + 56
         for label, value in results.get("lines", []):
             self._text(surf, self._font, f"{label:8s}= {value:>9,}", px + 24, y)
             y += 24
         y += 12
         if results.get("rank_line"):
-            self._text(surf, self._font, results["rank_line"], px + 24, y,
-                       (255, 130, 130))
+            self._text(
+                surf, self._font, results["rank_line"], px + 24, y, (255, 130, 130)
+            )
             y += 24
         if results.get("penalty_line"):
-            self._text(surf, self._font, results["penalty_line"], px + 24, y,
-                       (255, 130, 130))
+            self._text(
+                surf, self._font, results["penalty_line"], px + 24, y, (255, 130, 130)
+            )
             y += 24
         # Gui.cpp "Total = %8d0": 尾 0 是字面拼接(显示值=代码值×10)
-        self._text(surf, self._font_big, f"Total = {results.get('total', 0):,}0",
-                   px + 24, y + 4, (255, 255, 255))
+        self._text(
+            surf,
+            self._font_big,
+            f"Total = {results.get('total', 0):,}0",
+            px + 24,
+            y + 4,
+            (255, 255, 255),
+        )
         if frame % 60 < 40:  # 闪烁提示
-            self._text(surf, self._font, "Z: 继续", px + 24, py + 276,
-                       (200, 200, 220))
+            self._text(surf, self._font, "Z: 继续", px + 24, py + 276, (200, 200, 220))

@@ -1,4 +1,5 @@
 """Touhou: GameApp 菜单流测试(不依赖 pygame 窗口)。"""
+
 from __future__ import annotations
 
 import sys
@@ -34,17 +35,19 @@ class _App:
     # 模拟: 到主菜单"开始游戏"(index0) 确认 → 难度 → 角色 → 开始
     def play_to_start(self):
         impl = self._impl
-        impl._on_menu(MenuAction.CONFIRM)          # 开始游戏 → 难度
+        impl._on_menu(MenuAction.CONFIRM)  # 开始游戏 → 难度
         assert impl._screen == Screen.DIFFICULTY
-        impl._on_menu(MenuAction.CONFIRM)          # 难度确认(默认 Normal) → 角色
+        impl._on_menu(MenuAction.CONFIRM)  # 难度确认(默认 Normal) → 角色
         assert impl._screen == Screen.CHARACTER
-        impl._on_menu(MenuAction.CONFIRM)          # 角色确认(默认 ReimuA) → 开始
+        impl._on_menu(MenuAction.CONFIRM)  # 角色确认(默认 ReimuA) → 开始
         assert impl._screen == Screen.PLAYING
         return impl._game
 
 
 def test_app_reaches_playing_and_constructs_game() -> None:
-    make = lambda difficulty, character: StubGame(difficulty=difficulty, character=character)
+    make = lambda difficulty, character: StubGame(
+        difficulty=difficulty, character=character
+    )
     app = _App(make)
     g = app.play_to_start()
     assert isinstance(g, StubGame)
@@ -72,19 +75,22 @@ def test_main_difficulty_cursor_wraps_within_four() -> None:
     """
     from touhou.games.th07.view import GameApp
 
-    app = GameApp(lambda difficulty, character:
-                  StubGame(difficulty=difficulty, character=character))
+    app = GameApp(
+        lambda difficulty, character: StubGame(
+            difficulty=difficulty, character=character
+        )
+    )
     app._screen = Screen.DIFFICULTY
-    assert app._diff.current == "Normal"          # index 1
+    assert app._diff.current == "Normal"  # index 1
     app._diff.move(1)
     app._diff.move(1)
-    assert app._diff.current == "Lunatic"         # index 3 = 最后一项
+    assert app._diff.current == "Lunatic"  # index 3 = 最后一项
     app._diff.move(1)
-    assert app._diff.current == "Easy"            # 回绕到 0(旧 bug: 这里会是 Extra)
+    assert app._diff.current == "Easy"  # 回绕到 0(旧 bug: 这里会是 Extra)
     # 确认开局: 难度 int 永远落在 0..3, 到不了 4(Extra)/5(Phantasm)
     app._screen = Screen.DIFFICULTY
-    app._on_menu(MenuAction.CONFIRM)              # 难度(Easy) → 角色
-    app._on_menu(MenuAction.CONFIRM)              # 角色(默认 ReimuA) → 开始
+    app._on_menu(MenuAction.CONFIRM)  # 难度(Easy) → 角色
+    app._on_menu(MenuAction.CONFIRM)  # 角色(默认 ReimuA) → 开始
     assert app._game.kw["difficulty"] == 0
 
 
@@ -92,6 +98,7 @@ def test_main_difficulty_cursor_wraps_within_four() -> None:
 # Extra Start 入口流(简化: 不设解锁条件; 先选 Extra/Phantasm 再选机体,
 # 与本篇"先难度后选人"一致 —— BUGS.md 增量#1)
 # ---------------------------------------------------------------------------
+
 
 class StubExtraGame(StubGame):
     def __init__(self, **kw):
@@ -108,12 +115,12 @@ def test_extra_start_flow() -> None:
     from touhou.games.th07.view import GameApp
 
     app = GameApp(StubExtraGame)
-    app._on_menu(MenuAction.DOWN)      # 主菜单: 开始游戏 → Extra Start
+    app._on_menu(MenuAction.DOWN)  # 主菜单: 开始游戏 → Extra Start
     app._on_menu(MenuAction.CONFIRM)
-    assert app._screen == Screen.EXTRA_LEVEL   # 先选 Extra/Phantasm(相当于难度)
-    app._on_menu(MenuAction.CONFIRM)   # Extra
+    assert app._screen == Screen.EXTRA_LEVEL  # 先选 Extra/Phantasm(相当于难度)
+    app._on_menu(MenuAction.CONFIRM)  # Extra
     assert app._screen == Screen.CHARACTER
-    app._on_menu(MenuAction.DOWN)      # ReimuA → ReimuB
+    app._on_menu(MenuAction.DOWN)  # ReimuA → ReimuB
     app._on_menu(MenuAction.CONFIRM)
     assert app._screen == Screen.PLAYING
     assert app._game.kw["difficulty"] == 4
@@ -127,18 +134,18 @@ def test_phantasm_entry_flow() -> None:
 
     app = GameApp(StubExtraGame)
     app._on_menu(MenuAction.DOWN)
-    app._on_menu(MenuAction.CONFIRM)     # Extra Start
+    app._on_menu(MenuAction.CONFIRM)  # Extra Start
     assert app._screen == Screen.EXTRA_LEVEL
-    app._on_menu(MenuAction.BACK)        # 回退到主菜单
+    app._on_menu(MenuAction.BACK)  # 回退到主菜单
     assert app._screen == Screen.MAIN_MENU
-    app._on_menu(MenuAction.CONFIRM)     # Extra Start(光标停在 Extra Start)
-    app._on_menu(MenuAction.DOWN)        # Extra → Phantasm
+    app._on_menu(MenuAction.CONFIRM)  # Extra Start(光标停在 Extra Start)
+    app._on_menu(MenuAction.DOWN)  # Extra → Phantasm
     app._on_menu(MenuAction.CONFIRM)
     assert app._screen == Screen.CHARACTER
-    app._on_menu(MenuAction.BACK)        # 回退到 Extra/Phantasm 选择页
+    app._on_menu(MenuAction.BACK)  # 回退到 Extra/Phantasm 选择页
     assert app._screen == Screen.EXTRA_LEVEL
-    app._on_menu(MenuAction.CONFIRM)     # Phantasm
-    app._on_menu(MenuAction.CONFIRM)     # 机体(默认 ReimuA)
+    app._on_menu(MenuAction.CONFIRM)  # Phantasm
+    app._on_menu(MenuAction.CONFIRM)  # 机体(默认 ReimuA)
     assert app._screen == Screen.PLAYING
     assert app._game.kw["difficulty"] == 5
     assert app._game.entered == 8
@@ -147,6 +154,7 @@ def test_phantasm_entry_flow() -> None:
 # ---------------------------------------------------------------------------
 # 结算画面场景流(SDL dummy 驱动, 无真窗口)
 # ---------------------------------------------------------------------------
+
 
 class StubResultGame:
     """打 2 帧就进结算的假游戏。"""
@@ -163,13 +171,24 @@ class StubResultGame:
     def tick(self, **kw):  # noqa: D102
         self.ticks += 1
         self.result = {
-                "score": 123456, "rating": 42.0, "rank": 0, "cleared": True,
-                "clear_percent": 100.0, "difficulty": self.kw["difficulty"],
-                "character": self.kw["character"], "stage": 1, "name": "PLAYER",
-                "retries": 0, "deaths": 1, "bombs": 2.0, "spellcards": 1,
-                "graze": 30, "point_items": 40, "slow_percent": 0.0,
-                "high_score": 123456,
-            }
+            "score": 123456,
+            "rating": 42.0,
+            "rank": 0,
+            "cleared": True,
+            "clear_percent": 100.0,
+            "difficulty": self.kw["difficulty"],
+            "character": self.kw["character"],
+            "stage": 1,
+            "name": "PLAYER",
+            "retries": 0,
+            "deaths": 1,
+            "bombs": 2.0,
+            "spellcards": 1,
+            "graze": 30,
+            "point_items": 40,
+            "slow_percent": 0.0,
+            "high_score": 123456,
+        }
 
 
 def test_result_screen_flow(tmp_path, monkeypatch) -> None:
@@ -182,13 +201,13 @@ def test_result_screen_flow(tmp_path, monkeypatch) -> None:
     from touhou.games.th07.view import GameApp
 
     app = GameApp(StubResultGame, score_path=tmp_path / "score.json")
-    app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
-    app._on_menu(MenuAction.CONFIRM)   # 难度 → 角色
-    app._on_menu(MenuAction.CONFIRM)   # 角色 → 游玩
+    app._on_menu(MenuAction.CONFIRM)  # 开始游戏 → 难度
+    app._on_menu(MenuAction.CONFIRM)  # 难度 → 角色
+    app._on_menu(MenuAction.CONFIRM)  # 角色 → 游玩
     assert app._screen == Screen.PLAYING
     scr = pygame.display.get_surface()
     keys = pygame.key.get_pressed()
-    app._run_game(FrameInput())           # 首帧即出 result
+    app._run_game(FrameInput())  # 首帧即出 result
     assert app._screen == Screen.RESULT
     assert app._name_entry is not None  # 入榜(rank=0) → 名字输入态
     # 8 槽各确认('A') → 输满自动跳 END; 再确认 = 完成 → Save Replay? 询问
@@ -211,6 +230,7 @@ def test_result_screen_flow(tmp_path, monkeypatch) -> None:
 # 结局画面场景流(6 面通关 → ENDING → 确认 → RESULT)
 # ---------------------------------------------------------------------------
 
+
 class StubEndingGame:
     """首帧出结局的假游戏(6 面通关语义)。"""
 
@@ -225,20 +245,36 @@ class StubEndingGame:
         self.character = kw.get("character", 0)
         self.ending = None
         self._ending_data = EndingData(
-            character=0, bad=False, path="end00.end",
-            segments=[EndingSegment(None, ["ALL CLEAR!!"])])
+            character=0,
+            bad=False,
+            path="end00.end",
+            segments=[EndingSegment(None, ["ALL CLEAR!!"])],
+        )
 
     def tick(self, **kw):  # noqa: D102
         self.ending = self._ending_data
 
     def finish_ending(self):  # noqa: D102
         self.ending = None
-        self.result = {"score": 999, "rating": 1.0, "rank": 0, "cleared": True,
-                       "clear_percent": 100.0, "difficulty": self.kw["difficulty"],
-                       "character": self.kw["character"], "stage": 6,
-                       "name": "PLAYER", "retries": 0, "deaths": 0,
-                       "bombs": 0.0, "spellcards": 0, "graze": 0,
-                       "point_items": 0, "slow_percent": 0.0, "high_score": 999}
+        self.result = {
+            "score": 999,
+            "rating": 1.0,
+            "rank": 0,
+            "cleared": True,
+            "clear_percent": 100.0,
+            "difficulty": self.kw["difficulty"],
+            "character": self.kw["character"],
+            "stage": 6,
+            "name": "PLAYER",
+            "retries": 0,
+            "deaths": 0,
+            "bombs": 0.0,
+            "spellcards": 0,
+            "graze": 0,
+            "point_items": 0,
+            "slow_percent": 0.0,
+            "high_score": 999,
+        }
 
 
 def test_ending_screen_flow(tmp_path, monkeypatch) -> None:
@@ -251,12 +287,12 @@ def test_ending_screen_flow(tmp_path, monkeypatch) -> None:
     from touhou.games.th07.view import GameApp
 
     app = GameApp(StubEndingGame, score_path=tmp_path / "score.json")
-    app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
-    app._on_menu(MenuAction.CONFIRM)   # 难度 → 角色
-    app._on_menu(MenuAction.CONFIRM)   # 角色 → 游玩
+    app._on_menu(MenuAction.CONFIRM)  # 开始游戏 → 难度
+    app._on_menu(MenuAction.CONFIRM)  # 难度 → 角色
+    app._on_menu(MenuAction.CONFIRM)  # 角色 → 游玩
     scr = pygame.display.get_surface()
     keys = pygame.key.get_pressed()
-    app._run_game(FrameInput())           # 首帧即出 ending
+    app._run_game(FrameInput())  # 首帧即出 ending
     assert app._screen == Screen.ENDING
     app._run_ending([MenuAction.CONFIRM])  # 看完 → 总结算
     assert app._screen == Screen.RESULT
@@ -270,6 +306,7 @@ def test_ending_screen_flow(tmp_path, monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 # Option 设置页场景流(进入/调值实时生效+落盘/退出)
 # ---------------------------------------------------------------------------
+
 
 class _FakeSound:
     def __init__(self):
@@ -294,9 +331,9 @@ def test_option_enter_and_leave(tmp_path) -> None:
 
     app = GameApp(lambda **kw: None, config_path=tmp_path / "config.json")
     _goto_option(app)
-    app._on_menu(MenuAction.BACK)      # 光标跳到"退出"
+    app._on_menu(MenuAction.BACK)  # 光标跳到"退出"
     assert app._screen == Screen.OPTION
-    app._on_menu(MenuAction.BACK)      # 退出 → 主菜单
+    app._on_menu(MenuAction.BACK)  # 退出 → 主菜单
     assert app._screen == Screen.MAIN_MENU
 
 
@@ -311,10 +348,10 @@ def test_option_adjust_applies_and_saves(tmp_path) -> None:
     fake = _FakeSound()
     app._sound.sounds = {0: fake}
     _goto_option(app)
-    app._on_menu(MenuAction.LEFT)      # BGM 音量 100 → 90
+    app._on_menu(MenuAction.LEFT)  # BGM 音量 100 → 90
     assert app._sound._bgm_volume == 0.9
-    app._on_menu(MenuAction.DOWN)      # → SE 音量
-    app._on_menu(MenuAction.LEFT)      # 100 → 90: SE 独立音量 × 0.9
+    app._on_menu(MenuAction.DOWN)  # → SE 音量
+    app._on_menu(MenuAction.LEFT)  # 100 → 90: SE 独立音量 × 0.9
     assert fake.volumes == [_db_to_gain(SE_VOLUMES[0]) * 0.9]
     cfg = GameConfig.load(tmp_path / "config.json")
     assert cfg.bgm_volume == 90 and cfg.se_volume == 90
@@ -333,11 +370,11 @@ def test_option_source_switch_and_scale(tmp_path, monkeypatch) -> None:
     app = GameApp(lambda **kw: None, config_path=tmp_path / "config.json")
     _goto_option(app)
     app._on_menu(MenuAction.DOWN)
-    app._on_menu(MenuAction.DOWN)      # → 音源
-    app._on_menu(MenuAction.RIGHT)     # wav → midi
+    app._on_menu(MenuAction.DOWN)  # → 音源
+    app._on_menu(MenuAction.RIGHT)  # wav → midi
     assert app._sound._bgm_source == "midi"
-    app._on_menu(MenuAction.DOWN)      # → 窗口缩放
-    app._on_menu(MenuAction.RIGHT)     # 2 → 3
+    app._on_menu(MenuAction.DOWN)  # → 窗口缩放
+    app._on_menu(MenuAction.RIGHT)  # 2 → 3
     assert app._scale == 3
     cfg = GameConfig.load(tmp_path / "config.json")
     assert cfg.bgm_source == "midi" and cfg.window_scale == 3
@@ -356,15 +393,16 @@ def test_option_initial_lives_applied_at_game_start(tmp_path) -> None:
 
     app = GameApp(StubLivesGame, config_path=tmp_path / "config.json")
     app._config.initial_lives = 5
-    app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
-    app._on_menu(MenuAction.CONFIRM)   # 难度 → 角色
-    app._on_menu(MenuAction.CONFIRM)   # 角色 → 游玩
+    app._on_menu(MenuAction.CONFIRM)  # 开始游戏 → 难度
+    app._on_menu(MenuAction.CONFIRM)  # 难度 → 角色
+    app._on_menu(MenuAction.CONFIRM)  # 角色 → 游玩
     assert app._game.globals.lives_remaining == 5.0
 
 
 # ---------------------------------------------------------------------------
 # 游戏内暂停(Esc → 冻结 tick; Resume/Retry/Quit to Title)
 # ---------------------------------------------------------------------------
+
 
 def _pause_app(tmp_path, monkeypatch):
     monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
@@ -375,9 +413,9 @@ def _pause_app(tmp_path, monkeypatch):
     from touhou.games.th07.view import GameApp
 
     app = GameApp(StubGame, config_path=tmp_path / "config.json")
-    app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
-    app._on_menu(MenuAction.CONFIRM)   # 难度 → 角色
-    app._on_menu(MenuAction.CONFIRM)   # 角色 → 游玩
+    app._on_menu(MenuAction.CONFIRM)  # 开始游戏 → 难度
+    app._on_menu(MenuAction.CONFIRM)  # 难度 → 角色
+    app._on_menu(MenuAction.CONFIRM)  # 角色 → 游玩
     assert app._screen == Screen.PLAYING
     return app, pygame.display.get_surface(), pygame.key.get_pressed()
 
@@ -386,14 +424,14 @@ def test_pause_freezes_tick_and_resume(tmp_path, monkeypatch) -> None:
     app, scr, keys = _pause_app(tmp_path, monkeypatch)
     app._run_game(FrameInput())
     assert app._game.ticks == 1
-    app._run_game(FrameInput(esc=True))         # Esc → 暂停
+    app._run_game(FrameInput(esc=True))  # Esc → 暂停
     assert app._paused
-    app._run_game(FrameInput())                   # 暂停中 tick 不推进
+    app._run_game(FrameInput())  # 暂停中 tick 不推进
     app._run_game(FrameInput())
     assert app._game.ticks == 1
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))  # Resume
     assert not app._paused
-    app._run_game(FrameInput())                   # 恢复后 tick 继续
+    app._run_game(FrameInput())  # 恢复后 tick 继续
     assert app._game.ticks == 2
 
 
@@ -415,13 +453,13 @@ def test_pause_retry_rebuilds_game(tmp_path, monkeypatch) -> None:
     # 二次确认(AsciiManager.cpp PauseMenu case 7/8): 默认 No, 尚未重开
     assert app._paused and app._pause_confirm == "Retry"
     assert app._game is old
-    app._run_game(FrameInput(menu_actions=(MenuAction.UP,)))     # No → Yes
+    app._run_game(FrameInput(menu_actions=(MenuAction.UP,)))  # No → Yes
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     assert not app._paused
     assert app._screen == Screen.PLAYING
-    assert app._game is not old                # 重开 = 新 game
+    assert app._game is not old  # 重开 = 新 game
     assert app._game.ticks == 0
-    assert app._game.kw == old.kw              # 同难度同机体
+    assert app._game.kw == old.kw  # 同难度同机体
 
 
 def test_pause_retry_confirm_defaults_to_no(tmp_path, monkeypatch) -> None:
@@ -434,11 +472,11 @@ def test_pause_retry_confirm_defaults_to_no(tmp_path, monkeypatch) -> None:
     app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))  # → Retry
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     assert app._pause_confirm == "Retry"
-    assert app._pause_confirm_cursor.current == "No"   # 默认 No
+    assert app._pause_confirm_cursor.current == "No"  # 默认 No
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))  # No → 回主菜单
     assert app._paused and app._pause_confirm is None
     assert app._game is old
-    app._run_game(FrameInput(menu_actions=(MenuAction.BACK,)))     # 恢复
+    app._run_game(FrameInput(menu_actions=(MenuAction.BACK,)))  # 恢复
     assert not app._paused
 
 
@@ -453,7 +491,7 @@ def test_pause_confirm_esc_resumes_game(tmp_path, monkeypatch) -> None:
     assert app._pause_confirm == "Retry"
     app._run_game(FrameInput(menu_actions=(MenuAction.BACK,)))
     assert not app._paused and app._pause_confirm is None
-    assert app._game is old                    # 未重开
+    assert app._game is old  # 未重开
 
 
 def test_pause_quit_to_title(tmp_path, monkeypatch) -> None:
@@ -465,7 +503,7 @@ def test_pause_quit_to_title(tmp_path, monkeypatch) -> None:
     # 二次确认(AsciiManager.cpp PauseMenu case 5/6): 仍在暂停未切屏
     assert app._paused and app._pause_confirm == "Quit to Title"
     assert app._screen == Screen.PLAYING
-    app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))   # No → Yes
+    app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))  # No → Yes
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     assert app._screen == Screen.MAIN_MENU
     assert app._game is None
@@ -509,7 +547,7 @@ def test_pause_bgm_pause_and_unpause(tmp_path, monkeypatch) -> None:
     app._run_game(FrameInput(esc=True))
     app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
-    app._run_game(FrameInput(menu_actions=(MenuAction.UP,)))      # → Yes
+    app._run_game(FrameInput(menu_actions=(MenuAction.UP,)))  # → Yes
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     assert calls == ["pause", "unpause", "pause", "unpause"]
 
@@ -517,6 +555,7 @@ def test_pause_bgm_pause_and_unpause(tmp_path, monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 # GameOver 续关菜单场景流(待续关 → Yes 接着玩 / No 进结算; Extra 不出现菜单)
 # ---------------------------------------------------------------------------
+
 
 class StubContinueGame(StubGame):
     """GameOver 待续关的假游戏: 首帧即 game_over, 透出 continue_available。"""
@@ -534,9 +573,12 @@ class StubContinueGame(StubGame):
 
     @property
     def continue_available(self):  # noqa: D102
-        return (self.game_over and self.result is None
-                and self.kw.get("difficulty", 1) < 4
-                and self.globals.num_retries < self.max_retries)
+        return (
+            self.game_over
+            and self.result is None
+            and self.kw.get("difficulty", 1) < 4
+            and self.globals.num_retries < self.max_retries
+        )
 
     def tick(self, **kw):  # noqa: D102
         super().tick(**kw)
@@ -553,12 +595,23 @@ class StubContinueGame(StubGame):
         self.finalized += 1
         self.game_over = False
         self.result = {
-            "score": 0, "rating": 0.0, "rank": -1, "cleared": False,
-            "clear_percent": 50.0, "difficulty": self.kw["difficulty"],
-            "character": self.kw["character"], "stage": 1, "name": "PLAYER",
-            "retries": self.globals.num_retries, "deaths": 1, "bombs": 0.0,
-            "spellcards": 0, "graze": 0, "point_items": 0,
-            "slow_percent": 0.0, "high_score": 100000,
+            "score": 0,
+            "rating": 0.0,
+            "rank": -1,
+            "cleared": False,
+            "clear_percent": 50.0,
+            "difficulty": self.kw["difficulty"],
+            "character": self.kw["character"],
+            "stage": 1,
+            "name": "PLAYER",
+            "retries": self.globals.num_retries,
+            "deaths": 1,
+            "bombs": 0.0,
+            "spellcards": 0,
+            "graze": 0,
+            "point_items": 0,
+            "slow_percent": 0.0,
+            "high_score": 100000,
         }
 
 
@@ -571,9 +624,9 @@ def _continue_app(tmp_path, monkeypatch):
     from touhou.games.th07.view import GameApp
 
     app = GameApp(StubContinueGame, config_path=tmp_path / "config.json")
-    app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
-    app._on_menu(MenuAction.CONFIRM)   # 难度 → 角色
-    app._on_menu(MenuAction.CONFIRM)   # 角色 → 游玩
+    app._on_menu(MenuAction.CONFIRM)  # 开始游戏 → 难度
+    app._on_menu(MenuAction.CONFIRM)  # 难度 → 角色
+    app._on_menu(MenuAction.CONFIRM)  # 角色 → 游玩
     assert app._screen == Screen.PLAYING
     return app, pygame.display.get_surface(), pygame.key.get_pressed()
 
@@ -581,30 +634,30 @@ def _continue_app(tmp_path, monkeypatch):
 def test_continue_menu_yes_resumes(tmp_path, monkeypatch) -> None:
     """GameOver → 续关菜单弹出(默认 Yes); 选 Yes → continue_play 接着玩。"""
     app, scr, keys = _continue_app(tmp_path, monkeypatch)
-    app._run_game(FrameInput())           # 首帧即死透 → 续关菜单
+    app._run_game(FrameInput())  # 首帧即死透 → 续关菜单
     assert app._screen == Screen.PLAYING
     assert app._in_continue and app._continue_cursor.index == 0  # 默认 Yes
     app._run_game(FrameInput(esc=True))  # 续关菜单中 Esc 无效(不开暂停)
     assert not app._paused
     app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))
-    assert app._continue_cursor.index == 1                     # Yes → No
+    assert app._continue_cursor.index == 1  # Yes → No
     app._run_game(FrameInput(menu_actions=(MenuAction.UP,)))
-    assert app._continue_cursor.index == 0                     # No → Yes
+    assert app._continue_cursor.index == 0  # No → Yes
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     g = app._game
     assert g.continued == 1 and g.globals.num_retries == 1
     assert not app._in_continue
-    assert app._screen == Screen.PLAYING   # 接着玩(不切结算)
+    assert app._screen == Screen.PLAYING  # 接着玩(不切结算)
 
 
 def test_continue_menu_no_goes_result(tmp_path, monkeypatch) -> None:
     """续关菜单选 No → finalize_game_over → 次帧进结算画面。"""
     app, scr, keys = _continue_app(tmp_path, monkeypatch)
     app._run_game(FrameInput())
-    app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))    # → No
+    app._run_game(FrameInput(menu_actions=(MenuAction.DOWN,)))  # → No
     app._run_game(FrameInput(menu_actions=(MenuAction.CONFIRM,)))
     assert app._game.finalized == 1 and not app._in_continue
-    app._run_game(FrameInput())               # result 已填 → 结算
+    app._run_game(FrameInput())  # result 已填 → 结算
     assert app._screen == Screen.RESULT
     assert app._game.result["retries"] == 0
 
@@ -619,20 +672,21 @@ def test_continue_menu_absent_on_extra(tmp_path, monkeypatch) -> None:
     from touhou.games.th07.view import GameApp
 
     app = GameApp(StubContinueGame, config_path=tmp_path / "config.json")
-    app._on_menu(MenuAction.DOWN)      # 主菜单: 开始游戏 → Extra Start
+    app._on_menu(MenuAction.DOWN)  # 主菜单: 开始游戏 → Extra Start
     app._on_menu(MenuAction.CONFIRM)
-    app._on_menu(MenuAction.CONFIRM)   # 机体(默认 ReimuA)
-    app._on_menu(MenuAction.CONFIRM)   # Extra
+    app._on_menu(MenuAction.CONFIRM)  # 机体(默认 ReimuA)
+    app._on_menu(MenuAction.CONFIRM)  # Extra
     assert app._screen == Screen.PLAYING
     scr = pygame.display.get_surface()
     app._run_game(FrameInput())
-    assert not app._in_continue            # 无续关菜单
-    assert app._screen == Screen.RESULT    # 直接进结算
+    assert not app._in_continue  # 无续关菜单
+    assert app._screen == Screen.RESULT  # 直接进结算
 
 
 # ---------------------------------------------------------------------------
 # 结算名字输入场景流(入榜 → 输名字 → 保存的名字正确 → 回标题; 未入榜跳过)
 # ---------------------------------------------------------------------------
+
 
 class StubRankedGame:
     """入榜的假游戏: tick 即入榜(store 有真实记录)并出 result。"""
@@ -650,14 +704,26 @@ class StubRankedGame:
         from touhou.engine.score_store import make_highscore_record
 
         ch, dif = self.kw["character"], self.kw["difficulty"]
-        rank = self.store.insert_score(make_highscore_record(
-            123456, ch, dif, 1, name=self.store.last_name))
+        rank = self.store.insert_score(
+            make_highscore_record(123456, ch, dif, 1, name=self.store.last_name)
+        )
         self.result = {
-            "score": 123456, "rating": 42.0, "rank": rank, "cleared": True,
-            "clear_percent": 100.0, "difficulty": dif, "character": ch,
-            "stage": 1, "name": self.store.last_name,
-            "retries": 0, "deaths": 1, "bombs": 2.0, "spellcards": 1,
-            "graze": 30, "point_items": 40, "slow_percent": 0.0,
+            "score": 123456,
+            "rating": 42.0,
+            "rank": rank,
+            "cleared": True,
+            "clear_percent": 100.0,
+            "difficulty": dif,
+            "character": ch,
+            "stage": 1,
+            "name": self.store.last_name,
+            "retries": 0,
+            "deaths": 1,
+            "bombs": 2.0,
+            "spellcards": 1,
+            "graze": 30,
+            "point_items": 40,
+            "slow_percent": 0.0,
             "high_score": 123456,
         }
 
@@ -671,17 +737,18 @@ class StubUnrankedGame(StubRankedGame):
         ch, dif = self.kw["character"], self.kw["difficulty"]
         if not self.store.entries(dif, ch):
             for i in range(10):
-                self.store.insert_score(make_highscore_record(
-                    999999 - i, ch, dif, 1, name="OLD"))
+                self.store.insert_score(
+                    make_highscore_record(999999 - i, ch, dif, 1, name="OLD")
+                )
         super().tick(**kw)  # 123456 < 榜尾 → rank=-1
 
 
 def _play_to_result(app, scr):
     import pygame
 
-    app._on_menu(MenuAction.CONFIRM)   # 开始游戏 → 难度
-    app._on_menu(MenuAction.CONFIRM)   # 难度 → 角色
-    app._on_menu(MenuAction.CONFIRM)   # 角色 → 游玩
+    app._on_menu(MenuAction.CONFIRM)  # 开始游戏 → 难度
+    app._on_menu(MenuAction.CONFIRM)  # 难度 → 角色
+    app._on_menu(MenuAction.CONFIRM)  # 角色 → 游玩
     app._run_game(FrameInput())  # 首帧即出 result
     assert app._screen == Screen.RESULT
 
@@ -702,18 +769,17 @@ def test_result_name_entry_flow(tmp_path, monkeypatch) -> None:
     _play_to_result(app, scr)
     e = app._name_entry
     assert e is not None and e.cursor == 0
-    assert e.name == "PLAYER  "       # 无 LSNM → 默认名补空格, 光标在 'A'
+    assert e.name == "PLAYER  "  # 无 LSNM → 默认名补空格, 光标在 'A'
     assert e.selected == 0
     # 输 'Z'(25) 'U'(20) 'N'(13) 覆盖 LSNM 前 3 槽(原版: 初始名=LSNM 逐槽改写)
-    app._run_result([MenuAction.DOWN] + [MenuAction.RIGHT] * 9
-                    + [MenuAction.CONFIRM])
+    app._run_result([MenuAction.DOWN] + [MenuAction.RIGHT] * 9 + [MenuAction.CONFIRM])
     app._run_result([MenuAction.LEFT] * 5 + [MenuAction.CONFIRM])
-    app._run_result([MenuAction.UP] + [MenuAction.RIGHT] * 9
-                    + [MenuAction.CONFIRM])
+    app._run_result([MenuAction.UP] + [MenuAction.RIGHT] * 9 + [MenuAction.CONFIRM])
     assert e.name == "ZUNYER  " and e.cursor == 3
     # 去 END: 行尾(15) → 下 5 行(95) → 确认完成 → Save Replay? 询问
-    app._run_result([MenuAction.RIGHT] * 2 + [MenuAction.DOWN] * 5
-                    + [MenuAction.CONFIRM])
+    app._run_result(
+        [MenuAction.RIGHT] * 2 + [MenuAction.DOWN] * 5 + [MenuAction.CONFIRM]
+    )
     assert app._screen == Screen.RESULT and app._result_save == "ask"
     app._run_result([MenuAction.RIGHT, MenuAction.CONFIRM])  # No → 保存回标题
     assert app._screen == Screen.MAIN_MENU and app._game is None
@@ -722,7 +788,7 @@ def test_result_name_entry_flow(tmp_path, monkeypatch) -> None:
     s = ScoreStore.load(tmp_path / "score.json")
     ent = s.entries(1, 0)
     assert len(ent) == 1 and ent[0]["name"] == "ZUNYER  "
-    assert s.lsnm == "ZUNYER  "       # LSNM 已保存
+    assert s.lsnm == "ZUNYER  "  # LSNM 已保存
 
     # 第二局: 名字输入带出上次输入的名字(LSNM), 光标直接在 END
     StubRankedGame.store = s
@@ -763,7 +829,7 @@ def test_result_unranked_skips_name_entry(tmp_path, monkeypatch) -> None:
 
     s = ScoreStore.load(tmp_path / "score.json")
     assert len(s.entries(1, 0)) == 10  # 未入榜记录未加进去
-    assert s.lsnm is None              # 未输名字不写 LSNM
+    assert s.lsnm is None  # 未输名字不写 LSNM
 
 
 def test_result_save_replay_yes_saves_file(tmp_path, monkeypatch) -> None:
@@ -777,24 +843,27 @@ def test_result_save_replay_yes_saves_file(tmp_path, monkeypatch) -> None:
     from touhou.games.th07.view import GameApp
 
     StubRankedGame.store = None
-    app = GameApp(StubUnrankedGame, score_path=tmp_path / "score.json",
-                  replay_dir=tmp_path / "replays")
+    app = GameApp(
+        StubUnrankedGame,
+        score_path=tmp_path / "score.json",
+        replay_dir=tmp_path / "replays",
+    )
     scr = pygame.display.get_surface()
     _play_to_result(app, scr)
     assert app._recorder is not None and app._recorder.frames == 1
-    app._run_result([MenuAction.CONFIRM])      # → Save Replay? 询问
+    app._run_result([MenuAction.CONFIRM])  # → Save Replay? 询问
     assert app._result_save == "ask"
-    assert app._result_save_cursor.current == "Yes"   # 原版默认 Yes(cursor=0)
-    app._run_result([MenuAction.CONFIRM])      # Yes → 存录像
+    assert app._result_save_cursor.current == "Yes"  # 原版默认 Yes(cursor=0)
+    app._run_result([MenuAction.CONFIRM])  # Yes → 存录像
     assert app._result_save == "saved"
     saved = list((tmp_path / "replays").glob("*.json"))
     assert len(saved) == 1 and saved[0].name in app._result_save_msg
     from touhou.engine import replay as replay_mod
 
     assert len(replay_mod.load_replay(saved[0])["codes"]) == 1
-    app._run_result([MenuAction.CONFIRM])      # 确认 → 保存回标题
+    app._run_result([MenuAction.CONFIRM])  # 确认 → 保存回标题
     assert app._screen == Screen.MAIN_MENU and app._game is None
-    assert app._recorder is None               # 录像器不留到下一局
+    assert app._recorder is None  # 录像器不留到下一局
 
 
 def test_result_save_replay_skipped_when_continued(tmp_path, monkeypatch) -> None:
@@ -810,14 +879,17 @@ def test_result_save_replay_skipped_when_continued(tmp_path, monkeypatch) -> Non
     class _ContinuedGame(StubUnrankedGame):
         def tick(self, **kw):  # noqa: D102
             super().tick(**kw)
-            self.result["retries"] = 1        # 续关过的局
+            self.result["retries"] = 1  # 续关过的局
 
     StubRankedGame.store = None
-    app = GameApp(_ContinuedGame, score_path=tmp_path / "score.json",
-                  replay_dir=tmp_path / "replays")
+    app = GameApp(
+        _ContinuedGame,
+        score_path=tmp_path / "score.json",
+        replay_dir=tmp_path / "replays",
+    )
     scr = pygame.display.get_surface()
     _play_to_result(app, scr)
-    app._run_result([MenuAction.CONFIRM])      # 直接收尾, 无询问
+    app._run_result([MenuAction.CONFIRM])  # 直接收尾, 无询问
     assert app._result_save is None
     assert app._screen == Screen.MAIN_MENU
     assert not list((tmp_path / "replays").glob("*.json"))

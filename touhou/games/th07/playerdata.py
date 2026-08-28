@@ -1,4 +1,4 @@
-""" Player Data(Result 画面)显示模型装配 —— 纯逻辑, 不依赖 pygame。
+"""Player Data(Result 画面)显示模型装配 —— 纯逻辑, 不依赖 pygame。
 
 对照 ResultScreen.cpp(原版 Player Data 由 Supervisor curState=5 进
 ResultScreen, MainMenu.cpp:430-433 case 4 切入):
@@ -22,8 +22,7 @@ from ...engine.score_store import ScoreStore
 UNKNOWN_CARD_NAME = "?????"
 
 
-def highscore_rows(store: ScoreStore, difficulty: int,
-                   character: int) -> list[dict]:
+def highscore_rows(store: ScoreStore, difficulty: int, character: int) -> list[dict]:
     """该(难度,机体) Top10 展示行(含默认空位, score_store.display_entries)。"""
     return store.display_entries(difficulty, character)
 
@@ -49,10 +48,21 @@ def spellcard_page(store: ScoreStore, shot: int) -> dict:
         successes += s
         if s > 0:
             captured += 1
-        cards.append({"idx": i, "name": e["name"] or UNKNOWN_CARD_NAME,
-                      "attempts": a, "successes": s})
-    return {"attempted": attempted, "captured": captured,
-            "attempts": attempts, "successes": successes, "cards": cards}
+        cards.append(
+            {
+                "idx": i,
+                "name": e["name"] or UNKNOWN_CARD_NAME,
+                "attempts": a,
+                "successes": s,
+            }
+        )
+    return {
+        "attempted": attempted,
+        "captured": captured,
+        "attempts": attempts,
+        "successes": successes,
+        "cards": cards,
+    }
 
 
 def play_stats(store: ScoreStore) -> dict:
@@ -66,7 +76,11 @@ def play_stats(store: ScoreStore) -> dict:
         "clear_count": store.plst["clear_count"],
         "retry_count": store.plst["retry_count"],
         "play_seconds": store.plst["total_frames"] / 60.0,
-        "clrd": [{"with_retries": list(c["with_retries"]),
-                  "without_retries": list(c["without_retries"])}
-                 for c in store.clrd],
+        "clrd": [
+            {
+                "with_retries": list(c["with_retries"]),
+                "without_retries": list(c["without_retries"]),
+            }
+            for c in store.clrd
+        ],
     }

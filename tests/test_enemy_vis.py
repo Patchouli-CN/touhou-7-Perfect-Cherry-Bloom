@@ -11,6 +11,7 @@
 - 换关(_advance_stage)静默重建 host, 旧敌人不经 on_enemy_gone →
   `_ensure_stage` 必须清 `_enemy_vis`。
 """
+
 from __future__ import annotations
 
 import os
@@ -29,7 +30,12 @@ import pytest  # noqa: E402
 from touhou.engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d  # noqa: E402
 from touhou.games.th07.view.dialog_view import _FaceBook  # noqa: E402
 from touhou.games.th07.view.sprite_view import (  # noqa: E402
-    GameView, GAME_H, GAME_W, SpriteBank, _ANM_OFFSET_ENEMY)
+    GameView,
+    GAME_H,
+    GAME_W,
+    SpriteBank,
+    _ANM_OFFSET_ENEMY,
+)
 from touhou.schema.anm import AnmFile  # noqa: E402
 from touhou.schema.archive import GameArchive  # noqa: E402
 
@@ -40,11 +46,18 @@ pygame.init()
 
 
 def _vis_entry() -> dict:
-    return {"vm": None, "gid": -1, "subs": {}, "fx_done": False,
-            "intr": 0, "rot_z": 0.0}
+    return {
+        "vm": None,
+        "gid": -1,
+        "subs": {},
+        "fx_done": False,
+        "intr": 0,
+        "rot_z": 0.0,
+    }
 
 
 # ---- _drain_gone_events: 事件源是 ecl_host ----
+
 
 @NEEDS_DAT
 def test_drain_pops_vis_and_spawns_death_fx() -> None:
@@ -54,8 +67,10 @@ def test_drain_pops_vis_and_spawns_death_fx() -> None:
     view._enemy_vis[key] = _vis_entry()
     game = SimpleNamespace(
         ecl_host=SimpleNamespace(
-            gone_events=[(key, 100.0, 120.0, 0, (0, 0, 0), False)]),
-        host=SimpleNamespace())  # host 上无 gone_events(旧 bug 读的就是它)
+            gone_events=[(key, 100.0, 120.0, 0, (0, 0, 0), False)]
+        ),
+        host=SimpleNamespace(),
+    )  # host 上无 gone_events(旧 bug 读的就是它)
     view._drain_gone_events(game)
     assert key not in view._enemy_vis
     assert game.ecl_host.gone_events == []
@@ -70,8 +85,10 @@ def test_drain_timeout_leaves_no_fx() -> None:
     view._enemy_vis[key] = _vis_entry()
     game = SimpleNamespace(
         ecl_host=SimpleNamespace(
-            gone_events=[(key, 50.0, 60.0, 100, (0, 0, 0), False)]),
-        host=SimpleNamespace())
+            gone_events=[(key, 50.0, 60.0, 100, (0, 0, 0), False)]
+        ),
+        host=SimpleNamespace(),
+    )
     view._drain_gone_events(game)
     assert key not in view._enemy_vis
     assert view._fx is None or len(view._fx.effects) == 0
@@ -87,6 +104,7 @@ def test_drain_without_ecl_host_is_noop() -> None:
 
 # ---- 换关清 _enemy_vis ----
 
+
 @NEEDS_DAT
 def test_ensure_stage_clears_enemy_vis() -> None:
     """换关(_advance_stage 静默重建 host, 无 gone 事件)时清掉旧关 VM 条目。"""
@@ -94,23 +112,27 @@ def test_ensure_stage_clears_enemy_vis() -> None:
     view._ensure_stage(1)
     view._enemy_vis[123] = _vis_entry()
     view._ensure_stage(1)
-    assert len(view._enemy_vis) == 1   # 同关不清
+    assert len(view._enemy_vis) == 1  # 同关不清
     view._ensure_stage(2)
     assert view._enemy_vis == {}
 
 
 # ---- stg1enm 关键 script → sprite 断言(实机错位 bug 的实体) ----
 
+
 @NEEDS_DAT
-@pytest.mark.parametrize("sid, expected", [
-    (0, 0),      # 道中妖精
-    (5, 8),      # 道中妖精(第二色)
-    (10, 16),    # 出生漩涡
-    (12, 46),    # 妖霊条(auto-rotate, 加算)
-    (128, 24),   # 中boss 琪露诺
-    (132, 30),   # 蕾蒂行走
-    (137, 38),   # 蕾蒂攻击
-])
+@pytest.mark.parametrize(
+    "sid, expected",
+    [
+        (0, 0),  # 道中妖精
+        (5, 8),  # 道中妖精(第二色)
+        (10, 16),  # 出生漩涡
+        (12, 46),  # 妖霊条(auto-rotate, 加算)
+        (128, 24),  # 中boss 琪露诺
+        (132, 30),  # 蕾蒂行走
+        (137, 38),  # 蕾蒂攻击
+    ],
+)
 def test_stg1enm_script_first_sprite(sid: int, expected: int) -> None:
     """ECL SET_ANM 的 script 首帧 sprite (EclManager.cpp:1196 + 2304;
     SET_ACTIVE_SPRITE 基址 = script 所在 entry 的链式偏移,
@@ -146,13 +168,14 @@ def test_stg1enm_ghost_script_execution(seed: int, expected: int) -> None:
     幽灵敌当前全部隐身 —— 与 C++ 全局 g_Rng 的差异, 留作后续修。"""
     import random
     from touhou.engine.view.anm_vm import AnmVm
+
     bank = SpriteBank(DAT)
     sb = AnmScriptBank(bank, "stg1enm.anm", _ANM_OFFSET_ENEMY)
     vm2d = Vm2d(sb, TransformCache())
     ref = sb.ref_global(_ANM_OFFSET_ENEMY + 11)
     vm = vm2d.vm
     vm.__init__()
-    vm.rng = random.Random(seed)     # __init__ 之后播种(C++ 用全局 g_Rng)
+    vm.rng = random.Random(seed)  # __init__ 之后播种(C++ 用全局 g_Rng)
     vm._set_sprite_cb = vm2d._set_sprite
     vm.script = ref
     vm.pc = 0
@@ -168,6 +191,7 @@ def test_effect_gids_resolve() -> None:
     """EFFECT_TABLE 的全部全局 script id 在 etama 脚本表(0x200 基)可解析
     (链式偏移: entry1 在 168, AnmManager.cpp:430)。"""
     from touhou.engine.view.anm_fx import EFFECT_TABLE
+
     bank = SpriteBank(DAT)
     sb = AnmScriptBank(bank, "etama.anm", 0x200)
     for effect_id, (gid, _kind) in EFFECT_TABLE.items():
@@ -175,6 +199,7 @@ def test_effect_gids_resolve() -> None:
 
 
 # ---- 对话立绘 face 映射(msg1 实际用到的 face 号) ----
+
 
 @NEEDS_DAT
 def test_face_book_chain_keys() -> None:
@@ -191,12 +216,14 @@ def test_face_book_chain_keys() -> None:
 
 # ---- 集成: 渲染全程 _enemy_vis 与存活敌人一致(无泄漏/无 id 复用串图) ----
 
+
 @NEEDS_DAT
 def test_stage1_render_vis_matches_alive() -> None:
     """渲染 stage 1 前 1500 帧: 每帧 render 后 _enemy_vis 键集 ==
     存活且 anm_idx>=0 的敌人 id 集(旧 bug: 条目永不回收, 228 次 id 复用命中)。"""
     from touhou.games.th07.world import PerfectCherryBloom
     from touhou.utils import Vec2
+
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1)
     g.stage_no = 1
     g._load_ecl()
@@ -208,8 +235,7 @@ def test_stage1_render_vis_matches_alive() -> None:
 
     while g.frame < 1500:
         g.tick(keys=keys(g.frame), advance=(g.frame % 15 == 0))
-        bosses = [e for e in g.host.all()
-                  if getattr(e, "is_boss", False) and e.alive]
+        bosses = [e for e in g.host.all() if getattr(e, "is_boss", False) and e.alive]
         if bosses:
             lead = min(bosses, key=lambda e: max(e.state.life, 0))
             g.player.pos = Vec2(lead.pos.x, min(lead.pos.y + 200, 400))
@@ -219,6 +245,5 @@ def test_stage1_render_vis_matches_alive() -> None:
             g.lives = 3.0
         view.render(surf, g)
         if g.frame % 100 == 0:
-            want = {id(e.state) for e in g.host.alive()
-                    if e.state.anm_idx >= 0}
+            want = {id(e.state) for e in g.host.alive() if e.state.anm_idx >= 0}
             assert set(view._enemy_vis) == want

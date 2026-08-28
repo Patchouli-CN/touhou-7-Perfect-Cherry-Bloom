@@ -1,4 +1,4 @@
-""" 得分弹字 + 状态横幅渲染 —— 对照 AsciiManager::DrawPopups / Gui::OnDraw。
+"""得分弹字 + 状态横幅渲染 —— 对照 AsciiManager::DrawPopups / Gui::OnDraw。
 
 【th07 专属】逻辑层(games/th07/globals.py 的 ScorePopup / ZunGlobals.status_popup)
 只管数值/计时/生命周期, 本模块只管画:
@@ -120,7 +120,10 @@ class PopupView:
             text = f"Border Bonus {g.status_popup_arg:7d}"  # "Border Bonus %7d"
         t = g.status_popup_timer
         if t < _STATUS_SLIDE_FRAMES:
-            x = _STATUS_X_START - t * (_STATUS_X_START - _STATUS_X_END) / _STATUS_SLIDE_FRAMES
+            x = (
+                _STATUS_X_START
+                - t * (_STATUS_X_START - _STATUS_X_END) / _STATUS_SLIDE_FRAMES
+            )
         else:
             x = _STATUS_X_END
         for ch in text:
@@ -131,14 +134,14 @@ class PopupView:
             if img is not None:
                 if xscale != 1.0:
                     img = pygame.transform.scale(
-                        img, (max(1, round(img.get_width() * xscale)),
-                              img.get_height()))
+                        img, (max(1, round(img.get_width() * xscale)), img.get_height())
+                    )
                 surf.blit(img, (int(x), int(_STATUS_Y)))
             x += step
 
     # ---- 清场奖励横幅 (Gui bonusScore 段, Gui.cpp:270-275 + :1309-1328) ----
     def _render_bonus_score(self, surf: pygame.Surface, game) -> None:
-        """"BONUS %8d": 前 30 帧从 x=416 滑入到 104, y=48, 白字 16px。"""
+        """ "BONUS %8d": 前 30 帧从 x=416 滑入到 104, y=48, 白字 16px。"""
         g = game.globals
         if not getattr(g, "bonus_score", 0):
             return
@@ -158,7 +161,7 @@ class PopupView:
 
     # ---- 符卡捕获奖励横幅 (Gui spellCardBonus 段, Gui.cpp:318-335) ----
     def _render_spellcard_bonus(self, surf: pygame.Surface, game) -> None:
-        """"Spell Card Bonus!"(红) + "+%d"(2 倍粉字), 居中, 无滑入。"""
+        """ "Spell Card Bonus!"(红) + "+%d"(2 倍粉字), 居中, 无滑入。"""
         g = game.globals
         if not getattr(g, "spellcard_bonus", 0):
             return
@@ -169,13 +172,14 @@ class PopupView:
             if img is not None:
                 surf.blit(img, (int(x), 80))
             x += 14.0
-        num = f"+{g.spellcard_bonus}"                    # Gui.cpp:327 "+%d"
-        x = (384.0 - len(num) * 32.0) / 2.0 + 32.0       # :328-330 (2 倍宽)
+        num = f"+{g.spellcard_bonus}"  # Gui.cpp:327 "+%d"
+        x = (384.0 - len(num) * 32.0) / 2.0 + 32.0  # :328-330 (2 倍宽)
         for ch in num:
             img = self._glyph(ord(ch) - 1, (255, 128, 128))  # 0xffff8080
             if img is not None:
                 img = pygame.transform.scale(
-                    img, (img.get_width() * 2, img.get_height() * 2))
+                    img, (img.get_width() * 2, img.get_height() * 2)
+                )
                 surf.blit(img, (int(x), 96))
             x += 32.0
 

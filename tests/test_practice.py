@@ -1,4 +1,5 @@
 """Touhou: Practice Start / Player Data 场景流测试(SDL dummy, 无真窗口)。"""
+
 from __future__ import annotations
 
 import sys
@@ -23,7 +24,7 @@ class StubPracticeGame:
         self.ending = None
         self.msg_vm = None
         self.frame = 0
-        self.mode = None          # "clear"=tick 后换关; "over"=tick 后 result
+        self.mode = None  # "clear"=tick 后换关; "over"=tick 后 result
         self.ticks = 0
 
     def enter_stage(self, stage_no):  # noqa: D102
@@ -34,7 +35,7 @@ class StubPracticeGame:
         self.ticks += 1
         self.frame += 1
         if self.mode == "clear":
-            self.stage_no += 1    # 练习面打通 → _advance_stage 换关
+            self.stage_no += 1  # 练习面打通 → _advance_stage 换关
         elif self.mode == "over":
             self.result = {"score": 0, "cleared": False}
 
@@ -48,8 +49,11 @@ def _make_app(tmp_path, monkeypatch, game_cls=StubPracticeGame):
         pygame.display.set_mode((640, 480))
     from touhou.games.th07.view import GameApp
 
-    return GameApp(game_cls, score_path=tmp_path / "score.json",
-                   config_path=tmp_path / "config.json")
+    return GameApp(
+        game_cls,
+        score_path=tmp_path / "score.json",
+        config_path=tmp_path / "config.json",
+    )
 
 
 def _goto_practice(app):
@@ -65,20 +69,21 @@ def _goto_practice(app):
 # 进入流: Practice Start → 难度(4 项) → 机体 → 选关 → enter_stage(n)
 # ---------------------------------------------------------------------------
 
+
 def test_practice_enter_flow(tmp_path, monkeypatch) -> None:
     app = _make_app(tmp_path, monkeypatch)
     _goto_practice(app)
-    app._on_menu(MenuAction.UP)          # Normal → Easy
+    app._on_menu(MenuAction.UP)  # Normal → Easy
     assert app._practice_diff.current == "Easy"
-    app._on_menu(MenuAction.CONFIRM)     # 难度 → 机体
+    app._on_menu(MenuAction.CONFIRM)  # 难度 → 机体
     assert app._screen == Screen.CHARACTER
-    app._on_menu(MenuAction.DOWN)        # ReimuA → ReimuB
-    app._on_menu(MenuAction.CONFIRM)     # 机体 → 选关
+    app._on_menu(MenuAction.DOWN)  # ReimuA → ReimuB
+    app._on_menu(MenuAction.CONFIRM)  # 机体 → 选关
     assert app._screen == Screen.PRACTICE_STAGE
     assert app._practice_max_stage == 1  # 无 clrd 记录 → 只能 Stage 1
-    app._on_menu(MenuAction.CONFIRM)     # Stage 1 → 进关
+    app._on_menu(MenuAction.CONFIRM)  # Stage 1 → 进关
     assert app._screen == Screen.PLAYING
-    assert app._game.kw["difficulty"] == 0   # practice 难度页的 Easy
+    assert app._game.kw["difficulty"] == 0  # practice 难度页的 Easy
     assert app._game.kw["character"] == 1
     assert app._game.stage_no == 1
     assert app._practice_stage == 1
@@ -92,7 +97,7 @@ def test_practice_difficulty_page_has_4_items(tmp_path, monkeypatch) -> None:
     app._on_menu(MenuAction.DOWN)
     app._on_menu(MenuAction.DOWN)
     assert app._practice_diff.current == "Lunatic"
-    app._on_menu(MenuAction.DOWN)        # 回绕到 Easy, 无 Extra/Phantasm
+    app._on_menu(MenuAction.DOWN)  # 回绕到 Easy, 无 Extra/Phantasm
     assert app._practice_diff.current == "Easy"
 
 
@@ -101,22 +106,22 @@ def test_practice_stage_unlock_and_back(tmp_path, monkeypatch) -> None:
     from touhou.engine.score_store import ScoreStore
 
     s = ScoreStore()
-    s.record_clear(0, 1, 4, 0)           # ReimuA Normal 无续关到过 4 面
+    s.record_clear(0, 1, 4, 0)  # ReimuA Normal 无续关到过 4 面
     s.save(tmp_path / "score.json")
     app = _make_app(tmp_path, monkeypatch)
     _goto_practice(app)
-    app._on_menu(MenuAction.CONFIRM)     # 难度(默认 Normal)
-    app._on_menu(MenuAction.CONFIRM)     # 机体(默认 ReimuA)
+    app._on_menu(MenuAction.CONFIRM)  # 难度(默认 Normal)
+    app._on_menu(MenuAction.CONFIRM)  # 机体(默认 ReimuA)
     assert app._screen == Screen.PRACTICE_STAGE
     assert app._practice_max_stage == 4
-    for _ in range(4):                   # 1→2→3→4→回绕 1
+    for _ in range(4):  # 1→2→3→4→回绕 1
         app._on_menu(MenuAction.DOWN)
     assert app._practice_stage_cursor.index == 0
     app._on_menu(MenuAction.DOWN)
-    app._on_menu(MenuAction.DOWN)        # → Stage 3
+    app._on_menu(MenuAction.DOWN)  # → Stage 3
     app._on_menu(MenuAction.CONFIRM)
     assert app._screen == Screen.PLAYING
-    assert app._game.entered == 3        # enter_stage(3)
+    assert app._game.entered == 3  # enter_stage(3)
     # BACK 逐层: 选关 → 机体 → 难度 → 主菜单
     app2 = _make_app(tmp_path, monkeypatch)
     _goto_practice(app2)
@@ -135,13 +140,14 @@ def test_practice_stage_unlock_and_back(tmp_path, monkeypatch) -> None:
 # 打完回标题: 通关(换关)/GameOver 都不进结算, catk 合并落盘, Top10 不写
 # ---------------------------------------------------------------------------
 
+
 def _start_practice(app, stage=1):
     _goto_practice(app)
-    app._on_menu(MenuAction.CONFIRM)     # 难度
-    app._on_menu(MenuAction.CONFIRM)     # 机体
+    app._on_menu(MenuAction.CONFIRM)  # 难度
+    app._on_menu(MenuAction.CONFIRM)  # 机体
     for _ in range(stage - 1):
         app._on_menu(MenuAction.DOWN)
-    app._on_menu(MenuAction.CONFIRM)     # 选关 → 游玩
+    app._on_menu(MenuAction.CONFIRM)  # 选关 → 游玩
     assert app._screen == Screen.PLAYING
 
 
@@ -151,17 +157,17 @@ def test_practice_clear_returns_to_title(tmp_path, monkeypatch) -> None:
     app = _make_app(tmp_path, monkeypatch)
     _start_practice(app)
     app._game.mode = "clear"
-    app._game.store.catk[0]["attempts"][6] = 2   # 练习中遇到的符卡
+    app._game.store.catk[0]["attempts"][6] = 2  # 练习中遇到的符卡
     scr = pygame.display.get_surface()
     app._run_game(FrameInput())
-    assert app._screen == Screen.MAIN_MENU       # 不进 RESULT
+    assert app._screen == Screen.MAIN_MENU  # 不进 RESULT
     assert app._game is None
     assert app._practice_stage is None
     from touhou.engine.score_store import ScoreStore
 
     disk = ScoreStore.load(tmp_path / "score.json")
-    assert disk.catk[0]["attempts"][6] == 2      # catk 记
-    assert disk.highscores == {}                 # Top10 不写
+    assert disk.catk[0]["attempts"][6] == 2  # catk 记
+    assert disk.highscores == {}  # Top10 不写
     assert all(v == 0 for v in disk.clrd[0]["without_retries"])  # clrd 不写
 
 
@@ -185,6 +191,7 @@ def test_practice_gameover_returns_to_title(tmp_path, monkeypatch) -> None:
 # Player Data 画面: 进入/渲染/返回
 # ---------------------------------------------------------------------------
 
+
 def test_player_data_screen_flow(tmp_path, monkeypatch) -> None:
     import pygame
 
@@ -194,9 +201,9 @@ def test_player_data_screen_flow(tmp_path, monkeypatch) -> None:
     app._on_menu(MenuAction.CONFIRM)
     assert app._screen == Screen.PLAYER_DATA
     scr = pygame.display.get_surface()
-    app._run_player_data([MenuAction.RIGHT])   # 切机体页(空记录不炸)
+    app._run_player_data([MenuAction.RIGHT])  # 切机体页(空记录不炸)
     assert app._pd_flow.character == 1
-    app._run_player_data([MenuAction.CONFIRM]) # 切板块 → 符卡
+    app._run_player_data([MenuAction.CONFIRM])  # 切板块 → 符卡
     assert app._pd_flow.section == 1
     app._run_player_data([MenuAction.BACK])
     assert app._screen == Screen.MAIN_MENU
@@ -222,7 +229,7 @@ class StubPracticeGameOver(StubPracticeGame):
         self.ticks += 1
         self.frame += 1
         if self.mode == "over":
-            self.game_over = True   # 待续关(不自动填 result)
+            self.game_over = True  # 待续关(不自动填 result)
         elif self.mode == "clear":
             self.stage_no += 1
 
@@ -243,8 +250,8 @@ def test_practice_gameover_no_continue_menu(tmp_path, monkeypatch) -> None:
     g = app._game
     scr = pygame.display.get_surface()
     app._run_game(FrameInput())
-    assert not app._in_continue            # 无续关菜单
-    assert g.finalized == 1                # 结算照走(store 入账一致)
+    assert not app._in_continue  # 无续关菜单
+    assert g.finalized == 1  # 结算照走(store 入账一致)
     assert app._screen == Screen.MAIN_MENU
     assert app._game is None
 
@@ -254,6 +261,7 @@ def test_practice_gameover_no_continue_menu(tmp_path, monkeypatch) -> None:
 # 2面 cherry=cherryMax; N面 cherryMax += 50000*(N-2) 且 cherry=cherryMax
 # ---------------------------------------------------------------------------
 
+
 class StubPracticeCherryGame(StubPracticeGame):
     """带真实 globals(樱点字段)的练习桩, 复刻 world 的 Normal 开局初始化。"""
 
@@ -262,8 +270,8 @@ class StubPracticeCherryGame(StubPracticeGame):
         from touhou.games.th07.globals import ZunGlobals
 
         g = ZunGlobals()
-        g.initialize_rank(1)                       # Normal
-        g.cherry_max = g.cherry_start + 200000     # 同 world 新开局分支
+        g.initialize_rank(1)  # Normal
+        g.cherry_max = g.cherry_start + 200000  # 同 world 新开局分支
         self.globals = g
 
 
@@ -271,7 +279,7 @@ def test_practice_midstage_start_cherry_bonus(tmp_path, monkeypatch) -> None:
     from touhou.engine.score_store import ScoreStore
 
     s = ScoreStore()
-    s.record_clear(0, 1, 4, 0)           # 解锁到 4 面(同 test_practice_stage_unlock)
+    s.record_clear(0, 1, 4, 0)  # 解锁到 4 面(同 test_practice_stage_unlock)
     s.save(tmp_path / "score.json")
     # 4 面起步: cherryMax +100000 且填满
     app = _make_app(tmp_path, monkeypatch, game_cls=StubPracticeCherryGame)

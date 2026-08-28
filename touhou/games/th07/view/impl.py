@@ -1,4 +1,4 @@
-""" 窗口版应用壳 —— 场景状态机 + 游戏/录像/存档流程, 与渲染后端解耦。
+"""窗口版应用壳 —— 场景状态机 + 游戏/录像/存档流程, 与渲染后端解耦。
 
 GameApp: 标题主菜单(原版 8 项) → 选难度 → 选角色 → 进入游戏。
 渲染与输入采集全部下沉到 Renderer 后端(协议见 engine/render/__init__.py;
@@ -84,12 +84,20 @@ class GameApp:
     参数均有默认值, 契约是关键字子集。
     """
 
-    def __init__(self, make_game, *, scale: int | None = None,
-                 data_path=None, score_path=None,
-                 config_path=None, replay_dir=None, bgm_path=None,
-                 game_data: GameData | None = None,
-                 renderer: "str | Renderer" = "pygame",
-                 spectate=None) -> None:
+    def __init__(
+        self,
+        make_game,
+        *,
+        scale: int | None = None,
+        data_path=None,
+        score_path=None,
+        config_path=None,
+        replay_dir=None,
+        bgm_path=None,
+        game_data: GameData | None = None,
+        renderer: "str | Renderer" = "pygame",
+        spectate=None,
+    ) -> None:
         data_path = resolve_data_path(data_path)
         self._data_path = data_path
         self._make_game = make_game
@@ -118,39 +126,53 @@ class GameApp:
         # 名单/面数: 作品数据表(game_data, 经 TouhouWorld 从 GameSpec.data 传入)
         # 优先; 缺省/空字段回落 th07 表(screens 模块常量)
         gd = game_data
-        self._characters = list(gd.characters) \
-            if gd is not None and gd.characters else CHARACTERS
-        self._difficulties = list(gd.difficulties) \
-            if gd is not None and gd.difficulties else DIFFICULTIES
+        self._characters = (
+            list(gd.characters) if gd is not None and gd.characters else CHARACTERS
+        )
+        self._difficulties = (
+            list(gd.difficulties)
+            if gd is not None and gd.difficulties
+            else DIFFICULTIES
+        )
         # 本篇 Start 难度(不含 Extra/Phantasm, BUGS.md#1: 光标在全名单上
         # 回绕会选中不可见的 Extra/Phantasm → 出界; 渲染侧本就只画 4 项)
         self._main_difficulties = (
-            self._difficulties[:gd.main_difficulty_count]
-            if gd is not None and gd.difficulties else MAIN_DIFFICULTIES)
-        self._extra_stages = list(gd.extra_stages) \
-            if gd is not None and gd.extra_stages else EXTRA_STAGES
+            self._difficulties[: gd.main_difficulty_count]
+            if gd is not None and gd.difficulties
+            else MAIN_DIFFICULTIES
+        )
+        self._extra_stages = (
+            list(gd.extra_stages)
+            if gd is not None and gd.extra_stages
+            else EXTRA_STAGES
+        )
         self._practice_difficulties = (
-            self._difficulties[:gd.practice_difficulty_count]
-            if gd is not None and gd.difficulties else PRACTICE_DIFFICULTIES)
+            self._difficulties[: gd.practice_difficulty_count]
+            if gd is not None and gd.difficulties
+            else PRACTICE_DIFFICULTIES
+        )
         self._practice_stage_items = (
             [f"Stage {i}" for i in range(1, gd.stage_count + 1)]
-            if gd is not None else PRACTICE_STAGE_ITEMS)
+            if gd is not None
+            else PRACTICE_STAGE_ITEMS
+        )
         # 符卡总数(catk 长度): game_data 优先, 缺省走注册表兜底
         self._spellcard_count = (
-            len(gd.spellcard_scores) if gd is not None and gd.spellcard_scores
-            else _default_spellcard_count())
+            len(gd.spellcard_scores)
+            if gd is not None and gd.spellcard_scores
+            else _default_spellcard_count()
+        )
         self._diff = MenuCursor(self._main_difficulties, index=1)
         self._char = MenuCursor(self._characters, index=0)
         self._extra_mode = False  # Extra Start 流: 选 Extra/Phantasm → 选机体
-                                  # (BUGS.md 增量#1: 与本篇"先难度后选人"一致)
+        # (BUGS.md 增量#1: 与本篇"先难度后选人"一致)
         self._extra_stage = MenuCursor(self._extra_stages, index=0)
         # Practice Start 流(MainMenu.cpp practice 分支): 难度(4 项) → 机体 → 选关
         self._practice_mode = False
         self._practice_diff = MenuCursor(self._practice_difficulties, index=1)
-        self._practice_stage_cursor = MenuCursor(self._practice_stage_items,
-                                                 index=0)
-        self._practice_max_stage = 1   # 可选到第几面(clrd 解锁)
-        self._practice_stage = None    # 本局练习的面(打完检测用, None=非练习)
+        self._practice_stage_cursor = MenuCursor(self._practice_stage_items, index=0)
+        self._practice_max_stage = 1  # 可选到第几面(clrd 解锁)
+        self._practice_stage = None  # 本局练习的面(打完检测用, None=非练习)
         # Player Data(Result 画面): 翻页状态 + 进入时加载的 score.json
         self._pd_flow = PlayerDataFlow()
         self._pd_store: ScoreStore | None = None
@@ -162,8 +184,8 @@ class GameApp:
             replay_dir = replay_mod.DEFAULT_REPLAY_DIR
         self._replay_dir = replay_dir
         self._recorder: replay_mod.ReplayRecorder | None = None
-        self._playback: dict | None = None   # {"codes", "idx", "name"}
-        self._pause_hint = ""                # 暂停面板瞬态提示(Save Replay 反馈)
+        self._playback: dict | None = None  # {"codes", "idx", "name"}
+        self._pause_hint = ""  # 暂停面板瞬态提示(Save Replay 反馈)
         self._pause_hint_timer = 0
         self._option_flow = OptionFlow(config=self._config)  # 共享同一 config
         self._keyconfig_flow = KeyConfigFlow(config=self._config)  # 同上
@@ -181,18 +203,20 @@ class GameApp:
         # "saved"=已存, 显示确认信息待按键退出(state 14 存完回 state 2 的简化)
         self._result_save: str | None = None
         self._result_save_cursor = MenuCursor(RESULT_SAVE_ITEMS, index=0)
-        self._result_save_msg = ""   # "saved" 态显示的录像文件名
+        self._result_save_msg = ""  # "saved" 态显示的录像文件名
         self._menu_frame = 0
         self._unimplemented_timer = 0
         self._game = None
-        self._sound = SoundPlayer(data_path, bgm_path=bgm_path)  # SE/BGM(懒加载, 静音容错)
+        self._sound = SoundPlayer(
+            data_path, bgm_path=bgm_path
+        )  # SE/BGM(懒加载, 静音容错)
         # 启动即应用 config: 音源偏好; 音量系数存进 SoundPlayer,
         # ensure_loaded/每次 play 时带上(此时 mixer 未初始化也安全)
         self._sound.set_bgm_source(self._config.bgm_source)
         self._sound.set_bgm_volume(self._config.bgm_volume / 100)
         self._sound.set_se_volume(self._config.se_volume / 100)
-        self._bgm_stage = 0        # 已播关卡曲的关卡号(换关切曲用)
-        self._paused = False       # 游戏内暂停(Esc; 冻结 tick, WAV BGM 暂停)
+        self._bgm_stage = 0  # 已播关卡曲的关卡号(换关切曲用)
+        self._paused = False  # 游戏内暂停(Esc; 冻结 tick, WAV BGM 暂停)
         self._pause_cursor = MenuCursor(PAUSE_ITEMS, index=0)
         # Retry/Quit 二次确认态(AsciiManager.cpp PauseMenu case 5-8):
         # None=主暂停菜单; "Retry"/"Quit to Title"=待确认的项。
@@ -205,11 +229,11 @@ class GameApp:
         self._run_extra_stage = None  # 本局 extra_stage(Retry 重开用)
         self._prev_msg_active = False  # 对话门控沿检测(日志用)
         self._prev_bomb_pressed = False  # bomb 键沿检测(日志用)
-        self._prev_shot_held = False   # 射击键沿检测(日志用)
+        self._prev_shot_held = False  # 射击键沿检测(日志用)
         self._finished = False
         # ---- 菜单空转预热(BUGS.md 增量#3, 见 _warmup_step) ----
-        self._warmup: list[str] | None = None    # 待预载 anm 队列(None=未建)
-        self._warmup_bank = None                 # 预热用 SpriteBank(懒建)
+        self._warmup: list[str] | None = None  # 待预载 anm 队列(None=未建)
+        self._warmup_bank = None  # 预热用 SpriteBank(懒建)
 
     # ---- 键位映射(config.keymap → 后端输入映射) ----
     def _rebuild_keymap(self) -> None:
@@ -241,7 +265,8 @@ class GameApp:
         while running:
             inp = self._renderer.poll_input(
                 capturing=self._screen == Screen.KEY_CONFIG
-                and self._keyconfig_flow.capturing is not None)
+                and self._keyconfig_flow.capturing is not None
+            )
             if inp.quit:
                 running = False
             if inp.captured_key is not None:
@@ -249,8 +274,12 @@ class GameApp:
                 self._keyconfig_capture(inp.captured_key)
             if self._screen == Screen.MAIN_MENU:
                 self._run_title_menu(inp.menu_actions)
-            elif self._screen in (Screen.DIFFICULTY, Screen.CHARACTER,
-                                  Screen.EXTRA_LEVEL, Screen.PRACTICE_STAGE):
+            elif self._screen in (
+                Screen.DIFFICULTY,
+                Screen.CHARACTER,
+                Screen.EXTRA_LEVEL,
+                Screen.PRACTICE_STAGE,
+            ):
                 self._run_menu(inp.menu_actions)
             elif self._screen == Screen.OPTION:
                 self._run_option(inp.menu_actions)
@@ -283,12 +312,20 @@ class GameApp:
     # 开局集中解压/解码的资源清单: 通用战斗/HUD 贴图 + 1 面关卡资源 +
     # 三机体 player/face (开局选择未定, 全预载; 菜单停留期间摊到每帧一项)
     _WARMUP_ANMS = (
-        "ascii.anm", "front.anm", "etama.anm",
-        "std1txt.anm", "stg1enm.anm", "stg1bg.anm", "eff01.anm",
+        "ascii.anm",
+        "front.anm",
+        "etama.anm",
+        "std1txt.anm",
+        "stg1enm.anm",
+        "stg1bg.anm",
+        "eff01.anm",
         "face_01_00.anm",
-        "player00.anm", "face_rm00.anm",
-        "player01.anm", "face_mr00.anm",
-        "player02.anm", "face_sk00.anm",
+        "player00.anm",
+        "face_rm00.anm",
+        "player01.anm",
+        "face_mr00.anm",
+        "player02.anm",
+        "face_sk00.anm",
     )
 
     def _warmup_step(self) -> None:
@@ -312,8 +349,11 @@ class GameApp:
         self._menu_frame += 1
         if self._unimplemented_timer > 0:
             self._unimplemented_timer -= 1
-        self._renderer.render_title(self._flow.cursor.index, self._menu_frame,
-                                    show_unimplemented=self._unimplemented_timer > 0)
+        self._renderer.render_title(
+            self._flow.cursor.index,
+            self._menu_frame,
+            show_unimplemented=self._unimplemented_timer > 0,
+        )
         for act in actions:
             self._on_menu(act)
 
@@ -325,9 +365,11 @@ class GameApp:
             self._renderer.render_character(self._char.index)
         elif self._screen == Screen.PRACTICE_STAGE:
             self._renderer.render_practice_stage(
-                self._practice_stage_cursor.index, self._practice_max_stage,
+                self._practice_stage_cursor.index,
+                self._practice_max_stage,
                 difficulty=self._practice_diff.current or "",
-                character=self._char.current or "")
+                character=self._char.current or "",
+            )
         else:  # Screen.EXTRA_LEVEL
             self._renderer.render_extra(self._extra_stage.index)
         for act in actions:
@@ -361,8 +403,7 @@ class GameApp:
         键表 + 即时落盘。
         """
         r = self._keyconfig_flow.capture(name)
-        log.debug("KeyConfig 捕获: {} 键={} → {}", r.get("item"), name,
-                  r["action"])
+        log.debug("KeyConfig 捕获: {} 键={} → {}", r.get("item"), name, r["action"])
         if r["action"] == "changed":
             self._renderer.play_menu_se("ok")
             self._rebuild_keymap()
@@ -373,8 +414,9 @@ class GameApp:
     # ---- Player Data(Result 画面) ----
     def _run_player_data(self, actions) -> None:
         self._menu_frame += 1
-        self._renderer.render_player_data(self._pd_flow, self._pd_store,
-                                          self._menu_frame)
+        self._renderer.render_player_data(
+            self._pd_flow, self._pd_store, self._menu_frame
+        )
         for act in actions:
             self._on_menu(act)
 
@@ -424,8 +466,12 @@ class GameApp:
             if r:
                 self._handle_main_result(r)
         elif self._screen == Screen.OPTION:
-            if action in (MenuAction.UP, MenuAction.DOWN,
-                          MenuAction.LEFT, MenuAction.RIGHT):
+            if action in (
+                MenuAction.UP,
+                MenuAction.DOWN,
+                MenuAction.LEFT,
+                MenuAction.RIGHT,
+            ):
                 self._renderer.play_menu_se("select")
             r = self._option_flow.handle(action)
             if r:
@@ -441,8 +487,10 @@ class GameApp:
                     self._keyconfig_flow.capturing = None
                     self._screen = Screen.KEY_CONFIG
         elif self._screen == Screen.KEY_CONFIG:
-            if not self._keyconfig_flow.capturing \
-                    and action in (MenuAction.UP, MenuAction.DOWN):
+            if not self._keyconfig_flow.capturing and action in (
+                MenuAction.UP,
+                MenuAction.DOWN,
+            ):
                 self._renderer.play_menu_se("select")
             r = self._keyconfig_flow.handle(action)
             if r:
@@ -451,7 +499,7 @@ class GameApp:
                     self._screen = Screen.OPTION
                 elif r["action"] == "capture":
                     self._renderer.play_menu_se("ok")  # 进入"按新键"捕获状态
-                elif r["action"] == "changed":   # 恢复默认
+                elif r["action"] == "changed":  # 恢复默认
                     self._renderer.play_menu_se("ok")
                     self._rebuild_keymap()
                     self._save_config()
@@ -518,8 +566,12 @@ class GameApp:
                 self._renderer.play_menu_se("cancel")
                 self._screen = Screen.CHARACTER
         elif self._screen == Screen.PLAYER_DATA:
-            if action in (MenuAction.UP, MenuAction.DOWN,
-                          MenuAction.LEFT, MenuAction.RIGHT):
+            if action in (
+                MenuAction.UP,
+                MenuAction.DOWN,
+                MenuAction.LEFT,
+                MenuAction.RIGHT,
+            ):
                 self._renderer.play_menu_se("select")
             r = self._pd_flow.handle(action)
             if r and r["action"] == "quit":
@@ -532,8 +584,10 @@ class GameApp:
                 return
             prev_cursor = flow.cursor
             r = flow.handle(action)
-            if action in (MenuAction.UP, MenuAction.DOWN) \
-                    and flow.cursor != prev_cursor:
+            if (
+                action in (MenuAction.UP, MenuAction.DOWN)
+                and flow.cursor != prev_cursor
+            ):
                 self._renderer.play_menu_se("select")
             if r:
                 if r["action"] == "quit":
@@ -607,8 +661,9 @@ class GameApp:
             # Player Data → Result 画面(MainMenu.cpp:430-433 curState=5)
             self._renderer.play_menu_se("ok")
             self._pd_flow = PlayerDataFlow()
-            self._pd_store = ScoreStore.load(self._score_path,
-                                             spellcard_count=self._spellcard_count)
+            self._pd_store = ScoreStore.load(
+                self._score_path, spellcard_count=self._spellcard_count
+            )
             self._screen = Screen.PLAYER_DATA
         elif act == "music_room":
             # Music Room → 音乐室(MainMenu.cpp:434-437 → MusicRoom::RegisterChain)
@@ -619,7 +674,8 @@ class GameApp:
             # Replay → 录像选择(MainMenu.cpp:418-421 STATE_SELECT_REPLAY)
             self._renderer.play_menu_se("ok")
             self._rp_flow = ReplayFlow(
-                entries=replay_mod.list_replays(self._replay_dir))
+                entries=replay_mod.list_replays(self._replay_dir)
+            )
             self._screen = Screen.REPLAY
         elif act == "practice":
             # Practice Start → 难度(4 项) → 机体 → 选关(MainMenu.cpp:384-399)
@@ -633,24 +689,23 @@ class GameApp:
 
     def _diff_index(self, name: str | None, default: int = 1) -> int:
         """难度名 → 下标(按当前作品难度表; 未知名/None 按 default)。"""
-        return self._difficulties.index(name) \
-            if name in self._difficulties else default
+        return self._difficulties.index(name) if name in self._difficulties else default
 
     def _char_index(self, name: str | None, default: int = 0) -> int:
         """机体名 → 下标(按当前作品机体表; 未知名/None 按 default)。"""
-        return self._characters.index(name) if name in self._characters \
-            else default
+        return self._characters.index(name) if name in self._characters else default
 
     def _enter_practice_stage_select(self) -> None:
         """选完机体 → Practice 选关页: 按 clrd 算可解锁面数
         (MainMenu.cpp:1912-1926, without_retries[难度], 下限 1)。"""
-        store = ScoreStore.load(self._score_path,
-                                spellcard_count=self._spellcard_count)
+        store = ScoreStore.load(self._score_path, spellcard_count=self._spellcard_count)
         dif_idx = self._diff_index(self._practice_diff.current)
         self._practice_max_stage = practice_max_stage(
-            store, self._char_index(self._char.current), dif_idx)
+            store, self._char_index(self._char.current), dif_idx
+        )
         self._practice_stage_cursor = MenuCursor(
-            self._practice_stage_items[:self._practice_max_stage], index=0)
+            self._practice_stage_items[: self._practice_max_stage], index=0
+        )
         self._screen = Screen.PRACTICE_STAGE
 
     def _start_practice(self) -> None:
@@ -658,8 +713,12 @@ class GameApp:
         difficulty=所选难度, currentStage=cursor, curState=2)。"""
         stage = self._practice_stage_cursor.index + 1
         dif_idx = self._diff_index(self._practice_diff.current)
-        log.debug("Practice 进关: stage={} difficulty={} character={}",
-                 stage, dif_idx, self._char.current)
+        log.debug(
+            "Practice 进关: stage={} difficulty={} character={}",
+            stage,
+            dif_idx,
+            self._char.current,
+        )
         self._practice_stage = stage
         self._practice_mode = False
         self._start_game(stage=stage, difficulty=dif_idx)
@@ -673,9 +732,10 @@ class GameApp:
         store = getattr(game, "store", None)
         if store is not None:
             try:
-                disk = ScoreStore.load(self._score_path,
-                                       spellcard_count=self._spellcard_count)
-                disk.catk = store.catk      # catk 记(符卡挑战/捕获)
+                disk = ScoreStore.load(
+                    self._score_path, spellcard_count=self._spellcard_count
+                )
+                disk.catk = store.catk  # catk 记(符卡挑战/捕获)
                 disk.save(self._score_path)
             except OSError:
                 pass  # 写盘失败不炸(容错同 score_store)
@@ -683,14 +743,18 @@ class GameApp:
         self._practice_mode = False
         self._enter_main_menu()
 
-    def _start_game(self, extra_stage: int | None = None,
-                    stage: int | None = None,
-                    difficulty: int | None = None,
-                    seed: int | None = None,
-                    record: bool = True) -> None:
+    def _start_game(
+        self,
+        extra_stage: int | None = None,
+        stage: int | None = None,
+        difficulty: int | None = None,
+        seed: int | None = None,
+        record: bool = True,
+    ) -> None:
         t0 = time.time()
-        ch = self._char.current or (self._characters[0] if self._characters
-                                    else "ReimuA")
+        ch = self._char.current or (
+            self._characters[0] if self._characters else "ReimuA"
+        )
         ch_idx = self._char_index(ch)
         if extra_stage is not None:
             # Extra/Phantasm 不选难度, 固定 DIFF_EXTRA/DIFF_PHANTASM(4/5)
@@ -699,8 +763,14 @@ class GameApp:
             dif_idx = difficulty  # Practice: 用 practice 难度页选的难度
         else:
             dif_idx = self._diff_index(self._diff.current)
-        log.debug("开局: character={}({}) difficulty={} extra_stage={} stage={}",
-                 ch, ch_idx, dif_idx, extra_stage, stage)
+        log.debug(
+            "开局: character={}({}) difficulty={} extra_stage={} stage={}",
+            ch,
+            ch_idx,
+            dif_idx,
+            extra_stage,
+            stage,
+        )
         self._game = self._make_game(difficulty=dif_idx, character=ch_idx)
         # 回放确定性: 每局一个种子(原版 Rng 以时间播种; 回放播放传录像种子)
         if self._spectate is not None and seed is None:
@@ -708,16 +778,21 @@ class GameApp:
             # 固定种子), 不再覆写 —— meta 记 impl 实际种子即可复现
             self._run_seed = int(getattr(self._game, "seed", 0x5EED))
         else:
-            self._run_seed = (int(time.time() * 1000) & 0xFFFF) if seed is None \
-                else (seed & 0xFFFF)
+            self._run_seed = (
+                (int(time.time() * 1000) & 0xFFFF) if seed is None else (seed & 0xFFFF)
+            )
             if hasattr(self._game, "set_seed"):
                 self._game.set_seed(self._run_seed)
         # Option 初始残机: make_game 签名固定 (difficulty, character) 无法透参,
         # 这里按 config 覆写初始残(difficulty>=4 固定 2 不动, 同 impl __init__)
         # 观战跳过此覆写: 残机以对局构造注入值(TouhouWorld.lives)为准
         g0 = getattr(self._game, "globals", None)
-        if self._spectate is None and g0 is not None and dif_idx < 4 \
-                and hasattr(g0, "lives_remaining"):
+        if (
+            self._spectate is None
+            and g0 is not None
+            and dif_idx < 4
+            and hasattr(g0, "lives_remaining")
+        ):
             g0.lives_remaining = float(self._config.initial_lives)
             # 续关回残基数同步(retry 菜单 Yes: SetLivesRemaining(defaultCfg->lifeCount))
             if hasattr(self._game, "initial_lives"):
@@ -725,40 +800,52 @@ class GameApp:
         # Practice 中选开局的樱点补偿 (GameManager.cpp:609-628 AddedCallback
         # switch(currentStage+1): 2面 cherry=cherryMax; 3面起 cherryMax
         # +=50000*(stage-2) 且 cherry=cherryMax。enter_stage 不动樱点, 安全)
-        if stage is not None and stage >= 2 and g0 is not None \
-                and hasattr(g0, "cherry_max"):
+        if (
+            stage is not None
+            and stage >= 2
+            and g0 is not None
+            and hasattr(g0, "cherry_max")
+        ):
             g0.cherry_max += 50000 * (stage - 2)
             g0.cherry = g0.cherry_max
         # 回放录制: 记开局参数, 之后每帧在 _run_game 记输入(播放模式不录)
         if record:
-            self._recorder = replay_mod.ReplayRecorder(replay_mod.make_meta(
-                difficulty=dif_idx, character=ch_idx,
-                stage=extra_stage if extra_stage is not None else (stage or 1),
-                seed=self._run_seed,
-                initial_lives=int(getattr(g0, "lives_remaining",
-                                          self._config.initial_lives)
-                                  if g0 is not None else
-                                  self._config.initial_lives)))
+            self._recorder = replay_mod.ReplayRecorder(
+                replay_mod.make_meta(
+                    difficulty=dif_idx,
+                    character=ch_idx,
+                    stage=extra_stage if extra_stage is not None else (stage or 1),
+                    seed=self._run_seed,
+                    initial_lives=int(
+                        getattr(g0, "lives_remaining", self._config.initial_lives)
+                        if g0 is not None
+                        else self._config.initial_lives
+                    ),
+                )
+            )
         else:
             self._recorder = None
         if self._recorder is not None:
-            log.debug("录像录制开始: character={} difficulty={} stage={} seed={}",
-                      ch_idx, dif_idx,
-                      extra_stage if extra_stage is not None else (stage or 1),
-                      self._run_seed)
+            log.debug(
+                "录像录制开始: character={} difficulty={} stage={} seed={}",
+                ch_idx,
+                dif_idx,
+                extra_stage if extra_stage is not None else (stage or 1),
+                self._run_seed,
+            )
         self._sound.ensure_loaded()
         log.debug("音效资源加载完成 ({}s)", time.time() - t0)
         # Retry 重开本关 / Extra 直入 7/8 面: 进关后再建渲染资源(贴图按关取)
         self._run_extra_stage = extra_stage
         target_stage = extra_stage if extra_stage is not None else stage
-        if target_stage and target_stage != 1 \
-                and hasattr(self._game, "enter_stage"):
+        if target_stage and target_stage != 1 and hasattr(self._game, "enter_stage"):
             self._game.enter_stage(target_stage)
         if self._spectate is not None:
             # 观战: 包局内 live 对局为 Game 门面(不重复构造对局;
             # policy 拿到的观测面与自建 Game 一致)
             self._spectate_facade = Game._from_impl(
-                self._game, get_game("th07"), "th07")
+                self._game, get_game("th07"), "th07"
+            )
         self._screen = Screen.PLAYING
         self._paused = False
         self._in_continue = False
@@ -777,17 +864,16 @@ class GameApp:
         # Esc → 暂停(冻结 tick; 本帧直接画冻结画面, Esc 的 BACK 不立即触发 Resume)
         # 回放播放中 Esc = 中止播放回标题(不进暂停菜单)
         # 续关菜单中 Esc 无效(C: isInRetryMenu!=0 时不开暂停菜单, GameManager.cpp:128)
-        if inp.esc and not self._paused \
-                and not getattr(self._game, "game_over", False):
+        if inp.esc and not self._paused and not getattr(self._game, "game_over", False):
             if self._playback is not None:
-                log.debug("回放播放中止 (Esc, frame={})",
-                          getattr(self._game, "frame", "?"))
+                log.debug(
+                    "回放播放中止 (Esc, frame={})", getattr(self._game, "frame", "?")
+                )
                 self._quit_playback()
                 return
             if self._spectate is not None:
                 # 观战中止: Esc 直接退出(不弹暂停菜单, 观战无标题可回)
-                log.debug("观战中止 (Esc, frame={})",
-                          getattr(self._game, "frame", "?"))
+                log.debug("观战中止 (Esc, frame={})", getattr(self._game, "frame", "?"))
                 self._finished = True
                 return
             self._paused = True
@@ -799,19 +885,23 @@ class GameApp:
             self._sound.pause_music()
             self._play_se(SE.SOUND_37)  # se_pause (SoundPlayer.cpp 暂停音)
             # 开暂停的这帧把 Esc 映射的 BACK 滤掉, 否则同帧又触发 Resume 闪退
-            menu_actions = tuple(a for a in menu_actions
-                                 if a != MenuAction.BACK)
+            menu_actions = tuple(a for a in menu_actions if a != MenuAction.BACK)
         if self._paused:
             self._run_pause(menu_actions)
             return
         game = self._game
-        msg_active = getattr(game, "msg_vm", None) is not None \
+        msg_active = (
+            getattr(game, "msg_vm", None) is not None
             and game.msg_vm.has_current_msg_idx()
+        )
         if msg_active != self._prev_msg_active:
-            log.debug("对话门控变化: msg_active={} (frame={}, idx={}) — 射击/炸弹{}",
-                     msg_active, game.frame,
-                     game.msg_vm.current_msg_idx if game.msg_vm else None,
-                     "禁用" if msg_active else "恢复")
+            log.debug(
+                "对话门控变化: msg_active={} (frame={}, idx={}) — 射击/炸弹{}",
+                msg_active,
+                game.frame,
+                game.msg_vm.current_msg_idx if game.msg_vm else None,
+                "禁用" if msg_active else "恢复",
+            )
             self._prev_msg_active = msg_active
         # 对话中: 射击键推进对话, skip 键(C 的 SKIP 键)快进; 炸弹键在对话中被门控
         # 按住状态来自后端采集的动作名集合(FrameInput.held)
@@ -819,27 +909,39 @@ class GameApp:
         skip = msg_active and "skip" in held
         bomb_pressed = "bomb" in held  # 默认 X/小键盘1(IME 备用)/J
         if bomb_pressed and not self._prev_bomb_pressed:
-            log.trace("bomb 键按下 (frame={}, msg_active={}, bombs={}, "
-                      "bomb_in_use={}, border={})", game.frame, msg_active,
-                      game.globals.bombs_remaining, game.bomb.is_in_use,
-                      game.border.has_border)
+            log.trace(
+                "bomb 键按下 (frame={}, msg_active={}, bombs={}, "
+                "bomb_in_use={}, border={})",
+                game.frame,
+                msg_active,
+                game.globals.bombs_remaining,
+                game.bomb.is_in_use,
+                game.border.has_border,
+            )
         self._prev_bomb_pressed = bomb_pressed
         shot_held = "shoot" in held  # 默认 Z/小键盘0(IME 备用)
         if shot_held != self._prev_shot_held:
-            log.trace("射击键{} (frame={}, msg_active={}, fire_time={})",
-                      "按下" if shot_held else "松开", game.frame, msg_active,
-                      game.player.fire_time)
+            log.trace(
+                "射击键{} (frame={}, msg_active={}, fire_time={})",
+                "按下" if shot_held else "松开",
+                game.frame,
+                msg_active,
+                game.player.fire_time,
+            )
             self._prev_shot_held = shot_held
         if inp.advance:
-            log.trace("对话推进 advance (frame={}, msg idx={})", game.frame,
-                      game.msg_vm.current_msg_idx if game.msg_vm else None)
+            log.trace(
+                "对话推进 advance (frame={}, msg idx={})",
+                game.frame,
+                game.msg_vm.current_msg_idx if game.msg_vm else None,
+            )
         keys6 = (
-            "left" in held,    # 默认 ←/A
-            "right" in held,   # 默认 →/D
-            "up" in held,      # 默认 ↑/W
-            "down" in held,    # 默认 ↓/S
-            "focus" in held,   # 默认 Shift(低速)
-            shot_held,         # 射击(按住); 原版键位 Z=shot
+            "left" in held,  # 默认 ←/A
+            "right" in held,  # 默认 →/D
+            "up" in held,  # 默认 ↑/W
+            "down" in held,  # 默认 ↓/S
+            "focus" in held,  # 默认 Shift(低速)
+            shot_held,  # 射击(按住); 原版键位 Z=shot
         )
         if self._playback is not None:
             # 回放播放: 输入逐帧来自录像(真实键盘只认 Esc, 已在上面处理)
@@ -849,10 +951,12 @@ class GameApp:
                 self._quit_playback()
                 return
             keys6, bomb_pressed, adv, skip = replay_mod.decode_input(
-                pb["codes"][pb["idx"]])
+                pb["codes"][pb["idx"]]
+            )
             pb["idx"] += 1
-            game.tick(keys=keys6, bomb=bomb_pressed,
-                      advance=adv and msg_active, skip=skip)
+            game.tick(
+                keys=keys6, bomb=bomb_pressed, advance=adv and msg_active, skip=skip
+            )
         elif self._spectate is not None:
             # 观战: 本帧输入来自策略(policy 的实参 = 包 live 对局的 Game 门面,
             # 观测面与自建 Game 一致); 键盘仅保留 Esc(上面已处理)。
@@ -865,12 +969,17 @@ class GameApp:
             if self._recorder is not None:
                 self._recorder.record(keys6, bomb_pressed, adv, pi.skip)
         else:
-            game.tick(keys=keys6, bomb=bomb_pressed,
-                      advance=inp.advance and msg_active, skip=skip)
+            game.tick(
+                keys=keys6,
+                bomb=bomb_pressed,
+                advance=inp.advance and msg_active,
+                skip=skip,
+            )
             # 回放录制: 记本帧实际喂给 tick 的输入(与播放路径同构)
             if self._recorder is not None:
-                self._recorder.record(keys6, bomb_pressed,
-                                      inp.advance and msg_active, skip)
+                self._recorder.record(
+                    keys6, bomb_pressed, inp.advance and msg_active, skip
+                )
         # 关卡主题曲: 进关/换关播 stage.bgm_paths[0]
         # (GameManager.cpp:785-794 AddedCallback LoadAudio(0)+PlayLoadedAudio(0);
         # 原版 6 面延迟 300 帧(Gui.cpp:140-142), 这里统一进关即播, 近似)
@@ -882,15 +991,19 @@ class GameApp:
             if main_bgm:
                 self._sound.play_music(main_bgm.split("/")[-1])
         # 本帧音效/BGM 事件(引擎帧末快照, ProcessQueues 对应)
-        self._sound.play_frame(getattr(game, "frame_sounds", []),
-                               getattr(game, "frame_bgm", []),
-                               getattr(getattr(game, "stage", None), "bgm_paths", ()))
+        self._sound.play_frame(
+            getattr(game, "frame_sounds", []),
+            getattr(game, "frame_bgm", []),
+            getattr(getattr(game, "stage", None), "bgm_paths", ()),
+        )
         # GameOver 续关菜单 (AsciiManager.cpp RetryMenu): 可续关时画面冻结
         # (impl.tick 在 game_over 早退), 等 Yes/No; 不可续关的局
         # (Extra/Phantasm/次数用尽) impl.tick 已直接进结算
-        if getattr(game, "game_over", False) \
-                and getattr(game, "result", None) is None \
-                and getattr(game, "continue_available", False):
+        if (
+            getattr(game, "game_over", False)
+            and getattr(game, "result", None) is None
+            and getattr(game, "continue_available", False)
+        ):
             if self._practice_stage is not None:
                 # Practice 不可续关 (C++ practice 跳过 retry 菜单 → curState=6
                 # 结算; 本作 practice 简化回标题, 结算照走保持 store 入账一致)
@@ -916,11 +1029,16 @@ class GameApp:
         # 6 面 clear → ending; GameOver → result。(原版 practice 通关亦
         # 不进 Hscr 排行榜, GameManager.cpp:459-465 用 pscr 当最高分)
         if self._practice_stage is not None:
-            if (stage_no != self._practice_stage
-                    or getattr(game, "result", None) is not None
-                    or getattr(game, "ending", None) is not None):
-                log.debug("Practice 结束(进练习面 {}, 现 stage={}) → 回标题",
-                         self._practice_stage, stage_no)
+            if (
+                stage_no != self._practice_stage
+                or getattr(game, "result", None) is not None
+                or getattr(game, "ending", None) is not None
+            ):
+                log.debug(
+                    "Practice 结束(进练习面 {}, 现 stage={}) → 回标题",
+                    self._practice_stage,
+                    stage_no,
+                )
                 self._finish_practice()
                 return
         # 6 面通关 → 结局画面(impl.tick 填 ending, 看完 → 总结算)
@@ -977,8 +1095,7 @@ class GameApp:
                 # 二次确认态(AsciiManager.cpp PauseMenu case 5-8):
                 # 只有 Yes/No(原版此处不能 Save Replay), 默认停 No
                 if act in (MenuAction.UP, MenuAction.DOWN):
-                    self._pause_confirm_cursor.move(
-                        1 if act == MenuAction.DOWN else -1)
+                    self._pause_confirm_cursor.move(1 if act == MenuAction.DOWN else -1)
                     self._renderer.play_menu_se("select")
                 elif act == MenuAction.BACK:
                     # 原版 Esc 在任意暂停菜单态直接关菜单回游戏(:448-460)
@@ -1023,11 +1140,13 @@ class GameApp:
                     self._renderer.play_menu_se("ok")
                     if self._recorder is not None:
                         path = self._recorder.save(
-                            replay_mod.new_replay_name(self._replay_dir))
-                        self._pause_hint = f"Saved {path.name} ({self._recorder.frames}f)"
+                            replay_mod.new_replay_name(self._replay_dir)
+                        )
+                        self._pause_hint = (
+                            f"Saved {path.name} ({self._recorder.frames}f)"
+                        )
                         self._pause_hint_timer = 150
-                        log.debug("录像已保存: {} ({} 帧)", path,
-                                 self._recorder.frames)
+                        log.debug("录像已保存: {} ({} 帧)", path, self._recorder.frames)
                     # 保持暂停, 让玩家看到 Saved 提示(再按 Resume/确认返回)
                 elif item == "Quit to Title":
                     # 二次确认(AsciiManager.cpp case 2 → 5/6)
@@ -1044,8 +1163,9 @@ class GameApp:
         confirm = None
         if self._pause_confirm is not None:
             confirm = (self._pause_confirm, self._pause_confirm_cursor.index)
-        self._renderer.render_pause(self._game, self._pause_cursor.index,
-                                    hint=hint, confirm=confirm)
+        self._renderer.render_pause(
+            self._game, self._pause_cursor.index, hint=hint, confirm=confirm
+        )
 
     def _run_continue_menu(self, actions) -> None:
         """GameOver 续关菜单 (RetryMenu::OnUpdate case 1/2): Yes/No 选择。
@@ -1060,14 +1180,14 @@ class GameApp:
             self._continue_cursor.index = 0  # 默认 Yes (C curState=1)
             # 续关菜单同样暂停 BGM (AsciiManager.cpp:852 RetryMenu AUDIO_PAUSE)
             self._sound.pause_music()
-            log.debug("续关菜单弹出 (frame={}, 剩余续关={})",
-                     getattr(game, "frame", "?"),
-                     getattr(game, "max_retries", 0)
-                     - game.globals.num_retries)
+            log.debug(
+                "续关菜单弹出 (frame={}, 剩余续关={})",
+                getattr(game, "frame", "?"),
+                getattr(game, "max_retries", 0) - game.globals.num_retries,
+            )
         for act in actions:
             if act in (MenuAction.UP, MenuAction.DOWN):
-                self._continue_cursor.move(
-                    1 if act == MenuAction.DOWN else -1)
+                self._continue_cursor.move(1 if act == MenuAction.DOWN else -1)
                 self._renderer.play_menu_se("select")  # SOUND_0 光标音
             elif act == MenuAction.CONFIRM:
                 self._in_continue = False
@@ -1076,9 +1196,11 @@ class GameApp:
                     # 续关恢复 BGM (AsciiManager.cpp:999 AUDIO_UNPAUSE)
                     self._sound.unpause_music()
                     game.continue_play()
-                    log.debug("续关 (numRetries={}, frame={})",
-                             game.globals.num_retries,
-                             getattr(game, "frame", "?"))
+                    log.debug(
+                        "续关 (numRetries={}, frame={})",
+                        game.globals.num_retries,
+                        getattr(game, "frame", "?"),
+                    )
                 else:
                     self._renderer.play_menu_se("cancel")
                     game.finalize_game_over()  # → result → 下帧进结算
@@ -1086,8 +1208,10 @@ class GameApp:
         if self._screen != Screen.PLAYING:
             return  # 防御(正常仍在 PLAYING)
         self._renderer.render_continue(
-            game, self._continue_cursor.index,
-            getattr(game, "max_retries", 0) - game.globals.num_retries)
+            game,
+            self._continue_cursor.index,
+            getattr(game, "max_retries", 0) - game.globals.num_retries,
+        )
 
     def _retry_game(self) -> None:
         """暂停菜单 Retry: 重开本关(同难度同机体同 stage 重建 game)。"""
@@ -1102,8 +1226,10 @@ class GameApp:
             dif = self._diff_index(self._practice_diff.current)
             self._start_game(stage=self._practice_stage, difficulty=dif)
             return
-        self._start_game(extra_stage=self._run_extra_stage,
-                         stage=None if self._run_extra_stage else stage)
+        self._start_game(
+            extra_stage=self._run_extra_stage,
+            stage=None if self._run_extra_stage else stage,
+        )
 
     def _quit_to_title(self) -> None:
         """暂停菜单 Quit to Title: 弃局回标题主菜单(标题曲由 _enter_main_menu 播)。"""
@@ -1135,20 +1261,29 @@ class GameApp:
         ch = int(meta.get("character", 0)) % len(self._characters)
         stage = int(meta.get("stage", 1))
         seed = int(meta.get("seed", 0x5EED))
-        log.debug("播放录像 {}: character={} difficulty={} stage={} seed={} "
-                  "frames={}", entry["path"].name, ch, dif, stage, seed,
-                  len(r["codes"]))
+        log.debug(
+            "播放录像 {}: character={} difficulty={} stage={} seed={} frames={}",
+            entry["path"].name,
+            ch,
+            dif,
+            stage,
+            seed,
+            len(r["codes"]),
+        )
         self._char.index = ch  # _start_game 用 self._char.current 定机体
         if stage >= 7:
             self._start_game(extra_stage=stage, seed=seed, record=False)
         else:
-            self._start_game(stage=None if stage <= 1 else stage,
-                             difficulty=dif, seed=seed, record=False)
+            self._start_game(
+                stage=None if stage <= 1 else stage,
+                difficulty=dif,
+                seed=seed,
+                record=False,
+            )
         g0 = getattr(self._game, "globals", None)
         if g0 is not None and dif < 4 and hasattr(g0, "lives_remaining"):
             g0.lives_remaining = float(meta.get("initial_lives", 3))
-        self._playback = {"codes": r["codes"], "idx": 0,
-                          "name": entry["path"].name}
+        self._playback = {"codes": r["codes"], "idx": 0, "name": entry["path"].name}
 
     def _quit_playback(self) -> None:
         """退出回放播放(Esc 中止/播完/出结算) → 回标题主菜单。"""
@@ -1179,8 +1314,11 @@ class GameApp:
         # 播完 (@z; 结局 → @F staff00.end staff roll → @z) → 自动进总结算
         # (Ending 链移除 → DeletedCallback curState=6, Ending.cpp:520)
         if ef.finished:
-            log.debug("结局播完 → 总结算 (character={} bad={})",
-                      game.ending.character, game.ending.bad)
+            log.debug(
+                "结局播完 → 总结算 (character={} bad={})",
+                game.ending.character,
+                game.ending.bad,
+            )
             game.finish_ending()
             self._enter_result()
             return
@@ -1196,7 +1334,7 @@ class GameApp:
         self._screen = Screen.RESULT
         self._result_saved = False
         self._result_save = None
-        self._result_save_cursor.index = 0   # 原版默认 Yes (state 11 cursor=0)
+        self._result_save_cursor.index = 0  # 原版默认 Yes (state 11 cursor=0)
         self._result_save_msg = ""
         self._menu_frame = 0
         # 入榜 → 名字输入态(ResultScreen.cpp HandleResultKeyboard: LinkScoreEx
@@ -1207,7 +1345,8 @@ class GameApp:
         store = getattr(game, "store", None)
         if res is not None and store is not None and res.get("rank", -1) >= 0:
             self._name_entry = NameEntryFlow(
-                initial=store.last_name, has_lsnm=store.lsnm is not None)
+                initial=store.last_name, has_lsnm=store.lsnm is not None
+            )
         # 结算曲: init.mid (Supervisor.cpp:713 槽30, GameManager::DeletedCallback
         # PlayLoaded(30)); staff roll 已在结局画面内由 @F staff00.end 续播
         self._sound.play_music(_RESULT_BGM)
@@ -1243,7 +1382,7 @@ class GameApp:
             self._result_saved = True
         self._renderer.play_menu_se("ok")
         self._game = None
-        self._recorder = None   # 录像不留到下一局(原版出 ResultScreen 即弃)
+        self._recorder = None  # 录像不留到下一局(原版出 ResultScreen 即弃)
         self._name_entry = None
         self._result_save = None
         self._enter_main_menu()
@@ -1256,17 +1395,24 @@ class GameApp:
             replay_save = ("ask", self._result_save_cursor.index, "")
         elif self._result_save == "saved":
             replay_save = ("saved", -1, self._result_save_msg)
-        self._renderer.render_result(game.result, self._menu_frame,
-                                     store=getattr(game, "store", None),
-                                     name_entry=self._name_entry,
-                                     replay_save=replay_save)
+        self._renderer.render_result(
+            game.result,
+            self._menu_frame,
+            store=getattr(game, "store", None),
+            name_entry=self._name_entry,
+            replay_save=replay_save,
+        )
         for act in actions:
             if self._result_save is not None:
                 # Save Replay 流程(ResultScreen.cpp HandleReplaySaveKeyboard)
                 if self._result_save == "ask":
                     # state 11: Yes/No 选择(原版左右切换, 上下也接受)
-                    if act in (MenuAction.LEFT, MenuAction.RIGHT,
-                               MenuAction.UP, MenuAction.DOWN):
+                    if act in (
+                        MenuAction.LEFT,
+                        MenuAction.RIGHT,
+                        MenuAction.UP,
+                        MenuAction.DOWN,
+                    ):
                         self._result_save_cursor.move(1)
                         self._renderer.play_menu_se("select")
                     elif act == MenuAction.CONFIRM:
@@ -1275,11 +1421,16 @@ class GameApp:
                             # 自动文件名直存, 存完显示确认信息
                             self._renderer.play_menu_se("ok")
                             path = self._recorder.save(
-                                replay_mod.new_replay_name(self._replay_dir))
+                                replay_mod.new_replay_name(self._replay_dir)
+                            )
                             self._result_save_msg = (
-                                f"{path.name} ({self._recorder.frames}f)")
-                            log.debug("结算画面录像已保存: {} ({} 帧)", path,
-                                      self._recorder.frames)
+                                f"{path.name} ({self._recorder.frames}f)"
+                            )
+                            log.debug(
+                                "结算画面录像已保存: {} ({} 帧)",
+                                path,
+                                self._recorder.frames,
+                            )
                             self._result_save = "saved"
                         else:  # No → 不存, 收尾回标题(state 11 BACK → state 2)
                             self._save_result_and_exit(game)
@@ -1303,18 +1454,18 @@ class GameApp:
                 if kind == "finish":
                     name = ev["name"]
                     res = game.result
-                    game.store.set_entry_name(res["difficulty"],
-                                              res["character"],
-                                              res["rank"], name)
+                    game.store.set_entry_name(
+                        res["difficulty"], res["character"], res["rank"], name
+                    )
                     game.store.set_last_name(name)  # LSNM (:1321-1322)
                     res["name"] = name
-                    self._name_entry = None   # 名字输入态结束(→ state 16)
+                    self._name_entry = None  # 名字输入态结束(→ state 16)
                     self._result_next_step(game)  # → Save Replay? / 收尾
                     break  # 已定名, 余下动作不再喂旧 game
                 elif kind == "move":
                     self._renderer.play_menu_se("select")  # SOUND_MOVE_MENU
                 elif kind == "input":
-                    self._renderer.play_menu_se("ok")      # SOUND_SELECT
+                    self._renderer.play_menu_se("ok")  # SOUND_SELECT
                 elif kind == "delete":
                     self._renderer.play_menu_se("cancel")  # SOUND_BACK
             elif act == MenuAction.CONFIRM:

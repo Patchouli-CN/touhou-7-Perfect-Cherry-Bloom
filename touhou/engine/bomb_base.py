@@ -38,8 +38,10 @@ __all__ = [
 # 同值; 作品层 spawn 时可按自己的道具体系覆盖 item_type)
 ITEM_POINT_BULLET = 6
 
-BOMB_SUBRANK_PENALTY = 200    # DecreaseSubrank(200) (Player.cpp:1747)
-BOMB_RESPAWN_PENALTY = 6      # respawnTimer += 6, 封顶 initialRespawnTimer (Player.cpp:1750-1754)
+BOMB_SUBRANK_PENALTY = 200  # DecreaseSubrank(200) (Player.cpp:1747)
+BOMB_RESPAWN_PENALTY = (
+    6  # respawnTimer += 6, 封顶 initialRespawnTimer (Player.cpp:1750-1754)
+)
 BOMB_DURATION_PLACEHOLDER = 999  # 触发时占位 duration (Player.cpp:1736)
 
 
@@ -70,10 +72,10 @@ class ClearBox(msgspec.Struct):
     """
 
     pos: Vec2
-    size: Vec2           # size.x=线性段高, size.y=圆半径
+    size: Vec2  # size.x=线性段高, size.y=圆半径
     lifetime: int
     item_type: int
-    pos_z: float = 0.0   # pos.z: 线性段宽
+    pos_z: float = 0.0  # pos.z: 线性段宽
     growth: float = 0.0  # size.z: 半径每帧增长
 
     @property
@@ -93,8 +95,10 @@ class ClearBox(msgspec.Struct):
         """CheckBombGraze: center±size/2 的弹盒是否命中此清弹盒 (Player.cpp:965-996)。"""
         if self.pos_z != 0.0:
             # 线性段: AABB, 宽=pos_z, 高=size.x
-            return (abs(center.x - self.pos.x) <= (self.pos_z + size.x) / 2
-                    and abs(center.y - self.pos.y) <= (self.size.x + size.y) / 2)
+            return (
+                abs(center.x - self.pos.x) <= (self.pos_z + size.x) / 2
+                and abs(center.y - self.pos.y) <= (self.size.x + size.y) / 2
+            )
         if self.size.y != 0.0:
             # 圆: dist² < size.y²
             d = center - self.pos
@@ -128,7 +132,9 @@ class BombContext(msgspec.Struct):
 
     player_pos: Vec2
     difficulty: int = 1
-    rng_float: Callable[[], float] | None = None  # [0,1) 随机, None→作品层回落(如 random.random)
+    rng_float: Callable[[], float] | None = (
+        None  # [0,1) 随机, None→作品层回落(如 random.random)
+    )
 
 
 BombCtxT = TypeVar("BombCtxT", bound=BombContext)
@@ -138,12 +144,12 @@ class BombStartResult(msgspec.Struct):
     """try_start_bomb 的透出: 上层据此更新 globals/符卡/respawn (Player.cpp:1728-1754)。"""
 
     started: bool = False
-    bombs_used_delta: int = 0              # AddBombsUsed(1)
-    bombs_remaining_delta: int = 0         # AddBombsRemaining(-1)
-    subrank_delta: int = 0                 # DecreaseSubrank(200)(th07 动态难度; 无此概念可忽略)
-    respawn_timer: int = 0                 # min(respawnTimer+6, initialRespawnTimer)
+    bombs_used_delta: int = 0  # AddBombsUsed(1)
+    bombs_remaining_delta: int = 0  # AddBombsRemaining(-1)
+    subrank_delta: int = 0  # DecreaseSubrank(200)(th07 动态难度; 无此概念可忽略)
+    respawn_timer: int = 0  # min(respawnTimer+6, initialRespawnTimer)
     spellcard_capture_reset: bool = False  # captureScore=0, isCapturing=0
-    spellcard_used_bomb: bool = False      # usedBomb = isActive
+    spellcard_used_bomb: bool = False  # usedBomb = isActive
 
 
 class BombBase(msgspec.Struct, Generic[BombCtxT]):
@@ -190,7 +196,9 @@ class BombBase(msgspec.Struct, Generic[BombCtxT]):
         self.move_speed_multiplier = 1.0
         self.damage_boxes = [DamageBox(Vec2.zero(), Vec2.zero(), 0) for _ in range(112)]
         self.clear_boxes = []
-        self.sub_info = [BombSubInfo() for _ in range(128)]  # C++ subInfo[128] (Player.hpp:116)
+        self.sub_info = [
+            BombSubInfo() for _ in range(128)
+        ]  # C++ subInfo[128] (Player.hpp:116)
         self.events = []
         self.shakes = []
         self._reset_run_state()
@@ -237,8 +245,9 @@ class BombBase(msgspec.Struct, Generic[BombCtxT]):
             return box
         return self.clear_boxes[95]
 
-    def _spawn_clear(self, pos: Vec2, *, radius: float, growth: float,
-                     lifetime: int, item_type: int) -> ClearBox:
+    def _spawn_clear(
+        self, pos: Vec2, *, radius: float, growth: float, lifetime: int, item_type: int
+    ) -> ClearBox:
         """Player::SpawnBombEffect (Player.cpp:2063-2084): 清弹圆, 半径每帧 +growth。
 
         照抄 C++: 复用槽时只写 pos/size.y/size.z/lifetime/itemType, 不动 size.x/pos_z。
@@ -251,8 +260,9 @@ class BombBase(msgspec.Struct, Generic[BombCtxT]):
         box.growth = growth
         return box
 
-    def _spawn_projectile(self, pos: Vec2, *, width: float, height: float,
-                          item_type: int) -> ClearBox:
+    def _spawn_projectile(
+        self, pos: Vec2, *, width: float, height: float, item_type: int
+    ) -> ClearBox:
         """Player::SpawnBombProjectile (Player.cpp:2038-2060): 线性段清弹盒。
 
         pos.z=width(段宽), size.x=height(段高), lifetime=0 (下帧 UpdateBombProjectiles 清零,
@@ -302,14 +312,24 @@ class BombBase(msgspec.Struct, Generic[BombCtxT]):
 
 # 一个简单的 AABB 相交(盒中心 + 半宽)
 def _aabb(a_center: Vec2, a_half: Vec2, b_center: Vec2, b_half: Vec2) -> bool:
-    return (abs(a_center.x - b_center.x) < a_half.x + b_half.x
-            and abs(a_center.y - b_center.y) < a_half.y + b_half.y)
+    return (
+        abs(a_center.x - b_center.x) < a_half.x + b_half.x
+        and abs(a_center.y - b_center.y) < a_half.y + b_half.y
+    )
 
 
-def try_start_bomb(bomb: BombBase[BombCtxT], ctx: BombCtxT, *, focus: bool,
-                   bombs_remaining: float, respawn_timer: int,
-                   initial_respawn_timer: int, border_invulnerability_time: int,
-                   bomb_pressed: bool, spellcard_active: bool) -> BombStartResult:
+def try_start_bomb(
+    bomb: BombBase[BombCtxT],
+    ctx: BombCtxT,
+    *,
+    focus: bool,
+    bombs_remaining: float,
+    respawn_timer: int,
+    initial_respawn_timer: int,
+    border_invulnerability_time: int,
+    bomb_pressed: bool,
+    spellcard_active: bool,
+) -> BombStartResult:
     """炸弹触发 (Player::UpdateBorderAndBombState 触发分支, Player.cpp:1719-1755)。
 
     条件: 非 bomb 中 && respawn_timer != 0 && bombs > 0 && border_invulnerability_time == 0
@@ -319,16 +339,22 @@ def try_start_bomb(bomb: BombBase[BombCtxT], ctx: BombCtxT, *, focus: bool,
     触发炸弹 (Player.cpp:1686-1692), 该分支由上层先判断。
     """
     result = BombStartResult()
-    if (bomb.is_in_use or not bomb_pressed or respawn_timer == 0
-            or bombs_remaining <= 0 or border_invulnerability_time != 0):
+    if (
+        bomb.is_in_use
+        or not bomb_pressed
+        or respawn_timer == 0
+        or bombs_remaining <= 0
+        or border_invulnerability_time != 0
+    ):
         return result
     bomb.start(focus=focus, ctx=ctx)
     result.started = True
     result.bombs_used_delta = 1
     result.bombs_remaining_delta = -1
     result.subrank_delta = -BOMB_SUBRANK_PENALTY
-    result.respawn_timer = min(respawn_timer + BOMB_RESPAWN_PENALTY,
-                               initial_respawn_timer)
+    result.respawn_timer = min(
+        respawn_timer + BOMB_RESPAWN_PENALTY, initial_respawn_timer
+    )
     result.spellcard_capture_reset = True
     result.spellcard_used_bomb = spellcard_active
     return result

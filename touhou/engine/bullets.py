@@ -1,4 +1,4 @@
-""" 弹幕 —— Pythonic。
+"""弹幕 —— Pythonic。
 
 用 enum 表示瞄准方式, Burst 描述"一批子弹如何发散"(对照 EnemyBulletShooter),
 Bullet 用 Vec2 表示位置/速度并继承 BulletState 获得命令系统,
@@ -29,15 +29,15 @@ SCREEN = Vec2(384, 448)
 class Aim(IntEnum):
     """敌弹的瞄准/发散方式。值对应 BulletAimMode (BulletManager.hpp)。"""
 
-    SPREAD_AIMED = 0          # 扇形, 对准玩家
-    SPREAD_ABSOLUTE = 1       # 扇形, 绝对角
-    RING_AIMED = 2            # 环形, 对准玩家
-    RING_ABSOLUTE = 3         # 环形, 绝对角
-    RING_SHIFT_AIMED = 4      # 环形错半格, 对准玩家
-    RING_SHIFT_ABSOLUTE = 5   # 环形错半格, 绝对角
-    ANGLE_RANDOM = 6          # 角度随机(速度按层插值)
-    RING_SPEED_RANDOM = 7     # 环形 + 速度随机
-    RANDOM = 8                # 角度+速度全随机
+    SPREAD_AIMED = 0  # 扇形, 对准玩家
+    SPREAD_ABSOLUTE = 1  # 扇形, 绝对角
+    RING_AIMED = 2  # 环形, 对准玩家
+    RING_ABSOLUTE = 3  # 环形, 绝对角
+    RING_SHIFT_AIMED = 4  # 环形错半格, 对准玩家
+    RING_SHIFT_ABSOLUTE = 5  # 环形错半格, 绝对角
+    ANGLE_RANDOM = 6  # 角度随机(速度按层插值)
+    RING_SPEED_RANDOM = 7  # 环形 + 速度随机
+    RANDOM = 8  # 角度+速度全随机
 
 
 # ---- §0.5 rank 插值 (EnemyManager.hpp BulletRank*Inner) ----
@@ -60,11 +60,11 @@ class BulletTypeSpec(msgspec.Struct, frozen=True):
     见表头注释); graze_size/collision_type 按 AddedCallback 的分档判定树得出。
     """
 
-    anm_file_idx: int     # etama.anm 脚本索引 (g_BulletTypeInfos)
-    width: float          # 精灵宽(px)
-    height: float         # 精灵高(px) = bulletHeight
-    graze_size: Vec2      # 擦弹/命中判定半宽
-    collision_type: int   # 绘制分层 0..5
+    anm_file_idx: int  # etama.anm 脚本索引 (g_BulletTypeInfos)
+    width: float  # 精灵宽(px)
+    height: float  # 精灵高(px) = bulletHeight
+    graze_size: Vec2  # 擦弹/命中判定半宽
+    collision_type: int  # 绘制分层 0..5
 
 
 # 16 个模板槽。TH07 只初始化前 11 个(g_BulletTypeInfos), 后 5 个槽未用(全 0)。
@@ -75,7 +75,7 @@ class BulletTypeSpec(msgspec.Struct, frozen=True):
 # 特判(4,4,type4)否则(6,6,type3); ≤32→520:(5,5,type1) 521:(8,8,type2)
 # 否则(10,10,type2); >32→(24,24,type0)。
 BULLET_TYPE_SPECS: tuple[BulletTypeSpec, ...] = (
-    BulletTypeSpec(0x200, 8.0, 8.0, Vec2(4, 4), 5),    # 0: 小弹
+    BulletTypeSpec(0x200, 8.0, 8.0, Vec2(4, 4), 5),  # 0: 小弹
     BulletTypeSpec(0x201, 16.0, 16.0, Vec2(6, 6), 3),  # 1: 中弹
     BulletTypeSpec(0x202, 14.0, 16.0, Vec2(4, 4), 4),  # 2: 米弹(514 特判)
     BulletTypeSpec(0x203, 16.0, 16.0, Vec2(6, 6), 3),  # 3
@@ -83,9 +83,9 @@ BULLET_TYPE_SPECS: tuple[BulletTypeSpec, ...] = (
     BulletTypeSpec(0x205, 14.0, 16.0, Vec2(4, 4), 4),  # 5 (517 特判)
     BulletTypeSpec(0x206, 14.0, 16.0, Vec2(4, 4), 4),  # 6 (518 特判)
     BulletTypeSpec(0x207, 32.0, 32.0, Vec2(10, 10), 2),  # 7: 大弹
-    BulletTypeSpec(0x208, 32.0, 32.0, Vec2(5, 5), 1),    # 8: 刀弹(520 特判)
-    BulletTypeSpec(0x209, 32.0, 32.0, Vec2(8, 8), 2),    # 9: 札弹(521 特判)
-    BulletTypeSpec(0x2A8, 8.0, 8.0, Vec2(4, 4), 5),      # 10: 光弹(链式 chunk)
+    BulletTypeSpec(0x208, 32.0, 32.0, Vec2(5, 5), 1),  # 8: 刀弹(520 特判)
+    BulletTypeSpec(0x209, 32.0, 32.0, Vec2(8, 8), 2),  # 9: 札弹(521 特判)
+    BulletTypeSpec(0x2A8, 8.0, 8.0, Vec2(4, 4), 5),  # 10: 光弹(链式 chunk)
     # 11..15: TH07 未初始化(AddedCallback 只循环 i<11)
     BulletTypeSpec(0, 0.0, 0.0, Vec2(0, 0), 0),
     BulletTypeSpec(0, 0.0, 0.0, Vec2(0, 0), 0),
@@ -108,10 +108,19 @@ _DEFAULT_BULLET_SIZE = Vec2(16, 16)
 #   弹型 7-9 : 0x218 三态共用    → T = 32
 #   弹型 10  : 0x2aa 三态共用    → T = 24
 _SPAWN_MOVE_DIV = {2: 2.0, 4: 2.5, 8: 3.0}
-_SPAWN_SCRIPT_T = {0: (10, 16, 32), 1: (10, 16, 32), 2: (10, 16, 32),
-                   3: (10, 16, 32), 4: (10, 16, 32), 5: (10, 16, 32),
-                   6: (10, 16, 32), 7: (32, 32, 32), 8: (32, 32, 32),
-                   9: (32, 32, 32), 10: (24, 24, 24)}
+_SPAWN_SCRIPT_T = {
+    0: (10, 16, 32),
+    1: (10, 16, 32),
+    2: (10, 16, 32),
+    3: (10, 16, 32),
+    4: (10, 16, 32),
+    5: (10, 16, 32),
+    6: (10, 16, 32),
+    7: (32, 32, 32),
+    8: (32, 32, 32),
+    9: (32, 32, 32),
+    10: (24, 24, 24),
+}
 
 
 def spawn_state_spec(sprite: int, flags: int) -> tuple[int, int]:
@@ -149,7 +158,17 @@ def bullet_type_size(bullet_type: int) -> Vec2:
 # 每条脚本(0x200..0x209, 0x2a8)的首个 set-sprite + 链式偏移;
 # C++ SpawnSingleBullet 的活动 sprite = 基址 + spriteOffset (直接相加, 无分辨率映射)。
 _BULLET_BASE_SPRITE_IDX: tuple[int, ...] = (
-    512, 528, 544, 560, 576, 592, 608, 624, 632, 640, 680,
+    512,
+    528,
+    544,
+    560,
+    576,
+    592,
+    608,
+    624,
+    632,
+    640,
+    680,
 )
 
 
@@ -180,18 +199,20 @@ class Burst(msgspec.Struct, frozen=True):
     angle_step 即 angle2(随机区间为 [angle2, angle1))。
     """
 
-    path: Vec2          # 发射起点(通常是敌人位置)
-    base_angle: float   # 基准角(见上)
+    path: Vec2  # 发射起点(通常是敌人位置)
+    base_angle: float  # 基准角(见上)
     aim: Aim
-    arms: int           # count1: 每次发几颗(环的份数/扇的颗数)
-    rings: int          # count2: 几层(环数)
-    speed_a: float      # speed1
-    speed_b: float      # speed2(层间插值低端/随机低端)
-    angle_step: float   # angle2: 层间角差 / 扇间隔
-    sprite: int = 0     # 弹型(= bulletTypeTemplates 下标)
+    arms: int  # count1: 每次发几颗(环的份数/扇的颗数)
+    rings: int  # count2: 几层(环数)
+    speed_a: float  # speed1
+    speed_b: float  # speed2(层间插值低端/随机低端)
+    angle_step: float  # angle2: 层间角差 / 扇间隔
+    sprite: int = 0  # 弹型(= bulletTypeTemplates 下标)
     sprite_offset: int = 0  # spriteOffset: 颜色/变体偏移 (活动 sprite = 基址+offset)
     commands: tuple[BulletCommand, ...] = ()  # 出生即挂的命令队列
-    flags: int = 0      # moreFlags(命令位 + 2/4/8 spawn 特效态 + 0x200 音效 + 0x1000 不清屏…)
+    flags: int = (
+        0  # moreFlags(命令位 + 2/4/8 spawn 特效态 + 0x200 音效 + 0x1000 不清屏…)
+    )
 
     def angle_speed(self, arm: int, ring: int, rng: Rng) -> tuple[float, float]:
         """第 (arm=x, ring=y) 颗弹的发射角/速度 —— SpawnSingleBullet 的 switch。"""
@@ -222,27 +243,50 @@ class Burst(msgspec.Struct, frozen=True):
             speed = rng.in_range(self.speed_b, self.speed_a)
             return port + arm * math.tau / count1 + ring * self.angle_step, speed
         # Aim.RANDOM
-        return (rng.in_range(self.angle_step, port),
-                rng.in_range(self.speed_b, self.speed_a))
+        return (
+            rng.in_range(self.angle_step, port),
+            rng.in_range(self.speed_b, self.speed_a),
+        )
 
 
 class Bullet(BulletState):
-    __slots__ = ("sprite", "sprite_offset", "state2", "age", "dead", "grazed",
-                 "out_of_bounds_time", "spawn_state", "spawn_frames", "hitbox")
+    __slots__ = (
+        "sprite",
+        "sprite_offset",
+        "state2",
+        "age",
+        "dead",
+        "grazed",
+        "out_of_bounds_time",
+        "spawn_state",
+        "spawn_frames",
+        "hitbox",
+    )
 
-    def __init__(self, pos: Vec2, angle: float, speed: float, sprite: int = 0,
-                 size: Vec2 | None = None, sprite_offset: int = 0,
-                 hitbox: float = 3.5) -> None:
+    def __init__(
+        self,
+        pos: Vec2,
+        angle: float,
+        speed: float,
+        sprite: int = 0,
+        size: Vec2 | None = None,
+        sprite_offset: int = 0,
+        hitbox: float = 3.5,
+    ) -> None:
         # C++ spawn 时 angle = AddNormalizeAngle(bulletAngle, 0)
-        super().__init__(pos, normalize_angle_diff(angle), speed,
-                         size=size if size is not None else _DEFAULT_BULLET_SIZE)
+        super().__init__(
+            pos,
+            normalize_angle_diff(angle),
+            speed,
+            size=size if size is not None else _DEFAULT_BULLET_SIZE,
+        )
         self.sprite = sprite
         self.sprite_offset = sprite_offset  # C bullet->spriteOffset
         # 判定半径(碰撞盒半宽, 观测面用): 本引擎的擦弹/命中盒是
         # pos±BulletWorld.bullet_radius 的均匀 AABB (见 world 的判定管线),
         # fire() 生成时把世界当前值物化到实例上; 默认 3.5 与该字段默认一致
         self.hitbox = hitbox
-        self.state2 = 0      # C bullet->state2 (ExIns 的每弹标记位)
+        self.state2 = 0  # C bullet->state2 (ExIns 的每弹标记位)
         self.age = 0
         self.dead = False
         self.grazed = False  # 每颗弹只擦一次(§A.7, 由 Player.check_graze 置位)
@@ -260,8 +304,12 @@ class Bullet(BulletState):
     def off_screen(self) -> bool:
         """完全出屏(GameManager::IsInBounds 的否: 以精灵半宽/半高为边距)。"""
         hw, hh = self.size.x / 2.0, self.size.y / 2.0
-        return not (self.pos.x + hw >= 0.0 and self.pos.x - hw <= SCREEN.x
-                    and self.pos.y + hh >= 0.0 and self.pos.y - hh <= SCREEN.y)
+        return not (
+            self.pos.x + hw >= 0.0
+            and self.pos.x - hw <= SCREEN.x
+            and self.pos.y + hh >= 0.0
+            and self.pos.y - hh <= SCREEN.y
+        )
 
 
 class BulletWorld(msgspec.Struct):
@@ -296,9 +344,15 @@ class BulletWorld(msgspec.Struct):
                 # moreFlag 的弹出生即 DESPAWN (RNG 已照原样消耗, 弹体不入场)
                 if self.screen_clear_time != 0 and not (burst.flags & 0x1000):
                     continue
-                b = Bullet(burst.path, angle, speed, sprite=burst.sprite, size=size,
-                           sprite_offset=burst.sprite_offset,
-                           hitbox=self.bullet_radius)
+                b = Bullet(
+                    burst.path,
+                    angle,
+                    speed,
+                    sprite=burst.sprite,
+                    size=size,
+                    sprite_offset=burst.sprite_offset,
+                    hitbox=self.bullet_radius,
+                )
                 if self.time_scale != 1.0:
                     # SpawnSingleBullet: velocity = speed * effectiveFramerateMultiplier
                     b.vel = b.vel * self.time_scale
@@ -319,18 +373,53 @@ class BulletWorld(msgspec.Struct):
                 count += 1
         return count
 
-    def ring(self, at: Vec2, arms: int, speed: float, *, aimed: bool = True,
-             angle_step: float = 0.12, speed_b: float | None = None) -> int:
+    def ring(
+        self,
+        at: Vec2,
+        arms: int,
+        speed: float,
+        *,
+        aimed: bool = True,
+        angle_step: float = 0.12,
+        speed_b: float | None = None,
+    ) -> int:
         port = angle_to(at, self.player_pos) if aimed else 0.0
-        return self.fire(Burst(at, port, Aim.RING_AIMED if aimed else Aim.RING_ABSOLUTE,
-                               arms, 1, speed, speed_b if speed_b is not None else speed,
-                               angle_step))
+        return self.fire(
+            Burst(
+                at,
+                port,
+                Aim.RING_AIMED if aimed else Aim.RING_ABSOLUTE,
+                arms,
+                1,
+                speed,
+                speed_b if speed_b is not None else speed,
+                angle_step,
+            )
+        )
 
-    def spread(self, at: Vec2, arms: int, speed: float, spread: float, *,
-               aimed: bool = True, speed_b: float | None = None) -> int:
+    def spread(
+        self,
+        at: Vec2,
+        arms: int,
+        speed: float,
+        spread: float,
+        *,
+        aimed: bool = True,
+        speed_b: float | None = None,
+    ) -> int:
         port = angle_to(at, self.player_pos) if aimed else 0.0
-        return self.fire(Burst(at, port, Aim.SPREAD_AIMED if aimed else Aim.SPREAD_ABSOLUTE,
-                               arms, 1, speed, speed_b if speed_b is not None else speed, spread))
+        return self.fire(
+            Burst(
+                at,
+                port,
+                Aim.SPREAD_AIMED if aimed else Aim.SPREAD_ABSOLUTE,
+                arms,
+                1,
+                speed,
+                speed_b if speed_b is not None else speed,
+                spread,
+            )
+        )
 
     # ---- 更新 ----
     def step(self) -> None:
@@ -375,8 +464,11 @@ class BulletWorld(msgspec.Struct):
 
     def hits_player(self) -> bool:
         r = self.player_radius + self.bullet_radius
-        return any(self.player_pos.distance(b.pos) <= r for b in self._bullets
-                   if not b.spawn_state)  # 出生态无判定 (同 OnUpdate)
+        return any(
+            self.player_pos.distance(b.pos) <= r
+            for b in self._bullets
+            if not b.spawn_state
+        )  # 出生态无判定 (同 OnUpdate)
 
     def clear(self) -> None:
         self._bullets.clear()

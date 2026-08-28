@@ -1,4 +1,4 @@
-""" 炸弹与樱之结界(th07) —— 移植自 BombData.cpp / Player.cpp(Border 部分) / 规格 §D。
+"""炸弹与樱之结界(th07) —— 移植自 BombData.cpp / Player.cpp(Border 部分) / 规格 §D。
 
 通用框架已上移到引擎层基座 engine/bomb_base.py(BombBase/BombContext/
 DamageBox/ClearBox/BombSubInfo/BombStartResult/try_start_bomb):
@@ -42,7 +42,7 @@ from ...engine.bomb_base import BombContext as _BombContextBase
 from ...utils import Vec2, cdiv, cmod, normalize_angle_diff
 
 # 清弹盒掉落道具类型 (ItemManager.hpp; ITEM_POINT_BULLET 由基座再导出)
-ITEM_CHERRY_SMALL = 8    # ITEM_CHERRY_SMALL: BreakBorder 清屏掉小樱点 (Player.cpp:2182)
+ITEM_CHERRY_SMALL = 8  # ITEM_CHERRY_SMALL: BreakBorder 清屏掉小樱点 (Player.cpp:2182)
 
 # 难度索引 (同 globals.RANK_TABLE 顺序: Easy/Normal/Hard/Lunatic/Extra/Phantasm)
 DIFF_EASY, DIFF_NORMAL, DIFF_HARD, DIFF_LUNATIC, DIFF_EXTRA, DIFF_PHANTASM = range(6)
@@ -50,17 +50,32 @@ DIFF_EASY, DIFF_NORMAL, DIFF_HARD, DIFF_LUNATIC, DIFF_EXTRA, DIFF_PHANTASM = ran
 _DRAIN_DIVISOR = {DIFF_HARD: 2, DIFF_LUNATIC: 4, DIFF_EXTRA: 3, DIFF_PHANTASM: 3}
 
 # 机体索引 (g_BombData / shotTypeAndCharacter 顺序)
-CHAR_REIMU_A, CHAR_REIMU_B, CHAR_MARISA_A, CHAR_MARISA_B, CHAR_SAKUYA_A, CHAR_SAKUYA_B = range(6)
+(
+    CHAR_REIMU_A,
+    CHAR_REIMU_B,
+    CHAR_MARISA_A,
+    CHAR_MARISA_B,
+    CHAR_SAKUYA_A,
+    CHAR_SAKUYA_B,
+) = range(6)
 
-BORDER_DURATION = 540         # ActivateBorder: invulnerabilityTimer=borderTimer=540 (Player.cpp:2113-2114)
-BORDER_BREAK_INVULN = 40      # BreakBorder(Naturally): invuln/borderInvulnerabilityTime=40
-BORDER_CHERRY_GAIN = 10000    # BreakBorderNaturally: IncreaseCherryMax/IncreaseCherry(10000)
-CHERRY_MAX_RANGE = 9999990    # IncreaseCherryMax 上限(同 globals.CHERRY_MAX_RANGE, 为避免耦合重定义)
+BORDER_DURATION = (
+    540  # ActivateBorder: invulnerabilityTimer=borderTimer=540 (Player.cpp:2113-2114)
+)
+BORDER_BREAK_INVULN = 40  # BreakBorder(Naturally): invuln/borderInvulnerabilityTime=40
+BORDER_CHERRY_GAIN = (
+    10000  # BreakBorderNaturally: IncreaseCherryMax/IncreaseCherry(10000)
+)
+CHERRY_MAX_RANGE = (
+    9999990  # IncreaseCherryMax 上限(同 globals.CHERRY_MAX_RANGE, 为避免耦合重定义)
+)
 
 # 透出事件(上层接线用)
-EVENT_REMOVE_ALL_ITEMS = "remove_all_items"              # g_ItemManager.RemoveAllItems()
-EVENT_END_PLAYER_SPELLCARD = "end_player_spellcard"      # g_Gui.EndPlayerSpellcard()
-EVENT_STOP_BULLET_MOVEMENT = "stop_bullet_movement"      # g_BulletManager.StopBulletMovement() (咲夜B 停时)
+EVENT_REMOVE_ALL_ITEMS = "remove_all_items"  # g_ItemManager.RemoveAllItems()
+EVENT_END_PLAYER_SPELLCARD = "end_player_spellcard"  # g_Gui.EndPlayerSpellcard()
+EVENT_STOP_BULLET_MOVEMENT = (
+    "stop_bullet_movement"  # g_BulletManager.StopBulletMovement() (咲夜B 停时)
+)
 
 # 震屏事件 (BombEffects::RegisterChain(1, ...) 各注册点, ScreenEffect.cpp:249
 # OnUpdateScreenShake): bomb.shakes 元素为 (duration, amp_start, amp_end),
@@ -73,8 +88,15 @@ class BorderState(IntEnum):
     READY = 2
 
 
-def compute_bomb_cherry_drain(*, cherry: float, cherry_start: float, difficulty: int,
-                              bomb_duration: int, min_cost: int, scale: float) -> int:
+def compute_bomb_cherry_drain(
+    *,
+    cherry: float,
+    cherry_start: float,
+    difficulty: int,
+    bomb_duration: int,
+    min_cost: int,
+    scale: float,
+) -> int:
     """BombData::ComputeBombCherryDrain (BombData.cpp:87-112)。照抄 C++ 整数截断顺序。
 
     drain=(cherry-cherryStart)*scale (i32 截断) → 按难度 Hard/2 Lunatic/4 Extra·Phantasm/3
@@ -94,10 +116,10 @@ def compute_bomb_cherry_drain(*, cherry: float, cherry_start: float, difficulty:
 class BombParams(msgspec.Struct, frozen=True):
     """§D.3: 单机体单形态炸弹的首帧初始化参数 (BombData.cpp 各 *Calc 的 bombTimer==0 分支)。"""
 
-    duration: int         # bombDuration
+    duration: int  # bombDuration
     invulnerability: int  # player.invulnerabilityTimer
-    drain_min_cost: int   # ComputeBombCherryDrain minCost
-    drain_scale: float    # ComputeBombCherryDrain scale
+    drain_min_cost: int  # ComputeBombCherryDrain minCost
+    drain_scale: float  # ComputeBombCherryDrain scale
 
 
 # §D.3 六机体参数表 (数值以 BombData.cpp 为准; 原始行集中在
@@ -127,14 +149,15 @@ class Bomb(BombBase[BombContext]):
 
     character: int = CHAR_REIMU_A
     cherry_drain: int = 0
-    drain_applied: int = 0              # 本帧应扣樱点(上层调 subtract_cherry_drain)
+    drain_applied: int = 0  # 本帧应扣樱点(上层调 subtract_cherry_drain)
 
     def _calc(self, ctx: BombContext) -> None:
         """按 (character, focus) 查表分派机体炸弹 (g_BombData, BombData.cpp:16-28)。"""
         calc = _BOMB_CALCS.get((self.character, self.is_focus))
         if calc is None:  # 12 套已全, 仅防御未知 character
             raise NotImplementedError(
-                f"character={self.character} focus={self.is_focus} 炸弹未实现")
+                f"character={self.character} focus={self.is_focus} 炸弹未实现"
+            )
         calc(self, ctx)
 
     def _tick_resource_cost(self, in_use: bool) -> None:
@@ -153,13 +176,18 @@ class Bomb(BombBase[BombContext]):
 def _in_bounds(x: float, y: float, width: float, height: float) -> bool:
     """GameManager::IsInBounds (GameManager.cpp:42-65): 盒心±半宽/半高落在
     (0..384, 0..448) 内为 True (咲夜A 非集中出界判定)。"""
-    return not (width / 2.0 + x < 0.0 or x - width / 2.0 > 384.0
-                or height / 2.0 + y < 0.0 or y - height / 2.0 > 448.0)
+    return not (
+        width / 2.0 + x < 0.0
+        or x - width / 2.0 > 384.0
+        or height / 2.0 + y < 0.0
+        or y - height / 2.0 > 448.0
+    )
 
 
 # ---------------------------------------------------------------------------
 # ReimuA 「灵符·梦想妙珠」 (规格 §D.4)
 # ---------------------------------------------------------------------------
+
 
 def _calc_reimu_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
     """灵梦A 非集中「梦想妙珠散」 (BombData.cpp:116-256)。
@@ -180,13 +208,22 @@ def _calc_reimu_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
         for sub in bomb.sub_info:
             sub.state = 0
         bomb.events.append(EVENT_REMOVE_ALL_ITEMS)
-        bomb._spawn_clear(ctx.player_pos, radius=32.0, growth=8.0,
-                          lifetime=16, item_type=ITEM_POINT_BULLET)
+        bomb._spawn_clear(
+            ctx.player_pos,
+            radius=32.0,
+            growth=8.0,
+            lifetime=16,
+            item_type=ITEM_POINT_BULLET,
+        )
         bomb.start_pos = ctx.player_pos
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
     if bomb.has_ticked and 8 <= bomb.timer < 80 and bomb.timer % 6 == 0:
         i = (bomb.timer - 8) // 6
         sub = bomb.sub_info[i]
@@ -215,8 +252,13 @@ def _calc_reimu_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
                 box.pos = sub.pos
                 box.size = Vec2(256.0, 256.0)
                 box.lifetime = 400
-                bomb._spawn_clear(sub.pos, radius=64.0, growth=4.266667,
-                                  lifetime=30, item_type=ITEM_POINT_BULLET)
+                bomb._spawn_clear(
+                    sub.pos,
+                    radius=64.0,
+                    growth=4.266667,
+                    lifetime=30,
+                    item_type=ITEM_POINT_BULLET,
+                )
                 sub.vel = Vec2.zero()
                 # 珠爆开震屏 (BombData.cpp:218 RegisterChain(1,16,8,0))
                 bomb.shakes.append((16, 8, 0))
@@ -225,8 +267,13 @@ def _calc_reimu_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
                 box.size = Vec2(48.0, 48.0)
                 box.pos = sub.pos
                 box.lifetime = 8
-                bomb._spawn_clear(sub.pos, radius=128.0, growth=0.0,
-                                  lifetime=0, item_type=ITEM_POINT_BULLET)
+                bomb._spawn_clear(
+                    sub.pos,
+                    radius=128.0,
+                    growth=0.0,
+                    lifetime=0,
+                    item_type=ITEM_POINT_BULLET,
+                )
         elif bomb.has_ticked:
             box.pos = sub.pos
             box.size = Vec2(256.0, 256.0)
@@ -258,12 +305,21 @@ def _calc_reimu_a_focused(bomb: Bomb, ctx: BombContext) -> None:
         for sub in bomb.sub_info:
             sub.state = 0
         bomb.events.append(EVENT_REMOVE_ALL_ITEMS)
-        bomb._spawn_clear(ctx.player_pos, radius=32.0, growth=8.0,
-                          lifetime=16, item_type=ITEM_POINT_BULLET)
+        bomb._spawn_clear(
+            ctx.player_pos,
+            radius=32.0,
+            growth=8.0,
+            lifetime=16,
+            item_type=ITEM_POINT_BULLET,
+        )
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
         bomb.move_speed_multiplier = 0.6
     if 60 <= bomb.timer < 180 and bomb.timer % 16 == 0:
         i = (bomb.timer - 60) // 16
@@ -304,14 +360,24 @@ def _calc_reimu_a_focused(bomb: Bomb, ctx: BombContext) -> None:
                 box.size = Vec2(48.0, 48.0)
                 box.pos = sub.pos
                 box.lifetime = 8
-                bomb._spawn_clear(sub.pos, radius=128.0, growth=0.0,
-                                  lifetime=0, item_type=ITEM_POINT_BULLET)
+                bomb._spawn_clear(
+                    sub.pos,
+                    radius=128.0,
+                    growth=0.0,
+                    lifetime=0,
+                    item_type=ITEM_POINT_BULLET,
+                )
                 if box.damage >= 100 or bomb.timer >= bomb.duration - 30:
                     sub.state = 2
                     box.size = Vec2(256.0, 256.0)
                     box.lifetime = 400
-                    bomb._spawn_clear(sub.pos, radius=32.0, growth=6.6666665,
-                                      lifetime=15, item_type=ITEM_POINT_BULLET)
+                    bomb._spawn_clear(
+                        sub.pos,
+                        radius=32.0,
+                        growth=6.6666665,
+                        lifetime=15,
+                        item_type=ITEM_POINT_BULLET,
+                    )
                     # 珠爆开震屏 (BombData.cpp:450 RegisterChain(1,16,8,0))
                     bomb.shakes.append((16, 8, 0))
         elif bomb.has_ticked:
@@ -326,6 +392,7 @@ def _calc_reimu_a_focused(bomb: Bomb, ctx: BombContext) -> None:
 # ---------------------------------------------------------------------------
 # ReimuB 「灵符·梦想封印」 (规格 §D.4)
 # ---------------------------------------------------------------------------
+
 
 def _calc_reimu_b_unfocused(bomb: Bomb, ctx: BombContext) -> None:
     """灵梦B 非集中「梦想封印散」 (BombData.cpp:512-601)。
@@ -351,9 +418,13 @@ def _calc_reimu_b_unfocused(bomb: Bomb, ctx: BombContext) -> None:
         bomb.sub_info[2].pos = Vec2(ctx.player_pos.x, 224.0)
         bomb.sub_info[3].pos = Vec2(192.0, ctx.player_pos.y)
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
         # 首帧震屏 (BombData.cpp:559 RegisterChain(1,60,2,6))
         bomb.shakes.append((60, 2, 6))
     else:
@@ -361,21 +432,25 @@ def _calc_reimu_b_unfocused(bomb: Bomb, ctx: BombContext) -> None:
         if bomb.timer == 60:
             bomb.shakes.append((80, 20, 0))
         projectiles = [
-            bomb._spawn_projectile(ctx.player_pos, width=62.0, height=448.0,
-                                   item_type=ITEM_POINT_BULLET),
-            bomb._spawn_projectile(ctx.player_pos, width=384.0, height=62.0,
-                                   item_type=ITEM_POINT_BULLET),
-            bomb._spawn_projectile(ctx.player_pos, width=62.0, height=448.0,
-                                   item_type=ITEM_POINT_BULLET),
-            bomb._spawn_projectile(ctx.player_pos, width=384.0, height=62.0,
-                                   item_type=ITEM_POINT_BULLET),
+            bomb._spawn_projectile(
+                ctx.player_pos, width=62.0, height=448.0, item_type=ITEM_POINT_BULLET
+            ),
+            bomb._spawn_projectile(
+                ctx.player_pos, width=384.0, height=62.0, item_type=ITEM_POINT_BULLET
+            ),
+            bomb._spawn_projectile(
+                ctx.player_pos, width=62.0, height=448.0, item_type=ITEM_POINT_BULLET
+            ),
+            bomb._spawn_projectile(
+                ctx.player_pos, width=384.0, height=62.0, item_type=ITEM_POINT_BULLET
+            ),
         ]
         for i in range(4):
             if bomb.has_ticked and bomb.timer % 2 != 0:
                 projectiles[i].pos = bomb.sub_info[i].pos  # + vms[0].offset (anm, 略)
                 box = bomb.damage_boxes[i]
                 box.size = Vec2(projectiles[i].pos_z, projectiles[i].size.x)
-                box.pos = bomb.sub_info[i].pos             # + vms->offset (anm, 略)
+                box.pos = bomb.sub_info[i].pos  # + vms->offset (anm, 略)
                 box.lifetime = 16
     bomb.invulnerable = True  # playerState = INVULNERABLE (BombData.cpp:598)
     bomb.timer += 1
@@ -400,12 +475,21 @@ def _calc_reimu_b_focused(bomb: Bomb, ctx: BombContext) -> None:
         bomb.events.append(EVENT_REMOVE_ALL_ITEMS)
         bomb.start_pos = ctx.player_pos
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
         bomb.move_speed_multiplier = 0.4
-        bomb._spawn_clear(ctx.player_pos, radius=192.0, growth=0.384,
-                          lifetime=210, item_type=ITEM_POINT_BULLET)
+        bomb._spawn_clear(
+            ctx.player_pos,
+            radius=192.0,
+            growth=0.384,
+            lifetime=210,
+            item_type=ITEM_POINT_BULLET,
+        )
         # 首帧震屏 (BombData.cpp:654 RegisterChain(1,60,2,6))
         bomb.shakes.append((60, 2, 6))
     else:
@@ -423,6 +507,7 @@ def _calc_reimu_b_focused(bomb: Bomb, ctx: BombContext) -> None:
 # ---------------------------------------------------------------------------
 # MarisaA 「魔符·Stardust Reverie / Milky Way」 (规格 §D.4)
 # ---------------------------------------------------------------------------
+
 
 def _calc_marisa_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
     """魔理沙A 非集中「星尘狂欢」 (BombData.cpp:690-770)。
@@ -444,9 +529,13 @@ def _calc_marisa_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
             sub.pos = ctx.player_pos
             sub.vel = Vec2.from_angle(i * math.tau / 8.0, 2.0)
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
         # 首帧震屏 (BombData.cpp:738 RegisterChain(1,120,4,1))
         bomb.shakes.append((120, 4, 1))
     else:
@@ -454,8 +543,13 @@ def _calc_marisa_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
             sub = bomb.sub_info[i]
             sub.pos = sub.pos + sub.vel  # * effectiveFramerateMultiplier(=1.0)
             if bomb.has_ticked and bomb.timer % 3 != 0:
-                bomb._spawn_clear(sub.pos, radius=96.0, growth=0.0,
-                                  lifetime=0, item_type=ITEM_POINT_BULLET)
+                bomb._spawn_clear(
+                    sub.pos,
+                    radius=96.0,
+                    growth=0.0,
+                    lifetime=0,
+                    item_type=ITEM_POINT_BULLET,
+                )
                 box = bomb.damage_boxes[i]
                 box.size = Vec2(128.0, 128.0)
                 box.pos = sub.pos
@@ -485,9 +579,13 @@ def _calc_marisa_a_focused(bomb: Bomb, ctx: BombContext) -> None:
         for sub in bomb.sub_info:
             sub.state = 0
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
         bomb.move_speed_multiplier = 0.4
     if bomb.has_ticked and bomb.timer % 6 == 0:
         i = bomb.timer // 6
@@ -512,8 +610,9 @@ def _calc_marisa_a_focused(bomb: Bomb, ctx: BombContext) -> None:
         sub.vel = sub.vel + sub.accel_vec
         if sub.pos.y < -256.0:
             sub.state = 0
-        bomb._spawn_clear(sub.pos, radius=96.0, growth=0.0,
-                          lifetime=0, item_type=ITEM_POINT_BULLET)
+        bomb._spawn_clear(
+            sub.pos, radius=96.0, growth=0.0, lifetime=0, item_type=ITEM_POINT_BULLET
+        )
         box = bomb.damage_boxes[i]
         if box.damage < 80:
             box.size = Vec2(128.0, 128.0)
@@ -557,9 +656,13 @@ def _calc_marisa_b_unfocused(bomb: Bomb, ctx: BombContext) -> None:
             sub.accel = i * math.tau / 3.0 - math.pi / 2
         bomb.move_speed_multiplier = 0.4
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
     else:
         # BombData.cpp:1047/1051: timer==20 渐强震屏 / timer==80 大震屏
         if bomb.timer == 20:
@@ -579,8 +682,13 @@ def _calc_marisa_b_unfocused(bomb: Bomb, ctx: BombContext) -> None:
                 box.pos = ctx.player_pos + Vec2.from_angle(sub.accel, offset)
                 box.size = Vec2(128.0, 128.0)
                 box.lifetime = 10
-                bomb._spawn_clear(box.pos, radius=64.0, growth=0.0,
-                                  lifetime=0, item_type=ITEM_POINT_BULLET)
+                bomb._spawn_clear(
+                    box.pos,
+                    radius=64.0,
+                    growth=0.0,
+                    lifetime=0,
+                    item_type=ITEM_POINT_BULLET,
+                )
                 offset += MARISA_B_LASER_STEP
     bomb.invulnerable = True
     bomb.timer += 1
@@ -604,9 +712,13 @@ def _calc_marisa_b_focused(bomb: Bomb, ctx: BombContext) -> None:
         bomb.events.append(EVENT_REMOVE_ALL_ITEMS)
         bomb.move_speed_multiplier = 0.2
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
     else:
         # BombData.cpp:1126/1130: timer==60 渐强震屏 / timer==120 大震屏
         if bomb.timer == 60:
@@ -618,8 +730,12 @@ def _calc_marisa_b_focused(bomb: Bomb, ctx: BombContext) -> None:
             box.size = Vec2(384.0, ctx.player_pos.y)
             box.pos = Vec2(192.0, ctx.player_pos.y / 2.0)
             box.lifetime = 23
-            bomb._spawn_projectile(box.pos, width=384.0, height=ctx.player_pos.y,
-                                   item_type=ITEM_POINT_BULLET)
+            bomb._spawn_projectile(
+                box.pos,
+                width=384.0,
+                height=ctx.player_pos.y,
+                item_type=ITEM_POINT_BULLET,
+            )
     bomb.invulnerable = True
     bomb.timer += 1
 
@@ -627,6 +743,7 @@ def _calc_marisa_b_focused(bomb: Bomb, ctx: BombContext) -> None:
 # ---------------------------------------------------------------------------
 # SakuyaA 「幻符·Indiscriminate / Killing Doll」 (规格 §D.4)
 # ---------------------------------------------------------------------------
+
 
 def _calc_sakuya_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
     """咲夜A 非集中「无差别」 (BombData.cpp:1201-1290)。
@@ -649,9 +766,13 @@ def _calc_sakuya_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
         for sub in bomb.sub_info:
             sub.state = 0
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
     if bomb.timer >= 60:
         rng = ctx.rng_float or random.random
         spawns_remaining = 5
@@ -675,8 +796,13 @@ def _calc_sakuya_a_unfocused(bomb: Bomb, ctx: BombContext) -> None:
             box = bomb.damage_boxes[i]
             if box.damage < 30:
                 sub.pos = sub.pos + sub.vel
-                bomb._spawn_clear(sub.pos, radius=32.0, growth=0.0,
-                                  lifetime=0, item_type=ITEM_POINT_BULLET)
+                bomb._spawn_clear(
+                    sub.pos,
+                    radius=32.0,
+                    growth=0.0,
+                    lifetime=0,
+                    item_type=ITEM_POINT_BULLET,
+                )
                 box.size = Vec2(24.0, 24.0)
                 box.pos = sub.pos
                 box.lifetime = 10
@@ -711,9 +837,13 @@ def _calc_sakuya_a_focused(bomb: Bomb, ctx: BombContext) -> None:
         for sub in bomb.sub_info:
             sub.state = 0
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
         bomb.move_speed_multiplier = 0.3
         # 首帧震屏 (BombData.cpp:1388 RegisterChain(1,120,4,1))
         bomb.shakes.append((120, 4, 1))
@@ -740,9 +870,12 @@ def _calc_sakuya_a_focused(bomb: Bomb, ctx: BombContext) -> None:
         if t < 30 or t >= 70:
             if t == 70:
                 if ctx.last_enemy_hit is not None and ctx.last_enemy_hit.x > -100.0:
-                    sub.angle = normalize_angle_diff(math.atan2(
-                        ctx.last_enemy_hit.y - sub.pos.y,
-                        ctx.last_enemy_hit.x - sub.pos.x))
+                    sub.angle = normalize_angle_diff(
+                        math.atan2(
+                            ctx.last_enemy_hit.y - sub.pos.y,
+                            ctx.last_enemy_hit.x - sub.pos.x,
+                        )
+                    )
                 sub.speed = 14.0
             sub.speed += sub.accel
             sub.vel = Vec2.from_angle(sub.angle, sub.speed)
@@ -752,8 +885,13 @@ def _calc_sakuya_a_focused(bomb: Bomb, ctx: BombContext) -> None:
         box = bomb.damage_boxes[i]
         if box.damage == 0:
             sub.pos = sub.pos + sub.vel
-            bomb._spawn_clear(sub.pos, radius=32.0, growth=0.0,
-                              lifetime=0, item_type=ITEM_POINT_BULLET)
+            bomb._spawn_clear(
+                sub.pos,
+                radius=32.0,
+                growth=0.0,
+                lifetime=0,
+                item_type=ITEM_POINT_BULLET,
+            )
             box.size = Vec2(24.0, 24.0)
             box.pos = sub.pos
             box.lifetime = 22
@@ -768,6 +906,7 @@ def _calc_sakuya_a_focused(bomb: Bomb, ctx: BombContext) -> None:
 # SakuyaB 「时符·Perfect Square / Private Square」 (规格 §D.4)
 # ---------------------------------------------------------------------------
 
+
 def _calc_sakuya_b_unfocused(bomb: Bomb, ctx: BombContext) -> None:
     """咲夜B 非集中「完美方阵」 (BombData.cpp:1502-1598)。
 
@@ -779,8 +918,13 @@ def _calc_sakuya_b_unfocused(bomb: Bomb, ctx: BombContext) -> None:
         bomb.is_in_use = False
         bomb.move_speed_multiplier = 1.0
         bomb.events.append(EVENT_END_PLAYER_SPELLCARD)
-        bomb._spawn_clear(ctx.player_pos, radius=800.0, growth=0.0,
-                          lifetime=0, item_type=ITEM_POINT_BULLET)
+        bomb._spawn_clear(
+            ctx.player_pos,
+            radius=800.0,
+            growth=0.0,
+            lifetime=0,
+            item_type=ITEM_POINT_BULLET,
+        )
         return
     if bomb.has_ticked and bomb.timer == 0:
         params = BOMB_PARAMS[(CHAR_SAKUYA_B, False)]
@@ -790,9 +934,13 @@ def _calc_sakuya_b_unfocused(bomb: Bomb, ctx: BombContext) -> None:
         for i in range(4):
             bomb.sub_info[i].state = 0
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
         bomb.move_speed_multiplier = 2.0
         bomb.events.append(EVENT_STOP_BULLET_MOVEMENT)
     if bomb.has_ticked and bomb.timer == 60:
@@ -830,8 +978,13 @@ def _calc_sakuya_b_focused(bomb: Bomb, ctx: BombContext) -> None:
         bomb.is_in_use = False
         bomb.move_speed_multiplier = 1.0
         bomb.events.append(EVENT_END_PLAYER_SPELLCARD)
-        bomb._spawn_clear(ctx.player_pos, radius=800.0, growth=0.0,
-                          lifetime=0, item_type=ITEM_POINT_BULLET)
+        bomb._spawn_clear(
+            ctx.player_pos,
+            radius=800.0,
+            growth=0.0,
+            lifetime=0,
+            item_type=ITEM_POINT_BULLET,
+        )
         # C++ 无条件写 bombClearBoxes[0] (BombData.cpp:1652-1655)
         box0 = bomb.clear_boxes[0]
         box0.pos = Vec2(192.0, 224.0)
@@ -852,11 +1005,20 @@ def _calc_sakuya_b_focused(bomb: Bomb, ctx: BombContext) -> None:
             sub.accel_vec = Vec2(0.0, -0.008)  # 首帧即被追踪公式覆写, 仅初值意义
         bomb.move_speed_multiplier = 1.5
         bomb.cherry_drain = compute_bomb_cherry_drain(
-            cherry=ctx.cherry, cherry_start=ctx.cherry_start,
-            difficulty=ctx.difficulty, bomb_duration=params.duration,
-            min_cost=params.drain_min_cost, scale=params.drain_scale)
-    bomb._spawn_clear(bomb.sub_info[0].pos, radius=96.0, growth=0.0,
-                      lifetime=0, item_type=ITEM_POINT_BULLET)
+            cherry=ctx.cherry,
+            cherry_start=ctx.cherry_start,
+            difficulty=ctx.difficulty,
+            bomb_duration=params.duration,
+            min_cost=params.drain_min_cost,
+            scale=params.drain_scale,
+        )
+    bomb._spawn_clear(
+        bomb.sub_info[0].pos,
+        radius=96.0,
+        growth=0.0,
+        lifetime=0,
+        item_type=ITEM_POINT_BULLET,
+    )
     box = bomb.damage_boxes[0]
     box.pos = bomb.sub_info[0].pos
     box.size = Vec2(160.0, 160.0)
@@ -902,6 +1064,7 @@ _BOMB_CALCS = {
 # 樱之结界 (规格 §D.5)
 # ---------------------------------------------------------------------------
 
+
 class BorderBreakResult(msgspec.Struct):
     """BreakBorderNaturally 的入账透出 (Player.cpp:2004-2034)。
 
@@ -911,8 +1074,8 @@ class BorderBreakResult(msgspec.Struct):
 
     cherry: int
     cherry_max: int
-    cherry_plus: int                  # = cherry_start
-    score: int                        # (cherry - cherry_start) * 10 (代码值)
+    cherry_plus: int  # = cherry_start
+    score: int  # (cherry - cherry_start) * 10 (代码值)
     invulnerability_timer: int = BORDER_BREAK_INVULN
     border_invulnerability_time: int = BORDER_BREAK_INVULN
 
@@ -928,7 +1091,7 @@ class Border(msgspec.Struct):
 
     has_border: BorderState = BorderState.NONE
     invulnerability_timer: int = 0
-    border_timer: int = 0              # 激活时定格 540, cherryPlus 公式分母
+    border_timer: int = 0  # 激活时定格 540, cherryPlus 公式分母
     border_invulnerability_time: int = 0
 
     def ready_border(self) -> None:
@@ -950,8 +1113,9 @@ class Border(msgspec.Struct):
         self.has_border = BorderState.ACTIVE
         return True
 
-    def tick(self, *, cherry: int, cherry_start: int, cherry_max: int
-             ) -> tuple[int, BorderBreakResult | None]:
+    def tick(
+        self, *, cherry: int, cherry_start: int, cherry_max: int
+    ) -> tuple[int, BorderBreakResult | None]:
         """每帧 (UpdateBorderAndBombState 冷却 + UpdateState 的 BORDER 分支)。
 
         返回 (cherry_plus 显示值, 自然破结果或 None)。
@@ -969,27 +1133,31 @@ class Border(msgspec.Struct):
         self.invulnerability_timer -= 1
         if self.invulnerability_timer <= 0:
             result = self.break_border_naturally(
-                cherry=cherry, cherry_start=cherry_start, cherry_max=cherry_max)
+                cherry=cherry, cherry_start=cherry_start, cherry_max=cherry_max
+            )
             return result.cherry_plus, result
         return cherry_plus, None
 
-    def break_border_naturally(self, *, cherry: int, cherry_start: int,
-                               cherry_max: int) -> BorderBreakResult:
+    def break_border_naturally(
+        self, *, cherry: int, cherry_start: int, cherry_max: int
+    ) -> BorderBreakResult:
         """Player::BreakBorderNaturally: 自然破 → +10000 上限/樱点, 得分 (cherry-cherryStart)*10。
 
         顺序照抄 C++: IncreaseCherryMax(10000) → IncreaseCherry(10000)(封顶 cherryMax)
         → score 用加完的 cherry。has_border=NONE, invuln/border_invuln=40。
         (C++ 另有 SPAWNING 态重生分支, 属上层。)
         """
-        cherry_max = min(cherry_max + BORDER_CHERRY_GAIN,
-                         cherry_start + CHERRY_MAX_RANGE)
+        cherry_max = min(
+            cherry_max + BORDER_CHERRY_GAIN, cherry_start + CHERRY_MAX_RANGE
+        )
         cherry = min(cherry + BORDER_CHERRY_GAIN, cherry_max)
         score = (cherry - cherry_start) * 10
         self.has_border = BorderState.NONE
         self.invulnerability_timer = BORDER_BREAK_INVULN
         self.border_invulnerability_time = BORDER_BREAK_INVULN
-        return BorderBreakResult(cherry=cherry, cherry_max=cherry_max,
-                                 cherry_plus=cherry_start, score=score)
+        return BorderBreakResult(
+            cherry=cherry, cherry_max=cherry_max, cherry_plus=cherry_start, score=score
+        )
 
     def break_border(self, player_pos: Vec2) -> ClearBox:
         """Player::BreakBorder (Player.cpp:2148-2182): 主动破(bomb键)/中弹破/死亡破。
@@ -1001,8 +1169,13 @@ class Border(msgspec.Struct):
         self.has_border = BorderState.NONE
         self.invulnerability_timer = BORDER_BREAK_INVULN
         self.border_invulnerability_time = BORDER_BREAK_INVULN
-        return ClearBox(pos=player_pos, size=Vec2(0.0, 32.0), lifetime=50,
-                        item_type=ITEM_CHERRY_SMALL, growth=16.0)
+        return ClearBox(
+            pos=player_pos,
+            size=Vec2(0.0, 32.0),
+            lifetime=50,
+            item_type=ITEM_CHERRY_SMALL,
+            growth=16.0,
+        )
 
     @property
     def active(self) -> bool:

@@ -28,9 +28,9 @@ class GlobalsBase(msgspec.Struct):
     """
 
     # ---- 分数 ----
-    score: int = 0                  # 真实分(=显示分语义)
-    gui_score: int = 0              # HUD 显示分, 每帧向 score 追赶
-    gui_score_difference: int = 0   # 当前帧追赶步长(单调只增)
+    score: int = 0  # 真实分(=显示分语义)
+    gui_score: int = 0  # HUD 显示分, 每帧向 score 追赶
+    gui_score_difference: int = 0  # 当前帧追赶步长(单调只增)
 
     # ---- 计数 ----
     lives_remaining: float = 3.0

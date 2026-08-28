@@ -3,6 +3,7 @@
 夹具模式照 test_api.py: 真实 th07.dat headless 开局; 引擎内部状态读回验证
 时允许摸 game._impl(测试本就需要校验 ModApi 的写入落到了引擎里)。
 """
+
 from __future__ import annotations
 
 import math
@@ -25,13 +26,11 @@ from touhou.registry import (
 )
 from touhou.utils import Vec2
 
-pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(),
-                                reason="需要真实 th07.dat")
+pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
 
 
 def _mods(seed: int = 1) -> tuple[Game, ModApi]:
-    game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL,
-                seed=seed)
+    game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL, seed=seed)
     return game, ModApi(game)
 
 
@@ -71,7 +70,7 @@ def test_set_bombs_lives_range_check() -> None:
 # ---- 无敌挂 ----
 def test_god_mode_resets_invulnerability() -> None:
     game, mods = _mods()
-    game._impl.player.invulnerability_timer = 0   # 先清零(测试摸内部)
+    game._impl.player.invulnerability_timer = 0  # 先清零(测试摸内部)
     mods.player.god_mode()
     # 计时被重置, 且快照的 invulnerable 观测同步为真
     assert game._impl.player.invulnerability_timer == 999
@@ -92,10 +91,19 @@ def test_fire_ring_increases_bullet_count() -> None:
 def test_fire_burst_passthrough() -> None:
     _, mods = _mods()
     before = mods.bullets.count
-    n = mods.bullets.fire(Burst(path=Vec2(192, 100), base_angle=math.pi / 2,
-                                aim=Aim.RING_ABSOLUTE, arms=6, rings=2,
-                                speed_a=2.0, speed_b=1.0, angle_step=0.0))
-    assert n == 12   # arms * rings
+    n = mods.bullets.fire(
+        Burst(
+            path=Vec2(192, 100),
+            base_angle=math.pi / 2,
+            aim=Aim.RING_ABSOLUTE,
+            arms=6,
+            rings=2,
+            speed_a=2.0,
+            speed_b=1.0,
+            angle_step=0.0,
+        )
+    )
+    assert n == 12  # arms * rings
     assert mods.bullets.count == before + 12
 
 
@@ -122,11 +130,11 @@ def test_boss_absent_at_stage_start() -> None:
 def test_boss_setters_on_real_boss() -> None:
     """真实 Boss 对象(th07 Boss 是 msgspec.Struct): 生命/位置直改读回一致。"""
     game, mods = _mods()
-    game._impl.boss = Boss(name="test")             # 测试摸内部塞一个 Boss
+    game._impl.boss = Boss(name="test")  # 测试摸内部塞一个 Boss
     assert mods.boss.exists
     mods.boss.set_life(30)
     assert game._impl.boss.life == 30.0
-    assert game._impl.boss.max_life == 0.0          # 不改上限
+    assert game._impl.boss.max_life == 0.0  # 不改上限
     mods.boss.set_pos(192.0, 96.0)
     assert game._impl.boss.pos == Vec2(192.0, 96.0)
 
@@ -164,7 +172,7 @@ def test_duck_engine_missing_capabilities() -> None:
 def test_duck_boss_missing_writable_members() -> None:
     """有 boss 槽但对象缺可写成员: 逐个能力位探测报缺失成员名。"""
     game = _duck_game()
-    game._impl.boss = SimpleNamespace()             # 空壳 Boss(无 life/pos)
+    game._impl.boss = SimpleNamespace()  # 空壳 Boss(无 life/pos)
     mods = ModApi(game)
     assert mods.boss.exists
     with pytest.raises(NotImplementedError, match="不支持Boss 生命改写.*life"):
@@ -182,8 +190,9 @@ def test_readonly_property_reported() -> None:
         def power(self) -> float:
             return 0.0
 
-    game._impl = _Duck(player=game._impl.player, globals=game._impl.globals,
-                       bullets=game._impl.bullets)
+    game._impl = _Duck(
+        player=game._impl.player, globals=game._impl.globals, bullets=game._impl.bullets
+    )
     with pytest.raises(NotImplementedError, match="只读"):
         ModApi(game).player.set_power(1)
 
@@ -196,14 +205,14 @@ def test_capability_namespaces_and_readback() -> None:
     assert mods.is_capabilities_exist("player.set_cherry")
     assert mods.is_capabilities_exist("player.set_cherry_max")
     assert mods.is_capabilities_exist("border.border_break")
-    assert mods.is_capabilities_exist("player.set_power")   # 通用核同口径
+    assert mods.is_capabilities_exist("player.set_power")  # 通用核同口径
     assert not mods.is_capabilities_exist("player.nope")
-    assert not mods.is_capabilities_exist("set_cherry")     # 裸名(无点号)恒 False
+    assert not mods.is_capabilities_exist("set_cherry")  # 裸名(无点号)恒 False
     assert not mods.is_capabilities_exist("nope.nope")
     assert callable(mods.player.set_cherry)
     assert callable(mods.border.border_break)
     mods.player.set_cherry(50000)
-    assert game.cherry == 50000          # 写入落到引擎, 只读面读回一致
+    assert game.cherry == 50000  # 写入落到引擎, 只读面读回一致
     assert game._impl.globals.cherry == 50000
 
 
@@ -211,7 +220,7 @@ def test_unknown_attribute_error() -> None:
     """未知名抛 AttributeError(hasattr/getattr 语义正确), 信息列命名空间清单。"""
     _, mods = _mods()
     assert hasattr(mods, "player") and hasattr(mods, "border")
-    assert not hasattr(mods, "set_cherry")   # 平铺入口已删, 走命名空间
+    assert not hasattr(mods, "set_cherry")  # 平铺入口已删, 走命名空间
     assert not hasattr(mods, "nope")
     with pytest.raises(AttributeError, match="没有成员 'nope'.*命名空间"):
         mods.nope()
@@ -295,12 +304,13 @@ def test_undeclared_capability_lands_in_game_namespace() -> None:
 def test_game_without_mods_dimension() -> None:
     """未注册 mods 维度的作品: 只有通用核命名空间, 调作品能力给登记提示。"""
     game, _ = _mods()
-    game.spec = GameSpec(name="thXX", ecl=None, anm=None,
-                         hooks=GameHooks(), world=None)     # mods 缺省 None
+    game.spec = GameSpec(
+        name="thXX", ecl=None, anm=None, hooks=GameHooks(), world=None
+    )  # mods 缺省 None
     mods = ModApi(game)
     assert not hasattr(mods, "border")
     assert not mods.is_capabilities_exist("player.set_cherry")
-    assert mods.is_capabilities_exist("player.set_power")   # 通用核不受影响
+    assert mods.is_capabilities_exist("player.set_power")  # 通用核不受影响
     with pytest.raises(AttributeError, match="未注册 mod 能力.*register_mods"):
         mods.set_cherry(1)
     mods.player.set_power(128)
@@ -311,7 +321,7 @@ def test_game_without_mods_dimension() -> None:
 # ---- gui 覆盖层(立即模式; 产消语义见 engine/render/overlay.py) ----
 def test_gui_commands_buffered_and_drained() -> None:
     """ModApi.gui 推入命令到汇聚点: 缓冲语义正确, drain 取走即清空。"""
-    overlay.SINK.drain()                     # 清掉其他用例的残留(进程级单例)
+    overlay.SINK.drain()  # 清掉其他用例的残留(进程级单例)
     _, mods = _mods()
     mods.gui.line(0, 0, 384, 448, color=(255, 0, 0), width=2)
     mods.gui.circle(192, 224, 32)
@@ -319,14 +329,12 @@ def test_gui_commands_buffered_and_drained() -> None:
     mods.gui.text(8, 8, "安全区", size=24)
     assert len(overlay.SINK) == 4
     cmds = overlay.SINK.drain()
-    assert len(overlay.SINK) == 0            # 消费即清空(命令只活一帧)
+    assert len(overlay.SINK) == 0  # 消费即清空(命令只活一帧)
     assert isinstance(cmds[0], overlay.OverlayLine)
-    assert cmds[0].x2 == 384 and cmds[0].color == (255, 0, 0) \
-        and cmds[0].width == 2
+    assert cmds[0].x2 == 384 and cmds[0].color == (255, 0, 0) and cmds[0].width == 2
     assert isinstance(cmds[1], overlay.OverlayCircle)
     assert isinstance(cmds[2], overlay.OverlayPolyline)
-    assert cmds[2].points == ((0.0, 0.0), (10.0, 10.0), (20.0, 0.0)) \
-        and cmds[2].closed
+    assert cmds[2].points == ((0.0, 0.0), (10.0, 10.0), (20.0, 0.0)) and cmds[2].closed
     assert isinstance(cmds[3], overlay.OverlayText)
     assert cmds[3].content == "安全区" and cmds[3].size == 24
 
@@ -337,7 +345,7 @@ def test_gui_headless_is_silent_noop() -> None:
     gui = GuiMods(sink)
     for i in range(10):
         gui.line(0, 0, i, i)
-    assert len(sink) == 3                    # 上限兜底, 丢弃最旧
+    assert len(sink) == 3  # 上限兜底, 丢弃最旧
     cmds = sink.drain()
     assert [c.x2 for c in cmds] == [7.0, 8.0, 9.0]
 
@@ -369,7 +377,7 @@ def test_border_break() -> None:
     game, mods = _mods()
     with pytest.raises(ValueError, match="没有结界可破"):
         mods.border.border_break()
-    game._impl.border.ready_border()                       # 满樱信号 → READY
+    game._impl.border.ready_border()  # 满樱信号 → READY
     assert game._impl.border.has_border == BorderState.READY
     mods.border.border_break()
     assert game._impl.border.has_border == BorderState.NONE

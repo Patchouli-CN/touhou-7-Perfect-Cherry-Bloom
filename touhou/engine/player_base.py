@@ -48,11 +48,11 @@ __all__ = [
 ]
 
 # ---- 状态机/判定关键常量(默认值以 th07 Player.cpp 为准) ----
-GRAZE_EXPAND = 20.0          # CheckGraze 弹盒外扩像素
-RESPAWN_INVULN = 240         # 重生无敌帧数
-SPAWN_INVULN = 120           # 出生 invulnerabilityTimer(AddedCallback)
-SPAWN_TICKS = 30             # Respawn 触发阈值(invulnerabilityTimer>=30)
-BULLET_GRACE_PERIOD = 60     # 重生后每帧 RemoveAllBullets(0) 的帧数
+GRAZE_EXPAND = 20.0  # CheckGraze 弹盒外扩像素
+RESPAWN_INVULN = 240  # 重生无敌帧数
+SPAWN_INVULN = 120  # 出生 invulnerabilityTimer(AddedCallback)
+SPAWN_TICKS = 30  # Respawn 触发阈值(invulnerabilityTimer>=30)
+BULLET_GRACE_PERIOD = 60  # 重生后每帧 RemoveAllBullets(0) 的帧数
 
 
 class PlayerState(IntEnum):
@@ -76,10 +76,12 @@ class PlayerEventKind(IntEnum):
     BREAK_BORDER 是带结界系统的作品(th07)用的扩展事件。
     """
 
-    DEATH_SETTLE = 1       # data: DeathSettle(死亡结算: power/掉 P/重撒; th07 另有樱罚/subrank)
-    RESPAWNED = 2          # 重生完成(DEAD→INVULNERABLE); 上层扣残机/重置炸弹
-    GRAZE = 3              # 擦弹; value=显示分(th07=200, 另见 th07 的 GRAZE_SUBRANK)
-    BREAK_BORDER = 4       # BORDER 中弹 → 结界破保命(不死)
+    DEATH_SETTLE = (
+        1  # data: DeathSettle(死亡结算: power/掉 P/重撒; th07 另有樱罚/subrank)
+    )
+    RESPAWNED = 2  # 重生完成(DEAD→INVULNERABLE); 上层扣残机/重置炸弹
+    GRAZE = 3  # 擦弹; value=显示分(th07=200, 另见 th07 的 GRAZE_SUBRANK)
+    BREAK_BORDER = 4  # BORDER 中弹 → 结界破保命(不死)
     REMOVE_ALL_BULLETS = 5  # bulletGracePeriod 内每帧透出(清弹信号)
 
 
@@ -92,9 +94,9 @@ class DeathSettle(msgspec.Struct):
 
     has_lives: bool
     new_power: float
-    drop_power_big: int = 0     # 大 P 个数(th07: 有残机 1)
-    drop_power_small: int = 0   # 小 P 个数(th07: 有残机 5)
-    drop_full_power: int = 0    # FULL_POWER 个数(th07: 无残机 5)
+    drop_power_big: int = 0  # 大 P 个数(th07: 有残机 1)
+    drop_power_small: int = 0  # 小 P 个数(th07: 有残机 5)
+    drop_full_power: int = 0  # FULL_POWER 个数(th07: 无残机 5)
     activate_all_items: bool = False
 
 
@@ -120,8 +122,8 @@ class KillResult(IntEnum):
     """CalcKillboxCollision 结果。"""
 
     NONE = 0
-    DEATH = 1          # 命中且 ALIVE → Die()
-    BORDER_BREAK = 2   # 命中且 BORDER → 结界破(结界系统作品用)
+    DEATH = 1  # 命中且 ALIVE → Die()
+    BORDER_BREAK = 2  # 命中且 BORDER → 结界破(结界系统作品用)
 
 
 class PlayerCombatFace(Protocol):
@@ -138,9 +140,13 @@ class PlayerCombatFace(Protocol):
 
     def check_contact(self, center: Vec2, size: tuple[float, float]) -> bool: ...
 
-    def calc_damage_to_enemy(self, enemy_center: Vec2,
-                             enemy_size: tuple[float, float],
-                             *, bomb_active: bool | None = None) -> int: ...
+    def calc_damage_to_enemy(
+        self,
+        enemy_center: Vec2,
+        enemy_size: tuple[float, float],
+        *,
+        bomb_active: bool | None = None,
+    ) -> int: ...
 
 
 class PlayerBase(Generic[DeathCtxT]):
@@ -217,10 +223,15 @@ class PlayerBase(Generic[DeathCtxT]):
         self.focus = focus
         self._on_push(firing)
 
-    def push_keys(self, *, left=False, right=False, up=False, down=False,
-                  focus=False, firing=True) -> None:
-        self.push((1 if right else 0) - (1 if left else 0),
-                  (1 if down else 0) - (1 if up else 0), focus=focus, firing=firing)
+    def push_keys(
+        self, *, left=False, right=False, up=False, down=False, focus=False, firing=True
+    ) -> None:
+        self.push(
+            (1 if right else 0) - (1 if left else 0),
+            (1 if down else 0) - (1 if up else 0),
+            focus=focus,
+            firing=firing,
+        )
 
     def _on_push(self, firing: bool) -> None:
         """push 的射击按住状态 hook(th07: self._firing = firing)。"""
@@ -275,8 +286,11 @@ class PlayerBase(Generic[DeathCtxT]):
         if self.respawn_timer > 0:
             self.respawn_timer -= 1
             if self.respawn_timer == 0:
-                self.events.append(PlayerEvent(
-                    PlayerEventKind.DEATH_SETTLE, data=self._settle_death(ctx)))
+                self.events.append(
+                    PlayerEvent(
+                        PlayerEventKind.DEATH_SETTLE, data=self._settle_death(ctx)
+                    )
+                )
                 self.respawn()
                 self.events.append(PlayerEvent(PlayerEventKind.RESPAWNED))
 
@@ -302,7 +316,9 @@ class PlayerBase(Generic[DeathCtxT]):
         if self.state in (PlayerState.DEAD, PlayerState.SPAWNING):
             return False
         hx, hy = size[0] / 2 + GRAZE_EXPAND, size[1] / 2 + GRAZE_EXPAND
-        if not _aabb_intersect(center, hx, hy, self.pos, self.graze_radius, self.graze_radius):
+        if not _aabb_intersect(
+            center, hx, hy, self.pos, self.graze_radius, self.graze_radius
+        ):
             return False
         self._on_graze()
         return True
@@ -321,8 +337,14 @@ class PlayerBase(Generic[DeathCtxT]):
 
     def check_killbox(self, center: Vec2, size: tuple[float, float]) -> KillResult:
         """命中判定: 弹盒 center±size/2 与判定盒(半宽 hitbox_radius) AABB 相交。"""
-        if not _aabb_intersect(center, size[0] / 2, size[1] / 2,
-                               self.pos, self.hitbox_radius, self.hitbox_radius):
+        if not _aabb_intersect(
+            center,
+            size[0] / 2,
+            size[1] / 2,
+            self.pos,
+            self.hitbox_radius,
+            self.hitbox_radius,
+        ):
             return KillResult.NONE
         if self.state == PlayerState.BORDER:
             self.events.append(PlayerEvent(PlayerEventKind.BREAK_BORDER))
@@ -339,8 +361,14 @@ class PlayerBase(Generic[DeathCtxT]):
         无玩家侧效果(敌人侧 life-=10 由调用方做, EnemyManager.cpp:589-594)。
         C++ 开头 CheckBombGraze(返回 2) 分支不走这里: 炸弹盒由上层管线处理
         (impl 炸弹中跳过体术判定, 见 tick)。"""
-        if not _aabb_intersect(center, size[0] / 2, size[1] / 2,
-                               self.pos, self.hitbox_radius, self.hitbox_radius):
+        if not _aabb_intersect(
+            center,
+            size[0] / 2,
+            size[1] / 2,
+            self.pos,
+            self.hitbox_radius,
+            self.hitbox_radius,
+        ):
             return False
         if self.state == PlayerState.BORDER:
             self.events.append(PlayerEvent(PlayerEventKind.BREAK_BORDER))
@@ -367,15 +395,22 @@ class PlayerBase(Generic[DeathCtxT]):
         self.velocity = v
         self.pos = self.pos + v
         lo, hi = self.bounds
-        self.pos = Vec2(max(lo.x, min(self.pos.x, hi.x)), max(lo.y, min(self.pos.y, hi.y)))
+        self.pos = Vec2(
+            max(lo.x, min(self.pos.x, hi.x)), max(lo.y, min(self.pos.y, hi.y))
+        )
 
     def _current_speeds(self) -> tuple[float, float]:
         """当前 (直线速度, 斜向速度) hook —— 子类实现(th07 按 focus 查 .sht)。"""
         raise NotImplementedError("移速来源由作品层子类实现")
 
 
-def _aabb_intersect(c1: Vec2, hx1: float, hy1: float,
-                    c2: Vec2, hx2: float, hy2: float) -> bool:
+def _aabb_intersect(
+    c1: Vec2, hx1: float, hy1: float, c2: Vec2, hx2: float, hy2: float
+) -> bool:
     """两 AABB(中心+半宽) 是否相交(边相接算相交, 同 C++ 的 > 判定)。"""
-    return not (c1.x - hx1 > c2.x + hx2 or c1.y - hy1 > c2.y + hy2
-                or c1.x + hx1 < c2.x - hx2 or c1.y + hy1 < c2.y - hy2)
+    return not (
+        c1.x - hx1 > c2.x + hx2
+        or c1.y - hy1 > c2.y + hy2
+        or c1.x + hx1 < c2.x - hx2
+        or c1.y + hy1 < c2.y - hy2
+    )

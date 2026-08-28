@@ -18,6 +18,7 @@ headless 跑数据(测试/调参用, 无需窗口):
     DODGE_AI_HEADLESS=1 uv run python examples/dodge_ai.py
     帧数用环境变量 DODGE_AI_FRAMES 覆盖(默认 3600 ≈ 1 分钟)。
 """
+
 from __future__ import annotations
 
 import math
@@ -25,14 +26,12 @@ import os
 
 import numpy as np
 
-from touhou import ( 
-        Game, GameEventKind, GamePhase, Input,
-        TouhouWorld)
+from touhou import Game, GameEventKind, GamePhase, Input, TouhouWorld
 
-PREDICT_FRAMES = 16     # 线性外推帧数(视野)
-THREAT_RADIUS = 96.0    # 只规避此半径内的威胁(px)
-WALL_MARGIN = 48.0      # 距版边多近开始叠加回中力(px)
-FOCUS_RADIUS = 32.0     # 最近威胁小于此值时按 focus 精控(px)
+PREDICT_FRAMES = 16  # 线性外推帧数(视野)
+THREAT_RADIUS = 96.0  # 只规避此半径内的威胁(px)
+WALL_MARGIN = 48.0  # 距版边多近开始叠加回中力(px)
+FOCUS_RADIUS = 32.0  # 最近威胁小于此值时按 focus 精控(px)
 SCREEN_W, SCREEN_H = 384.0, 448.0
 
 # 8 向单位向量 (dx, dy), 屏幕系 y 向下; 下标 = 八方离散角
@@ -47,14 +46,14 @@ def dodge_policy(game: Game) -> Input:
 
     arr = game.bullets_array()
     if len(arr):
-        future = arr[:, :2] + arr[:, 2:4] * PREDICT_FRAMES   # 线性外推落点
+        future = arr[:, :2] + arr[:, 2:4] * PREDICT_FRAMES  # 线性外推落点
         rel = future - (px, py)
         # 净距离扣除弹判定半径(大弹更早产生斥力)
         dist = np.hypot(rel[:, 0], rel[:, 1]) - arr[:, 4]
         near = dist < THREAT_RADIUS
         if near.any():
             rel, dist = rel[near], np.maximum(dist[near], 1.0)
-            w = 1.0 / dist ** 3
+            w = 1.0 / dist**3
             fx -= float((rel[:, 0] * w).sum())
             fy -= float((rel[:, 1] * w).sum())
             focus = bool((dist < FOCUS_RADIUS).any())
@@ -73,36 +72,48 @@ def dodge_policy(game: Game) -> Input:
         return Input(shoot=True, advance=True, focus=focus)
     octant = round(math.atan2(fy, fx) / (math.pi / 4)) % 8
     dx, dy = _DIRS[octant]
-    return Input(left=dx < 0, right=dx > 0, up=dy < 0, down=dy > 0,
-                 shoot=True, advance=True, focus=focus)
+    return Input(
+        left=dx < 0,
+        right=dx > 0,
+        up=dy < 0,
+        down=dy > 0,
+        shoot=True,
+        advance=True,
+        focus=focus,
+    )
 
 
 def main() -> None:
     if os.environ.get("DODGE_AI_HEADLESS") != "1":
         # 窗口观战: 跳过标题菜单直接进游戏, 每帧输入来自 dodge_policy;
         # Esc 中止, 终局(通关/GameOver)自动退出。观战自动录像(replays/)。
-        tw = TouhouWorld(character="ReimuA",
-                         difficulty="Normal", seed=42,
-                         headless=False, auto_input=dodge_policy)
+        tw = TouhouWorld(
+            character="ReimuA",
+            difficulty="Normal",
+            seed=42,
+            headless=False,
+            auto_input=dodge_policy,
+        )
         print("[dodge_ai] 窗口观战启动(Esc 中止)")
-        tw.run()    # 阻塞至关窗/终局
+        tw.run()  # 阻塞至关窗/终局
         print("[dodge_ai] 观战结束")
         return
 
     frames = int(os.environ.get("DODGE_AI_FRAMES", "3600"))
-    game = Game(character="ReimuA", difficulty="Normal",
-                seed=42)
+    game = Game(character="ReimuA", difficulty="Normal", seed=42)
     deaths = 0
     for _ in range(frames):
         events = game.step(dodge_policy(game))
         deaths += sum(1 for e in events if e.kind == GameEventKind.PLAYER_DEATH)
         if game.phase == GamePhase.GAME_OVER:
-            game.finalize_game_over()   # headless 无续关 UI, 直接收尾
+            game.finalize_game_over()  # headless 无续关 UI, 直接收尾
             break
         if game.phase == GamePhase.RESULT:
             break
-    print(f"[dodge_ai] 存活 {game.frame} 帧, 中弹 {deaths} 次, "
-          f"残机 {game.lives}, phase={game.phase.value}")
+    print(
+        f"[dodge_ai] 存活 {game.frame} 帧, 中弹 {deaths} 次, "
+        f"残机 {game.lives}, phase={game.phase.value}"
+    )
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@
 - 颜色为 RGB 三元组 (r, g, b), 各通道 0..255;
 - 线宽/字号单位为像素。
 """
+
 from __future__ import annotations
 
 from typing import TypeAlias, Union
@@ -46,6 +47,7 @@ _DEFAULT_COLOR: Color = (255, 255, 255)
 
 class OverlayLine(msgspec.Struct, frozen=True):
     """一条线段 (x1, y1)-(x2, y2)(游戏区像素系, y 向下)。"""
+
     x1: float
     y1: float
     x2: float
@@ -56,6 +58,7 @@ class OverlayLine(msgspec.Struct, frozen=True):
 
 class OverlayCircle(msgspec.Struct, frozen=True):
     """一个圆 (x, y) 半径 radius; width=0 为实心填充(pygame.draw 语义)。"""
+
     x: float
     y: float
     radius: float
@@ -65,6 +68,7 @@ class OverlayCircle(msgspec.Struct, frozen=True):
 
 class OverlayPolyline(msgspec.Struct, frozen=True):
     """一条折线(导航路线等); closed=True 时首尾相连成多边形。"""
+
     points: tuple[tuple[float, float], ...]
     color: Color = _DEFAULT_COLOR
     width: int = 1
@@ -73,6 +77,7 @@ class OverlayPolyline(msgspec.Struct, frozen=True):
 
 class OverlayText(msgspec.Struct, frozen=True):
     """一段文字, 左上角锚在 (x, y)(自定义弹出提示等)。"""
+
     x: float
     y: float
     content: str
@@ -82,7 +87,8 @@ class OverlayText(msgspec.Struct, frozen=True):
 
 #: 覆盖层命令的联合类型(drain 的消费方按 isinstance 分发)。
 OverlayCommand: TypeAlias = Union[
-    OverlayLine, OverlayCircle, OverlayPolyline, OverlayText]
+    OverlayLine, OverlayCircle, OverlayPolyline, OverlayText
+]
 
 
 class OverlaySink:

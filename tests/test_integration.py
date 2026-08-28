@@ -7,6 +7,7 @@ Boss 出场与符卡 begin/end(捕获+超时)、阶段切换、炸弹扣樱/清�
 注意: 瞄准弹是瞄玩家当前位置的, 站桩必死; 需要存活的段落用横移躲弹,
 需要必中的段落(死亡/结界破)停下让弹打中。
 """
+
 from __future__ import annotations
 
 import math
@@ -225,8 +226,11 @@ def test_death_settle_and_respawn() -> None:
     assert g.power == 34.0, "power 应 50-16"
     assert g.cherry < 20000, "死亡樱点惩罚未生效"
     # 死亡点掉出 1 大 P + 5 小 P(结算当帧可见, 次帧起才被吸走/下落)
-    drops = [it for it in g.items.alive()
-             if it.type in (ItemType.POWER_BIG, ItemType.POWER_SMALL)]
+    drops = [
+        it
+        for it in g.items.alive()
+        if it.type in (ItemType.POWER_BIG, ItemType.POWER_SMALL)
+    ]
     assert len(drops) >= 1
     assert not g.game_over
 
@@ -283,8 +287,13 @@ def test_full_smoke_2000_frames_with_bombs() -> None:
     """2000+ 帧综合冒烟: 移动+射击+两次 bomb, 全程不崩且状态自洽。"""
     g = _game()
     for f in range(2200):
-        keys = ((f // 37) % 2 == 1, (f // 37) % 2 == 0,
-                False, (f // 120) % 2 == 1, (f // 90) % 3 == 2)
+        keys = (
+            (f // 37) % 2 == 1,
+            (f // 37) % 2 == 0,
+            False,
+            (f // 120) % 2 == 1,
+            (f // 90) % 3 == 2,
+        )
         g.tick(keys=keys, bomb=(f in (700, 1200)))
         if g.game_over:  # 续关
             g.game_over = False
@@ -329,8 +338,9 @@ def test_marisa_a_missile_sustained_damage() -> None:
     _isolate(g)
     px = g.player.pos.x
     # 判定半径 20, 罩住 ±24 的子机导弹
-    e = g.host.spawn(path=[Vec2(px, 100), Vec2(px, 400)], life=2000,
-                     speed=0.01, radius=20.0)
+    e = g.host.spawn(
+        path=[Vec2(px, 100), Vec2(px, 400)], life=2000, speed=0.01, radius=20.0
+    )
     saw_exploding = False
     dmg_frames = 0
     prev = e.life
@@ -354,8 +364,9 @@ def test_sakuya_a_focus_homing_hits() -> None:
     _isolate(g)
     px = g.player.pos.x
     # 相对玩家角度 atan2(-184, 60) ≈ -72°, 在咲夜索敌窗口内; 直射打不中
-    e = g.host.spawn(path=[Vec2(px + 60, 200), Vec2(px + 60, 400)], life=500,
-                     speed=0.01, radius=14.0)
+    e = g.host.spawn(
+        path=[Vec2(px + 60, 200), Vec2(px + 60, 400)], life=500, speed=0.01, radius=14.0
+    )
     saw_target = False
     for _ in range(150):
         g.tick(keys=_FOCUS_STOP)
@@ -374,8 +385,9 @@ def test_marisa_b_laser_slot_bullet() -> None:
     _tick_until_alive(g)
     _isolate(g)
     px = g.player.pos.x
-    e = g.host.spawn(path=[Vec2(px, 100), Vec2(px, 400)], life=2000,
-                     speed=0.01, radius=20.0)
+    e = g.host.spawn(
+        path=[Vec2(px, 100), Vec2(px, 400)], life=2000, speed=0.01, radius=20.0
+    )
     laser = None
     for _ in range(30):  # 等 focus 过渡 8 帧 + 槽弹建立
         g.tick(keys=_FOCUS_STOP)
@@ -411,8 +423,9 @@ def test_sakuya_b_bomb_stops_bullets() -> None:
     g.tick(keys=_STOP_KEYS, bomb=True)
     assert g.bomb.is_in_use, "咲夜B 炸弹未触发(机体限制未解除?)"
     frozen = {id(b): (b.pos.x, b.pos.y) for b in g.bullets.alive()}
-    assert all(b.speed == 0.0 and b.vel.x == 0.0 and b.vel.y == 0.0
-               for b in g.bullets.alive()), "停时未清零弹速"
+    assert all(
+        b.speed == 0.0 and b.vel.x == 0.0 and b.vel.y == 0.0 for b in g.bullets.alive()
+    ), "停时未清零弹速"
     for _ in range(10):
         g.tick(keys=_STOP_KEYS)
     for b in g.bullets.alive():
@@ -446,8 +459,9 @@ def test_bomb_spellcard_scaling_pipeline() -> None:
     assert g.boss.life == 600 - 9
     for _ in range(6):  # 伤害帧: timer≡1,2,3 (mod 4) → 6 帧中 5 帧 × 9
         g.tick(keys=_FOCUS_STOP)
-    assert g.boss.life == 600 - 9 - 45, \
+    assert g.boss.life == 600 - 9 - 45, (
         f"符卡 used_bomb 后 bomb 伤害应 9/帧, life={g.boss.life}"
+    )
 
 
 def test_bomb_vacuums_items() -> None:
@@ -456,8 +470,7 @@ def test_bomb_vacuums_items() -> None:
     g = _game()
     _tick_until_alive(g)
     _isolate(g)
-    dropped = [g.items.spawn(Vec2(60 + i * 60, 120), ItemType.POINT)
-               for i in range(4)]
+    dropped = [g.items.spawn(Vec2(60 + i * 60, 120), ItemType.POINT) for i in range(4)]
     assert all(it.state == STATE_FALL for it in dropped)  # 前置: 下落中
     g.tick(keys=_STOP_KEYS, bomb=True)
     assert g.bomb.is_in_use, "炸弹未触发"
@@ -538,10 +551,12 @@ def test_point_item_collect_popup() -> None:
     g.tick(keys=_STOP_KEYS)
     assert g.globals.popups and g.globals.popups[0].pos.y < pos.y
 
+
 def test_border_banners() -> None:
     """结界激活弹 "Supernatural Border!!" (Player.cpp:2138);
     自然破弹 "Border Bonus" (Player.cpp:2013) (BUGS.md#11)。"""
     from touhou.games.th07.globals import STATUS_BORDER, STATUS_BORDER_BONUS
+
     g = _game()
     _tick_until_alive(g)
     _isolate(g)  # 停波次防流弹提前破结界
@@ -578,6 +593,7 @@ def test_bomb_damage_box_respects_hittable_gate() -> None:
     """bomb 伤害盒同走 canDie && isHittable 门控 (BUGS.md#10,
     EnemyManager.cpp:776-779): isHittable=0 的敌人不掉血。"""
     from touhou.utils import Vec2 as V2
+
     g = _game()
     _tick_until_alive(g)
     _isolate(g)
@@ -585,6 +601,7 @@ def test_bomb_damage_box_respects_hittable_gate() -> None:
     # 手工放一个盖住敌人的 bomb 伤害盒
     g.bomb.is_in_use = True
     from touhou.engine.bomb_base import DamageBox
+
     g.bomb.damage_boxes.append(DamageBox(e.pos, V2(100.0, 100.0), 10))
     e.is_hittable = False
     g._apply_bomb_boxes()

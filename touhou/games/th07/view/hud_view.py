@@ -1,4 +1,4 @@
-""" 右侧 HUD 面板 + 樱点槽渲染 —— 对照 Gui::DrawGameScene / AsciiManager::DrawPopups。
+"""右侧 HUD 面板 + 樱点槽渲染 —— 对照 Gui::DrawGameScene / AsciiManager::DrawPopups。
 
 【th07 专属】本模块的坐标/贴图布局是妖妖梦窗口版实现, 不随 GameData 泛化;
 新作品复用窗口版需自带 HUD view(名单/面数参数化见 view/impl.py 的
@@ -90,23 +90,25 @@ class HudView:
 
     # ---- 贴图工具 ----
     @staticmethod
-    def _blit(surf: pygame.Surface, img: pygame.Surface | None,
-              x: float, y: float) -> None:
+    def _blit(
+        surf: pygame.Surface, img: pygame.Surface | None, x: float, y: float
+    ) -> None:
         """左上锚 blit(ANM_22, anchor=3)。"""
         if img is None:
             return
         surf.blit(img, (int(x), int(y)))
 
-    def _blit_center(self, surf: pygame.Surface, img: pygame.Surface | None,
-                     x: float, y: float) -> None:
+    def _blit_center(
+        self, surf: pygame.Surface, img: pygame.Surface | None, x: float, y: float
+    ) -> None:
         """中心锚 blit(默认 anchor=0; 樱点数字用)。"""
         if img is None:
             return
-        surf.blit(img, (int(x) - img.get_width() // 2,
-                        int(y) - img.get_height() // 2))
+        surf.blit(img, (int(x) - img.get_width() // 2, int(y) - img.get_height() // 2))
 
-    def _glyph(self, ch: str, color: tuple[int, int, int],
-               big: bool = True) -> pygame.Surface | None:
+    def _glyph(
+        self, ch: str, color: tuple[int, int, int], big: bool = True
+    ) -> pygame.Surface | None:
         """ascii 字形: c → sprite ord(c)-1 (AsciiManager.cpp:317);
         樱点数字 d → sprite 132+d (AsciiManager.cpp:1166)。按颜色缓存 tint。"""
         if big:
@@ -126,8 +128,14 @@ class HudView:
             self._tint[key] = out
         return out
 
-    def _draw_text(self, surf: pygame.Surface, x: float, y: float, s: str,
-                   color: tuple[int, int, int] = (255, 255, 255)) -> None:
+    def _draw_text(
+        self,
+        surf: pygame.Surface,
+        x: float,
+        y: float,
+        s: str,
+        color: tuple[int, int, int] = (255, 255, 255),
+    ) -> None:
         """ascii 贴字(左上锚, 步进 14 = fontSpacing, AsciiManager.cpp:126/284)。"""
         for ch in s:
             if ch == " ":
@@ -153,14 +161,14 @@ class HudView:
     def _render_chrome_uncached(self, surf: pygame.Surface) -> None:
         tile = self.bank.sprite(_FRONT, 12)
         if tile is not None:
-            for y in range(0, 465, 32):            # 左列
+            for y in range(0, 465, 32):  # 左列
                 self._blit(surf, tile, 0, y)
-            for x in range(416, 625, 32):          # 右栏
+            for x in range(416, 625, 32):  # 右栏
                 for y in range(16, 465, 32):
                     self._blit(surf, tile, x, y)
         strip = self.bank.sprite(_FRONT, 13)
         if strip is not None:
-            for x in range(0, 625, 128):           # 上/下沿
+            for x in range(0, 625, 128):  # 上/下沿
                 self._blit(surf, strip, x, 0)
                 self._blit(surf, strip, x, 464)
             # 行底衬(原版仅值刷新帧画, 这里常画, 见模块 docstring);
@@ -189,8 +197,7 @@ class HudView:
         self._draw_text(surf, _VALUE_X, 48, f"{high:08d}")
         # HiScore 的续关数后缀 (Gui.cpp:1572-1576, highScoreNumContinues),
         # 与 Score 行的 numRetries 后缀同位 —— 缺了它 HiScore 视觉上少一位
-        self._draw_text(surf, _VALUE_X + 112, 48,
-                        f"{g.high_score_num_continues % 10}")
+        self._draw_text(surf, _VALUE_X + 112, 48, f"{g.high_score_num_continues % 10}")
         self._draw_text(surf, _VALUE_X, 64, f"{g.gui_score:08d}")
         # retries 后缀(Gui.cpp:1553)
         self._draw_text(surf, _VALUE_X + 112, 64, f"{g.num_retries % 10}")
@@ -209,16 +216,19 @@ class HudView:
                     a = 224 + (128 - 224) * x // 127
                     pygame.draw.line(bar, (224, 224, 255, a), (x, 0), (x, 15))
                 self._power_bar = bar
-            surf.blit(self._power_bar, (_VALUE_X, 144),
-                      (0, 0, power, 16))
+            surf.blit(self._power_bar, (_VALUE_X, 144), (0, 0, power, 16))
         if power < 128:
             self._draw_text(surf, _VALUE_X, 144, f"{power}")
         else:
             self._draw_text(surf, _VALUE_X, 144, "MAX")
         self._draw_text(surf, _VALUE_X, 160, f"{g.graze_in_total}")
-        self._draw_text(surf, _VALUE_X, 176,
-                        f"{g.point_items_collected_for_extend}"
-                        f"/{g.next_needed_point_items_for_extend}")
+        self._draw_text(
+            surf,
+            _VALUE_X,
+            176,
+            f"{g.point_items_collected_for_extend}"
+            f"/{g.next_needed_point_items_for_extend}",
+        )
 
     # ---- 樱点槽(AsciiManager::DrawPopups 的 cherryGauge 段) ----
     def _render_cherry(self, surf: pygame.Surface, game) -> None:
@@ -237,30 +247,42 @@ class HudView:
         else:
             color = _CHERRY_COLORS[2]
         x = self._draw_gauge_num(surf, gx + 46, gy + 11, cherry, 6, color)
-        self._draw_gauge_num(surf, x + 9, gy + 11,
-                             max(0, g.cherry_max - g.cherry_start), 6,
-                             _CHERRY_MAX_COLOR)
+        self._draw_gauge_num(
+            surf,
+            x + 9,
+            gy + 11,
+            max(0, g.cherry_max - g.cherry_start),
+            6,
+            _CHERRY_MAX_COLOR,
+        )
         # 上行: cherryPlus (AsciiManager.cpp:1225-1273); 结界 READY/ACTIVE
         # 时变色+放大 1.41 + 步进 10 (AsciiManager.cpp:1230-1253)
         plus = max(0, g.cherry_plus - g.cherry_start)
-        border = getattr(getattr(game, "border", None), "has_border",
-                         BorderState.NONE)
+        border = getattr(getattr(game, "border", None), "has_border", BorderState.NONE)
         if border != BorderState.NONE:
             tri = plus % 4000
             if tri >= 2000:
                 tri = 4000 - tri
             gb = min(255, plus * 192 // 50000 + tri * 64 // 2000)
-            self._draw_gauge_num(surf, gx + 53 + 2, gy + 2 - 2, plus, 5,
-                                 (255, gb, gb), step=10, scale=1.41)
+            self._draw_gauge_num(
+                surf,
+                gx + 53 + 2,
+                gy + 2 - 2,
+                plus,
+                5,
+                (255, gb, gb),
+                step=10,
+                scale=1.41,
+            )
         else:
-            self._draw_gauge_num(surf, gx + 53, gy + 2, plus, 5,
-                                 _CHERRY_PLUS_COLOR)
+            self._draw_gauge_num(surf, gx + 53, gy + 2, plus, 5, _CHERRY_PLUS_COLOR)
         # ACTIVE: cherryBorderActive 呼吸标记 (AsciiManager.cpp:1275-1281)
         if border == BorderState.ACTIVE:
             self._render_border_mark(surf, game, gx, gy)
 
-    def _render_border_mark(self, surf: pygame.Surface, game,
-                            gx: float, gy: float) -> None:
+    def _render_border_mark(
+        self, surf: pygame.Surface, game, gx: float, gy: float
+    ) -> None:
         """ascii script 5 (sprite 143): 0.8↔1.2 呼吸, 60 帧循环
         (0→30 ease-out 到 1.2, 30→60 ease-in 回 0.8)。"""
         img = self.bank.sprite(_ASCII, 143)
@@ -269,19 +291,27 @@ class HudView:
         t = int(getattr(game, "frame", 0)) % 60
         if t < 30:
             u = t / 30.0
-            s = 0.8 + 0.4 * (1.0 - (1.0 - u) ** 2)     # ease mode 4 (out)
+            s = 0.8 + 0.4 * (1.0 - (1.0 - u) ** 2)  # ease mode 4 (out)
         else:
             u = (t - 30) / 30.0
-            s = 1.2 - 0.4 * u * u                       # ease mode 1 (in)
+            s = 1.2 - 0.4 * u * u  # ease mode 1 (in)
         w = max(1, round(img.get_width() * s))
         h = max(1, round(img.get_height() * s))
         out = pygame.transform.scale(img, (w, h))
         self._blit_center(surf, out, gx + 24, gy + 8)
 
-    def _draw_gauge_num(self, surf: pygame.Surface, x: float, y: float,
-                        value: int, max_digits: int,
-                        color: tuple[int, int, int], *, step: int = 7,
-                        scale: float = 1.0) -> float:
+    def _draw_gauge_num(
+        self,
+        surf: pygame.Surface,
+        x: float,
+        y: float,
+        value: int,
+        max_digits: int,
+        color: tuple[int, int, int],
+        *,
+        step: int = 7,
+        scale: float = 1.0,
+    ) -> float:
         """樱点数字(中心锚, 步进 step, 不补前导零); 返回画完后的 x。"""
         s = f"{value}"
         slots = max(max_digits, len(s))  # cherryMax 可超 6 位(AsciiManager.cpp:1190)
@@ -292,8 +322,12 @@ class HudView:
             if img is not None:
                 if scale != 1.0:
                     img = pygame.transform.scale(
-                        img, (max(1, round(img.get_width() * scale)),
-                              max(1, round(img.get_height() * scale))))
+                        img,
+                        (
+                            max(1, round(img.get_width() * scale)),
+                            max(1, round(img.get_height() * scale)),
+                        ),
+                    )
                 self._blit_center(surf, img, x, y)
             x += step
         return x

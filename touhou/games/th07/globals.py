@@ -1,4 +1,4 @@
-""" 全局状态(樱点/动态难度) —— 移植自 GameManager.cpp / 规格 §0.2 §0.3。
+"""全局状态(樱点/动态难度) —— 移植自 GameManager.cpp / 规格 §0.2 §0.3。
 
 ZunGlobals 继承引擎层通用计分基座(engine/globals_base.py 的 GlobalsBase:
 score/gui_score 追赶、残机/炸弹/火力/死亡/重试), 本模块只留 th07 专属:
@@ -12,7 +12,10 @@ from __future__ import annotations
 import msgspec
 
 from ...engine.globals_base import (  # noqa: F401 (SCORE_MAX/GUI_SCORE_INCREMENT_MAX 为兼容再导出)
-    GUI_SCORE_INCREMENT_MAX, SCORE_MAX, GlobalsBase)
+    GUI_SCORE_INCREMENT_MAX,
+    SCORE_MAX,
+    GlobalsBase,
+)
 from ...utils import Vec2
 
 # cherryMax 相对 cherryStart 的上限 (GameManager::IncreaseCherryMax)
@@ -32,9 +35,9 @@ RANK_TABLE = [
 ]
 
 # 状态横幅种类 (Gui.hpp GUI_DISPLAY_*; 0=隐藏)
-STATUS_FULL_POWER = 1    # "Full Power Mode!"
-STATUS_BORDER = 2        # "Supernatural Border!!"
-STATUS_CHERRY_MAX = 3    # "CherryPoint Max!"
+STATUS_FULL_POWER = 1  # "Full Power Mode!"
+STATUS_BORDER = 2  # "Supernatural Border!!"
+STATUS_CHERRY_MAX = 3  # "CherryPoint Max!"
 STATUS_BORDER_BONUS = 4  # "Border Bonus %7d"
 
 # 弹字槽容量 (AsciiManager: popups[720] + popups[720..723], CreatePopup1/2 环形覆盖)
@@ -79,7 +82,7 @@ class ZunGlobals(GlobalsBase):
     cherry: int = 0
     cherry_max: int = 0
     cherry_plus: int = 0
-    cherry_start: int = 0           # 本关樱点 baseline
+    cherry_start: int = 0  # 本关樱点 baseline
 
     # ---- 动态难度(0..32 scale) ----
     rank: int = 16
@@ -88,7 +91,7 @@ class ZunGlobals(GlobalsBase):
     subrank: int = 0
 
     # ---- 最高分跟随(GameManager globals.highScore) ----
-    high_score: int = 0                # HUD HISCORE; 开局从 score.dat 载入
+    high_score: int = 0  # HUD HISCORE; 开局从 score.dat 载入
     high_score_num_continues: int = 0  # 破纪录当时的续关数
 
     # ---- 计数(th07 专属) ----
@@ -102,13 +105,13 @@ class ZunGlobals(GlobalsBase):
 
     # ---- 得分弹字 / 状态横幅(AsciiManager/Gui 的纯逻辑部分; 渲染在 view) ----
     popups: list[ScorePopup] = msgspec.field(default_factory=list)
-    status_popup: int = 0        # GUI_DISPLAY_*; 0=隐藏
-    status_popup_arg: int = 0    # fmtArg (Border Bonus 的数值等)
+    status_popup: int = 0  # GUI_DISPLAY_*; 0=隐藏
+    status_popup_arg: int = 0  # fmtArg (Border Bonus 的数值等)
     status_popup_timer: int = 0
     # 奖励横幅 (Gui bonusScore/spellCardBonus; 0=隐藏, 值为代码值口径 fmtArg)
-    bonus_score: int = 0            # "BONUS %8d" (清弹/清场累计分)
+    bonus_score: int = 0  # "BONUS %8d" (清弹/清场累计分)
     bonus_score_timer: int = 0
-    spellcard_bonus: int = 0        # "Spell Card Bonus!" +N (捕获分)
+    spellcard_bonus: int = 0  # "Spell Card Bonus!" +N (捕获分)
     spellcard_bonus_timer: int = 0
 
     # ---- 最高分跟随 ----
@@ -199,14 +202,14 @@ class ZunGlobals(GlobalsBase):
         if self.cherry >= self.cherry_max and old != self.cherry:
             self.show_status_popup(self.cherry - self.cherry_start, STATUS_CHERRY_MAX)
         if x > 0:
-            self.cherry_plus = min(self.cherry_plus + x,
-                                   self.cherry_start + CHERRY_PLUS_RANGE)
+            self.cherry_plus = min(
+                self.cherry_plus + x, self.cherry_start + CHERRY_PLUS_RANGE
+            )
         return self.cherry_plus >= self.cherry_start + CHERRY_PLUS_RANGE
 
     def increase_cherry_max(self, x: int) -> None:
         """cherryMax += x, 封顶 cherryStart+9999990 (GameManager::IncreaseCherryMax)。"""
-        self.cherry_max = min(self.cherry_max + x,
-                              self.cherry_start + CHERRY_MAX_RANGE)
+        self.cherry_max = min(self.cherry_max + x, self.cherry_start + CHERRY_MAX_RANGE)
 
     def subtract_cherry_drain(self, drain: int) -> None:
         """炸弹樱点消耗, 封底 cherryStart (PlayerBombInfo::SubtractCherryDrain)。"""

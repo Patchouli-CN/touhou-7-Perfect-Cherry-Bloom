@@ -35,6 +35,7 @@ bomb 结束后多活的盒 (如灵梦B 集中 210>190 的 20 帧) 也不该有�
 所以本模块只画 VM; bomb 结束 (is_in_use 落下沿) 全部 VM 立即撤掉,
 与 C++ 的 "calc/draw 停止调用即消失" 一致。
 """
+
 from __future__ import annotations
 
 import math
@@ -42,9 +43,15 @@ import math
 import pygame
 
 from ....schema.anm import parse_scripts
-from ..bomb import (CHAR_MARISA_A, CHAR_MARISA_B, CHAR_REIMU_A,
-                                CHAR_REIMU_B, CHAR_SAKUYA_A, CHAR_SAKUYA_B,
-                                BorderState)
+from ..bomb import (
+    CHAR_MARISA_A,
+    CHAR_MARISA_B,
+    CHAR_REIMU_A,
+    CHAR_REIMU_B,
+    CHAR_SAKUYA_A,
+    CHAR_SAKUYA_B,
+    BorderState,
+)
 from ....engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d
 from ....engine.view.anm_vm import AnmVm, ScriptRef, reset_and_run
 
@@ -53,45 +60,45 @@ _ANM_OFFSET_BULLETS = 0x200
 _ANM_OFFSET_FACE = 0x4A0
 
 # bomb 脚本全局 id (AnmIdx.hpp:59-68)
-_SCR_REIMU_A = 0x485         # 8 珠 × 4 vm
-_SCR_REIMU_B = 0x489         # 4 结界光束
-_SCR_REIMU_B_FOCUS = 0x48D   # 3 重结界
-_SCR_MARISA_A = 0x405        # 星, i%3
-_SCR_MARISA_B = 0x40C        # 3 旋转激光臂
+_SCR_REIMU_A = 0x485  # 8 珠 × 4 vm
+_SCR_REIMU_B = 0x489  # 4 结界光束
+_SCR_REIMU_B_FOCUS = 0x48D  # 3 重结界
+_SCR_MARISA_A = 0x405  # 星, i%3
+_SCR_MARISA_B = 0x40C  # 3 旋转激光臂
 _SCR_MARISA_B_FOCUS = 0x408  # 4 魔炮
-_SCR_SAKUYA_A = 0x405        # 刀, +(i&1)
+_SCR_SAKUYA_A = 0x405  # 刀, +(i&1)
 _SCR_SAKUYA_A_FOCUS = 0x407
-_SCR_SAKUYA_A_HIT = 0x460    # 1120: 命中钉住后的刀 (BombData.cpp:1272/1442)
-_SCR_SAKUYA_B = 0x409        # 4 方阵
+_SCR_SAKUYA_A_HIT = 0x460  # 1120: 命中钉住后的刀 (BombData.cpp:1272/1442)
+_SCR_SAKUYA_B = 0x409  # 4 方阵
 _SCR_SAKUYA_B_FOCUS = 0x40D  # 2 时停领域
-_SCR_INVULN_RING = 0x2DA     # SpawnBombInvulnEffect → SpawnEffect(25)
-_SCR_BORDER_RING = 0x2DB     # 结界樱花圈 → SpawnEffect(28) (g_EffectMapping[28])
-_FX_BORDER_PETAL = 29        # 破裂樱点粒子 SpawnParticles(29) (Player.cpp:2181)
+_SCR_INVULN_RING = 0x2DA  # SpawnBombInvulnEffect → SpawnEffect(25)
+_SCR_BORDER_RING = 0x2DB  # 结界樱花圈 → SpawnEffect(28) (g_EffectMapping[28])
+_FX_BORDER_PETAL = 29  # 破裂樱点粒子 SpawnParticles(29) (Player.cpp:2181)
 
 # 符卡名 + cutin 立绘 sprite (ShowBombNamePortrait 调用点实参, 含原版 quirks:
 # 魔理沙A 散传 1187 / 魔理沙B 散传 1185, 为同一 face 文件内的姿势差分)
 _BOMB_CUTIN: dict[tuple[int, bool], tuple[int, str]] = {
-    (CHAR_REIMU_A, False): (1185, "霊符「夢想封印　散」"),    # BombData.cpp:136
-    (CHAR_REIMU_A, True): (1185, "霊符「夢想封印　集」"),     # :334
-    (CHAR_REIMU_B, False): (1185, "夢符「封魔陣」"),          # :533
-    (CHAR_REIMU_B, True): (1185, "夢符「二重結界」"),         # :644
+    (CHAR_REIMU_A, False): (1185, "霊符「夢想封印　散」"),  # BombData.cpp:136
+    (CHAR_REIMU_A, True): (1185, "霊符「夢想封印　集」"),  # :334
+    (CHAR_REIMU_B, False): (1185, "夢符「封魔陣」"),  # :533
+    (CHAR_REIMU_B, True): (1185, "夢符「二重結界」"),  # :644
     (CHAR_MARISA_A, False): (1187, "魔符「スターダストレヴァリエ」"),  # :722
     (CHAR_MARISA_A, True): (1186, "魔符「ミルキーウェイ」"),  # :831
     (CHAR_MARISA_B, False): (1185, "恋符「ノンディレクショナルレーザー」"),  # :979
     (CHAR_MARISA_B, True): (1186, "恋符「マスタースパーク」"),  # :1106
     (CHAR_SAKUYA_A, False): (1185, "幻符「インディスクリミネイト」"),  # :1206
-    (CHAR_SAKUYA_A, True): (1185, "幻符「殺人ドール」"),      # :1338
+    (CHAR_SAKUYA_A, True): (1185, "幻符「殺人ドール」"),  # :1338
     (CHAR_SAKUYA_B, False): (1187, "時符「パーフェクトスクウェア」"),  # :1507
-    (CHAR_SAKUYA_B, True): (1187, "時符「プライベートスクウェア」"),   # :1632
+    (CHAR_SAKUYA_B, True): (1187, "時符「プライベートスクウェア」"),  # :1632
 }
 
 _FACE_ANM = ("face_rm00.anm", "face_mr00.anm", "face_sk00.anm")
-_SCR_PORTRAIT = 1185          # face 链空间局部 1
+_SCR_PORTRAIT = 1185  # face 链空间局部 1
 _SCR_DECOR_L, _SCR_DECOR_R = 1188, 1190
-_SPR_DECOR = 1196             # 装饰 sprite (局部 12 = entry1 sprite 4)
-_SCR_NAME_BG = 1              # ascii.anm 符卡名底条 (Gui.cpp:657)
-_SCR_NAME_TEXT = 4            # text.anm 局部 4 = 全局 1796 (Gui.cpp:349)
-_NAME_SPRITE_W = 320          # text.anm sprite 宽 (quad 左缘 = pos.x - w/2·scale)
+_SPR_DECOR = 1196  # 装饰 sprite (局部 12 = entry1 sprite 4)
+_SCR_NAME_BG = 1  # ascii.anm 符卡名底条 (Gui.cpp:657)
+_SCR_NAME_TEXT = 4  # text.anm 局部 4 = 全局 1796 (Gui.cpp:349)
+_NAME_SPRITE_W = 320  # text.anm sprite 宽 (quad 左缘 = pos.x - w/2·scale)
 
 
 def _darken_alpha(timer: int, duration: int) -> int:
@@ -140,10 +147,10 @@ class BombView:
         # ---- bomb 运行期状态 (每次 bomb 重建) ----
         self._running = False
         self._key: tuple[int, bool] | None = None
-        self._vms: list[Vm2d] = []            # 固定阵列 VM (非 sub 驱动)
+        self._vms: list[Vm2d] = []  # 固定阵列 VM (非 sub 驱动)
         self._pool = _SubVmPool()
-        self._sakuya_hit: set[int] = set()    # 咲夜A 已换 1120 的刀
-        self._squares_started = False         # 咲夜B 散 timer==30 方阵
+        self._sakuya_hit: set[int] = set()  # 咲夜A 已换 1120 的刀
+        self._squares_started = False  # 咲夜B 散 timer==30 方阵
         self._trails: dict[int, list[tuple[float, float]]] = {}
         # ---- 无敌红环 (独立于 bomb, 自驱动倒计时归零消失) ----
         self._ring: Vm2d | None = None
@@ -151,13 +158,13 @@ class BombView:
         self._ring_frames = 0
         self._ring_left = 0
         # ---- 樱之结界 (独立于 bomb, 由 game.border 状态驱动) ----
-        self._border_ring: Vm2d | None = None          # ACTIVE 中跟随自机的圈
+        self._border_ring: Vm2d | None = None  # ACTIVE 中跟随自机的圈
         self._border_break: list[tuple[Vm2d, float, float]] = []  # 破裂扩散环
         self._border_prev: tuple[int, int, int] = (0, 0, 0)
         # (id(border), has_border, invulnerability_timer) 上帧快照, 边沿判定用
         # ---- cutin/横幅 (Gui 层, 由自身脚本收尾) ----
-        self._cutin: list[Vm2d] = []          # portrait/decorL/decorR/bg
-        self._name_vm: AnmVm | None = None    # text.anm 运动 VM (无贴图)
+        self._cutin: list[Vm2d] = []  # portrait/decorL/decorR/bg
+        self._name_vm: AnmVm | None = None  # text.anm 运动 VM (无贴图)
         self._name_text = ""
         self._name_bg: Vm2d | None = None
         # ---- 测试断言用: 本帧 bomb 特效 / cutin 绘制调用数 ----
@@ -194,8 +201,15 @@ class BombView:
         return self._text_scripts.get(sid)
 
     # ---- 绘制小助手 ----
-    def _draw(self, vm: Vm2d, surf: pygame.Surface, x: float, y: float,
-              *, no_rotation: bool = False) -> None:
+    def _draw(
+        self,
+        vm: Vm2d,
+        surf: pygame.Surface,
+        x: float,
+        y: float,
+        *,
+        no_rotation: bool = False,
+    ) -> None:
         if not vm.alive:
             return
         if no_rotation:
@@ -300,8 +314,8 @@ class BombView:
         self._ring = vm
         self._ring_s0 = (vm.vm.scale[0], vm.vm.scale[1])
         self._ring_frames = max(1, game.bomb.invulnerability_timer)
-        vm.vm.color = [255, 64, 64, 255]        # color.bytes r=255 g=64 b=64
-        vm.vm.angle_vel[2] *= -1.0              # angleVel.z *= -1
+        vm.vm.color = [255, 64, 64, 255]  # color.bytes r=255 g=64 b=64
+        vm.vm.angle_vel[2] *= -1.0  # angleVel.z *= -1
         if not vm.alive:
             self._ring = None
         self._ring_left = self._ring_frames
@@ -352,15 +366,15 @@ class BombView:
         vm = Vm2d(sb, self.tcache)
         if not vm.start(_SCR_BORDER_RING):
             return None
-        timer = max(1, int(border.invulnerability_timer))   # 激活帧定格 540
+        timer = max(1, int(border.invulnerability_timer))  # 激活帧定格 540
         v = vm.vm
-        v.interp_start[4] = 0                # scaleInterp: 1.0 → 0.25, 全程线性
+        v.interp_start[4] = 0  # scaleInterp: 1.0 → 0.25, 全程线性
         v.interp_end[4] = timer
         v.ease[4] = 0
         v.scale_interp_initial = [1.0, 1.0]
         v.scale_interp_final = [0.25, 0.25]
-        v.int_vars1[0] = timer               # 脚本 WAIT 的寿命 (= 结界剩余帧)
-        v.angle_vel[2] *= -1.0               # angleVel.z *= -1 (:2135)
+        v.int_vars1[0] = timer  # 脚本 WAIT 的寿命 (= 结界剩余帧)
+        v.angle_vel[2] *= -1.0  # angleVel.z *= -1 (:2135)
         return vm
 
     def _start_border_break(self, game, fx, x: float, y: float) -> None:
@@ -381,7 +395,7 @@ class BombView:
                 v.ease[4] = 0
                 v.scale_interp_initial = [0.0625, 0.0625]
                 v.scale_interp_final = [1.3, 1.3]
-                v.interp_start[2] = 0        # colorInterp alpha → 0 (ease 1)
+                v.interp_start[2] = 0  # colorInterp alpha → 0 (ease 1)
                 v.interp_end[2] = 30
                 v.ease[2] = 1
                 v.color_interp_initial[3] = v.color[3]
@@ -390,8 +404,9 @@ class BombView:
                 self._border_break.append((vm, x, y))
         angle = -math.pi
         for _ in range(32):
-            fx.spawn(_FX_BORDER_PETAL, x, y, 1,
-                     direction=(math.cos(angle), math.sin(angle)))
+            fx.spawn(
+                _FX_BORDER_PETAL, x, y, 1, direction=(math.cos(angle), math.sin(angle))
+            )
             angle += 0.19634955
 
     def _tick_border(self, surf: pygame.Surface, game, fx) -> None:
@@ -415,20 +430,19 @@ class BombView:
                     self._border_ring = None
                 else:
                     ring.draw(surf, game.player.pos.x, game.player.pos.y)
-        elif prev_state in (BorderState.ACTIVE, BorderState.READY) \
-                and prev_id == id(border):
+        elif prev_state in (BorderState.ACTIVE, BorderState.READY) and prev_id == id(
+            border
+        ):
             # ACTIVE/READY→NONE: 自然破 (仅 ACTIVE 且计时耗尽, 上帧 timer<=1)
             # 只撤圈 (BreakBorderNaturally :2029-2033 仅 inUseFlag=0);
             # 主动破/中弹破/死亡破 (BreakBorder, READY 也走这里) → 扩散环+粒子。
             # id 守卫: 换关/重开时逻辑层整体换新 Border 对象, 不算破裂
             self._border_ring = None
             if prev_state == BorderState.READY or prev_timer > 1:
-                self._start_border_break(game, fx, game.player.pos.x,
-                                         game.player.pos.y)
+                self._start_border_break(game, fx, game.player.pos.x, game.player.pos.y)
         else:
             self._border_ring = None
-        self._border_prev = (id(border), cur_state,
-                             int(border.invulnerability_timer))
+        self._border_prev = (id(border), cur_state, int(border.invulnerability_timer))
         alive = []
         for vm, x, y in self._border_break:
             vm.execute()
@@ -438,8 +452,7 @@ class BombView:
         self._border_break = alive
 
     # ---- 暗化 ----
-    def _draw_darken(self, surf: pygame.Surface, timer: int,
-                     duration: int) -> None:
+    def _draw_darken(self, surf: pygame.Surface, timer: int, duration: int) -> None:
         alpha = _darken_alpha(timer, duration)
         if alpha <= 0:
             return
@@ -491,8 +504,13 @@ class BombView:
             sub = bomb.sub_info[i]
             for vm in vms:
                 vm.execute()
-                self._draw(vm, surf, sub.pos.x + vm.vm.offset[0],
-                           sub.pos.y + vm.vm.offset[1], no_rotation=True)
+                self._draw(
+                    vm,
+                    surf,
+                    sub.pos.x + vm.vm.offset[0],
+                    sub.pos.y + vm.vm.offset[1],
+                    no_rotation=True,
+                )
 
     def _reimu_b(self, surf: pygame.Surface, game, focus: bool) -> None:
         """BombReimuBDraw/Focus (BombData.cpp:607-622/685-700):
@@ -501,8 +519,7 @@ class BombView:
         for i, vm in enumerate(self._vms):
             vm.execute()
             base = bomb.start_pos if focus else bomb.sub_info[i].pos
-            self._draw(vm, surf, base.x + vm.vm.offset[0],
-                       base.y + vm.vm.offset[1])
+            self._draw(vm, surf, base.x + vm.vm.offset[0], base.y + vm.vm.offset[1])
 
     def _marisa_a(self, surf: pygame.Surface, game, focus: bool) -> None:
         """BombMarisaADraw/Focus (BombData.cpp:769-805/912-951):
@@ -529,7 +546,7 @@ class BombView:
             if not vm.start(_SCR_MARISA_A + i % 3):
                 return []
             p = bomb.sub_info[i].pos
-            self._trails[i] = [(p.x, p.y)] * 8   # trails[8] 全填出发点
+            self._trails[i] = [(p.x, p.y)] * 8  # trails[8] 全填出发点
             return [vm]
 
         self._pool.sync(bomb, 24, mk)
@@ -565,8 +582,7 @@ class BombView:
             h = vm.surf.get_height() if vm.surf is not None else 0.0
             d = h * vm.vm.scale[1] / 2.0
             vm.vm.rotation[2] = accel + math.pi / 2
-            self._draw(vm, surf, p.x + math.cos(accel) * d,
-                       p.y + math.sin(accel) * d)
+            self._draw(vm, surf, p.x + math.cos(accel) * d, p.y + math.sin(accel) * d)
 
     def _sakuya_a(self, surf: pygame.Surface, game, focus: bool, fx) -> None:
         """BombSakuyaADraw/Focus (BombData.cpp:1290-1314/1457-1482):
@@ -595,8 +611,7 @@ class BombView:
                     self._sakuya_hit.add(i)
                     if focus:
                         # SpawnParticles(0, pos, 1, 0xffff80ff) (:1443-1445)
-                        fx.spawn(0, sub.pos.x, sub.pos.y, 1,
-                                 color=0xFFFF80FF)
+                        fx.spawn(0, sub.pos.x, sub.pos.y, 1, color=0xFFFF80FF)
             vm.execute()
             vm.vm.rotation[2] = sub.angle + math.pi / 2
             self._draw(vm, surf, sub.pos.x, sub.pos.y)
@@ -732,8 +747,15 @@ class BombView:
                     surf.blit(img, rect)
                     self.gui_draws += 1
 
-    def _draw_gui(self, vm: Vm2d, surf: pygame.Surface, x: float, y: float,
-                  *, no_rotation: bool = False) -> None:
+    def _draw_gui(
+        self,
+        vm: Vm2d,
+        surf: pygame.Surface,
+        x: float,
+        y: float,
+        *,
+        no_rotation: bool = False,
+    ) -> None:
         if not vm.alive:
             return
         if no_rotation:

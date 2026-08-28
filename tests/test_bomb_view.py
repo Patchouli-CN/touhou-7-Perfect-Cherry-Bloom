@@ -10,6 +10,7 @@
 - 灵梦B 集中: 结束瞬间大清弹圆仍 active (lifetime=210 > duration=190,
   原版语义的 20 帧延续, BombData.cpp:659), end+30 衰减完毕。
 """
+
 from __future__ import annotations
 
 import os
@@ -37,8 +38,13 @@ def _run_bomb(character: int, focus: bool):
     import pygame
 
     from touhou.games.th07.world import PerfectCherryBloom
-    from touhou.games.th07.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
-                                                GameView)
+    from touhou.games.th07.view.sprite_view import (
+        GAME_H,
+        GAME_W,
+        WIN_H,
+        WIN_W,
+        GameView,
+    )
 
     pygame.init()
     g = PerfectCherryBloom(data_path=DAT, character=character, difficulty=1)
@@ -50,7 +56,7 @@ def _run_bomb(character: int, focus: bool):
     view._bg3d = None
     view._bg3d_broken = True
     surf = pygame.Surface((GAME_W, GAME_H))
-    win = pygame.Surface((WIN_W, WIN_H))     # cutin/横幅画在窗口层
+    win = pygame.Surface((WIN_W, WIN_H))  # cutin/横幅画在窗口层
     t0 = t_end = None
     draws_mid = None
     clear_active_at_end = False
@@ -76,8 +82,9 @@ def _run_bomb(character: int, focus: bool):
 
 
 @NEEDS_DAT
-@pytest.mark.parametrize("character,focus", CASES,
-                         ids=[f"c{c}{'f' if f else 'u'}" for c, f in CASES])
+@pytest.mark.parametrize(
+    "character,focus", CASES, ids=[f"c{c}{'f' if f else 'u'}" for c, f in CASES]
+)
 def test_bomb_render_and_no_residue(character: int, focus: bool) -> None:
     g, view, t0, t_end, draws_mid, _ = _run_bomb(character, focus)
     del t0, t_end
@@ -100,7 +107,7 @@ def test_reimu_b_focus_clear_outlives_bomb() -> None:
     g, view, t0, t_end, _, clear_active_at_end = _run_bomb(1, True)
     del view, t0, t_end
     assert g.bomb.duration == 190
-    assert clear_active_at_end          # 结束帧清弹圆仍在 (lifetime=210)
+    assert clear_active_at_end  # 结束帧清弹圆仍在 (lifetime=210)
     assert not any(cb.active for cb in g.bomb.clear_boxes)  # end+150 已清零
 
 
@@ -111,8 +118,13 @@ def test_bomb_banner_window_layer() -> None:
     import pygame
 
     from touhou.games.th07.world import PerfectCherryBloom
-    from touhou.games.th07.view.sprite_view import (GAME_H, GAME_W, WIN_H, WIN_W,
-                                                GameView)
+    from touhou.games.th07.view.sprite_view import (
+        GAME_H,
+        GAME_W,
+        WIN_H,
+        WIN_W,
+        GameView,
+    )
 
     pygame.init()
     g = PerfectCherryBloom(data_path=DAT, character=0, difficulty=1)

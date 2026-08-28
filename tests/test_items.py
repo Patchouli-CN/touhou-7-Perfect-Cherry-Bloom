@@ -1,4 +1,5 @@
 """Touhou: 道具系统测试。"""
+
 from __future__ import annotations
 
 import sys
@@ -26,6 +27,7 @@ from touhou.utils import Vec2  # noqa: E402
 
 
 # ---- POWER_SMALL ----
+
 
 def test_power_small_increases_power() -> None:
     w = ItemWorld()
@@ -89,6 +91,7 @@ def test_power_small_crossing_full_clears_and_despawns() -> None:
 
 # ---- POWER_BIG / BOMB / LIFE / FULL_POWER ----
 
+
 def test_power_big() -> None:
     w = ItemWorld()
     ctx = GameContext(power=10)
@@ -121,12 +124,14 @@ def test_life_and_full_power() -> None:
     r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.FULL_POWER), ctx)
     assert r2.delta_power == 28 and r2.score == 100 and r2.clear_bullets
     # 已满火力吃 FULL_POWER: 仍有分但不清屏
-    r3 = w.collect(w.spawn(Vec2(0, 0), ItemType.FULL_POWER),
-                   GameContext(power=FULL_POWER))
+    r3 = w.collect(
+        w.spawn(Vec2(0, 0), ItemType.FULL_POWER), GameContext(power=FULL_POWER)
+    )
     assert r3.score == 100 and not r3.clear_bullets and r3.delta_power == 0
 
 
 # ---- POINT 高度衰减 / autoCollect / 满樱 ----
+
 
 def test_point_full_value_above_poc() -> None:
     w = ItemWorld()
@@ -174,9 +179,14 @@ def test_point_cherry_gap_branches() -> None:
 
 # ---- extend 阈值表 ----
 
+
 def test_extend_threshold_table() -> None:
     # 难度 <4: 50/125/200, 300/450, 800/1000...
-    assert [next_needed_point_items_for_extend(e, 1) for e in range(3)] == [50, 125, 200]
+    assert [next_needed_point_items_for_extend(e, 1) for e in range(3)] == [
+        50,
+        125,
+        200,
+    ]
     assert [next_needed_point_items_for_extend(e, 1) for e in (3, 4)] == [300, 450]
     assert [next_needed_point_items_for_extend(e, 1) for e in (5, 6)] == [800, 1000]
     # 难度 ≥4: 200/500, 之后 (e-2)*500+800
@@ -188,8 +198,9 @@ def test_extend_threshold_table() -> None:
 
 def test_point_extend_single() -> None:
     w = ItemWorld()
-    ctx = GameContext(point_items_collected_for_extend=49,
-                      extends_from_point_items=0, difficulty=1)
+    ctx = GameContext(
+        point_items_collected_for_extend=49, extends_from_point_items=0, difficulty=1
+    )
     r = w.collect(w.spawn(Vec2(100, 50), ItemType.POINT), ctx)
     assert r.extends == 1  # 第 50 个 → 阈值 50
 
@@ -197,23 +208,27 @@ def test_point_extend_single() -> None:
 def test_point_extend_multiple_at_once() -> None:
     w = ItemWorld()
     # 一次结算时累计 200 个且 e=0: 50/125/200 全过 → 连升 3 个
-    ctx = GameContext(point_items_collected_for_extend=199,
-                      extends_from_point_items=0, difficulty=1)
+    ctx = GameContext(
+        point_items_collected_for_extend=199, extends_from_point_items=0, difficulty=1
+    )
     r = w.collect(w.spawn(Vec2(100, 50), ItemType.POINT), ctx)
     assert r.extends == 3
     # 难度 ≥4: 累计 500, e=0 → 200/500 过 → 2 个
-    ctx2 = GameContext(point_items_collected_for_extend=499,
-                       extends_from_point_items=0, difficulty=4)
+    ctx2 = GameContext(
+        point_items_collected_for_extend=499, extends_from_point_items=0, difficulty=4
+    )
     r2 = w.collect(w.spawn(Vec2(100, 50), ItemType.POINT), ctx2)
     assert r2.extends == 2
     # 未达阈值
-    ctx3 = GameContext(point_items_collected_for_extend=10,
-                       extends_from_point_items=0, difficulty=1)
+    ctx3 = GameContext(
+        point_items_collected_for_extend=10, extends_from_point_items=0, difficulty=1
+    )
     r3 = w.collect(w.spawn(Vec2(100, 50), ItemType.POINT), ctx3)
     assert r3.extends == 0
 
 
 # ---- CHERRY / CHERRY_SMALL / STAR / POINT_BULLET ----
+
 
 def test_cherry_big() -> None:
     w = ItemWorld()
@@ -276,6 +291,7 @@ def test_star() -> None:
 
 # ---- 运动 / 状态 ----
 
+
 def test_item_falls_and_accelerates() -> None:
     w = ItemWorld()
     ctx = GameContext()
@@ -318,8 +334,9 @@ def test_border_collects_everything_with_auto_collect() -> None:
 
 def test_player_spawning_slows_items() -> None:
     w = ItemWorld()
-    ctx = GameContext(power=FULL_POWER, player_pos=Vec2(192, 60),
-                      player_state=PLAYER_STATE_SPAWNING)
+    ctx = GameContext(
+        power=FULL_POWER, player_pos=Vec2(192, 60), player_state=PLAYER_STATE_SPAWNING
+    )
     it = w.spawn(Vec2(100, 400), ItemType.POINT)
     w.step(ctx)
     assert it.state == STATE_FALL  # 不吸附
@@ -355,6 +372,7 @@ def test_spawn_animation_flies_to_target() -> None:
 
 
 # ---- 批量操作 (§E.5) ----
+
 
 def test_remove_all_items() -> None:
     w = ItemWorld()
@@ -392,6 +410,7 @@ def test_activate_all_items() -> None:
 
 # ---- 满火力生成转换 ----
 
+
 def test_spawn_converts_power_items_at_full_power() -> None:
     w = ItemWorld()
     it = w.spawn(Vec2(0, 0), ItemType.POWER_SMALL, power=FULL_POWER)
@@ -408,6 +427,7 @@ def test_drop_table_length_and_values() -> None:
 
 
 # ---- 生成态(state 参数) / 吸附忠实化 ----
+
 
 def test_spawn_with_attract_state() -> None:
     """清弹转道具出生即吸附 (BulletManager.cpp 各清弹路径的 SpawnItem(…, 1))。"""
@@ -426,14 +446,14 @@ def test_attracted_item_deattracts_during_respawn() -> None:
     state=0 + startPosition.y=-0.5)。"""
     w = ItemWorld()
     it = w.spawn(Vec2(100, 100), ItemType.POINT, state=STATE_ATTRACT)
-    ctx = GameContext(player_pos=Vec2(100, 300),
-                      player_state=PLAYER_STATE_SPAWNING)
+    ctx = GameContext(player_pos=Vec2(100, 300), player_state=PLAYER_STATE_SPAWNING)
     w.step(ctx)
     assert it.state == STATE_FALL
     assert it.start.y in (-0.5, -0.5 + 0.03)  # 缓降(下落渐变 +0.03 前/后)
 
 
 # ---- 收点得分弹字 (ItemManager.cpp CreatePopup1/2) ----
+
 
 def test_point_collect_popups() -> None:
     """收点弹字: POC 线上满分黄字, 线下衰减白字 (ItemManager.cpp:272)。"""
@@ -454,8 +474,10 @@ def test_power_small_popups() -> None:
     r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_SMALL), GameContext(power=10))
     assert r2.popups == [(10, POPUP_WHITE, 1)]
     # 满火力: 弹查表代码值 (:211; 表末 12000 < 12800 恒白)
-    r3 = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_SMALL),
-                   GameContext(power=FULL_POWER, power_overflow_counter=9))
+    r3 = w.collect(
+        w.spawn(Vec2(0, 0), ItemType.POWER_SMALL),
+        GameContext(power=FULL_POWER, power_overflow_counter=9),
+    )
     assert r3.popups == [(200, POPUP_WHITE, 1)]
 
 
@@ -466,8 +488,9 @@ def test_power_big_popups() -> None:
     assert r.popups == [(-1, POPUP_POWERUP, 1)]
     # 满火力大 P: 无分无弹字 (C++ :330 弹的是上一道具残留的 itemScore,
     # ZUN bloat, 值无意义, 不还原)
-    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_BIG),
-                   GameContext(power=FULL_POWER))
+    r2 = w.collect(
+        w.spawn(Vec2(0, 0), ItemType.POWER_BIG), GameContext(power=FULL_POWER)
+    )
     assert r2.popups == []
 
 
@@ -479,8 +502,9 @@ def test_full_power_item_popups_and_reached_flag() -> None:
     assert r.reached_full_power and r.clear_bullets
     assert r.popups == [(-1, POPUP_POWERUP, 1), (1000, POPUP_WHITE, 1)]
     # 已满火力: 无 PowerUp 字形/不清弹/不置 reached, 仍弹 1000 (:392)
-    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.FULL_POWER),
-                   GameContext(power=FULL_POWER))
+    r2 = w.collect(
+        w.spawn(Vec2(0, 0), ItemType.FULL_POWER), GameContext(power=FULL_POWER)
+    )
     assert not r2.reached_full_power and not r2.clear_bullets
     assert r2.popups == [(1000, POPUP_WHITE, 1)]
 
@@ -492,8 +516,10 @@ def test_full_power_clear_suppressed_during_spellcard() -> None:
     ctx = GameContext(power=FULL_POWER - 1, spellcard_active=True)
     r = w.collect(w.spawn(Vec2(0, 0), ItemType.POWER_SMALL), ctx)
     assert r.reached_full_power and not r.clear_bullets
-    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.FULL_POWER),
-                   GameContext(power=100, spellcard_active=True))
+    r2 = w.collect(
+        w.spawn(Vec2(0, 0), ItemType.FULL_POWER),
+        GameContext(power=100, spellcard_active=True),
+    )
     assert r2.reached_full_power and r2.clear_bullets
 
 
@@ -510,8 +536,7 @@ def test_star_popups() -> None:
     r = w.collect(w.spawn(Vec2(0, 0), ItemType.STAR), GameContext())
     assert r.popups == [(100, POPUP_CHERRY_GAIN, 1)]
     # 满樱: 得分白字 (:453)
-    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.STAR),
-                   GameContext(cherry_maxed=True))
+    r2 = w.collect(w.spawn(Vec2(0, 0), ItemType.STAR), GameContext(cherry_maxed=True))
     assert r2.popups == [(300, POPUP_WHITE, 1)]
 
 

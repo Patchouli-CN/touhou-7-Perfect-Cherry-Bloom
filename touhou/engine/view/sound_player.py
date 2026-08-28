@@ -1,4 +1,4 @@
-""" SE/BGM 播放层 —— pygame.mixer 包装, 消费 impl 透出的音效/BGM 事件。
+"""SE/BGM 播放层 —— pygame.mixer 包装, 消费 impl 透出的音效/BGM 事件。
 
 - 无声卡/headless 容错: mixer 未初始化或 dummy 声卡(SDL_AUDIODRIVER=dummy,
   其 music 原生调用会间歇死锁)则整体静音(ensure_loaded 不炸);
@@ -43,8 +43,9 @@ def _db_to_gain(db_hundredths: int) -> float:
 class SoundPlayer:
     """游戏内 SE/BGM 播放器。资源懒加载(首次 ensure_loaded 才开包)。"""
 
-    def __init__(self, data_path: str | Path,
-                 bgm_path: str | Path | None = None) -> None:
+    def __init__(
+        self, data_path: str | Path, bgm_path: str | Path | None = None
+    ) -> None:
         self._data_path = Path(data_path)
         # 显式 thbgm.dat 路径(WorldData.bgm_dat); None = 与 th07.dat 同目录推导
         self._bgm_path_override = Path(bgm_path) if bgm_path else None
@@ -53,15 +54,15 @@ class SoundPlayer:
         self._archive: GameArchive | None = None
         self.sounds: dict[int, pygame.mixer.Sound] = {}
         self._current_bgm = ""
-        self._bgm_volume = 1.0            # BGM 主音量(Option, 0-1)
-        self._se_volume = 1.0             # SE 主音量(Option, 0-1)
+        self._bgm_volume = 1.0  # BGM 主音量(Option, 0-1)
+        self._se_volume = 1.0  # SE 主音量(Option, 0-1)
         # ---- WAV BGM (thbgm.dat) ----
-        self._bgm_source = "wav"          # 音源偏好: "wav"(优先) / "midi"(强制)
+        self._bgm_source = "wav"  # 音源偏好: "wav"(优先) / "midi"(强制)
         self._thbgm_tracks: dict[str, ThbgmTrack] = {}
         self._thbgm_path: Path | None = None
         self._wav_bgm: ThbgmTrack | None = None  # 当前 WAV 曲(循环轮询用)
-        self._wav_pass_ms = 0.0           # 本播段长度 ms(首遍=全曲, 之后=循环段)
-        self._music_paused = False        # BGM 暂停态(AUDIO_PAUSE)
+        self._wav_pass_ms = 0.0  # 本播段长度 ms(首遍=全曲, 之后=循环段)
+        self._music_paused = False  # BGM 暂停态(AUDIO_PAUSE)
 
     # ---- 资源 ----
     def ensure_loaded(self) -> None:
@@ -124,8 +125,12 @@ class SoundPlayer:
         if self._enabled:
             self._poll_wav_loop()
 
-    def play_frame(self, sounds: list[int], bgm_events: list[tuple],
-                   bgm_paths: tuple[str, ...] = ()) -> None:
+    def play_frame(
+        self,
+        sounds: list[int],
+        bgm_events: list[tuple],
+        bgm_paths: tuple[str, ...] = (),
+    ) -> None:
         """消费 impl 的一帧事件: frame_sounds 逐个播, bgm_events 切歌/淡出。"""
         if not self._enabled:
             return

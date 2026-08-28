@@ -8,6 +8,7 @@ Player::CalcKillboxCollision (Player.cpp:1003-1040)。
 纯相交(C++ 返回 1), canDie && !isBoss && !isProjectile 的敌人 life -= 10;
 普通敌人体术无擦弹, isProjectile 敌人 timer%6==0 时按 hitboxSize/0.7 擦弹。
 """
+
 from __future__ import annotations
 
 import sys
@@ -17,7 +18,11 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 from touhou.engine.ecl import Vec3  # noqa: E402
 from touhou.games.th07.ecl_vm import EclMachineTh07 as EclMachine  # noqa: E402
 from touhou.engine.enemies import (  # noqa: E402
-    EnemyHost, EclEnemy, Targeting, settle_damage)
+    EnemyHost,
+    EclEnemy,
+    Targeting,
+    settle_damage,
+)
 from touhou.engine.player_base import PlayerState  # noqa: E402
 from touhou.games.th07.player import PlayerEventKind  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
@@ -28,8 +33,9 @@ from tests.test_player import make_player  # noqa: E402
 # make_player 的 SD: hitbox_radius=4 → 判定半宽 2; grab 48 → 擦弹半宽 24
 
 
-def _host_with_enemy_at(pos: Vec2, *, life: int = 100, radius: float = 24.0,
-                        **flags) -> tuple[EnemyHost, object]:
+def _host_with_enemy_at(
+    pos: Vec2, *, life: int = 100, radius: float = 24.0, **flags
+) -> tuple[EnemyHost, object]:
     host = EnemyHost()
     e = host.spawn(path=[pos], life=life, speed=0.0, radius=radius)
     for k, v in flags.items():
@@ -99,8 +105,9 @@ def test_contact_kill_settles_in_shoot_hits() -> None:
     host, e = _host_with_enemy_at(p.pos, life=5)
     assert host.contact_hits(p) is False
     assert e.life == -5
-    _, kills = host.shoot_hits(p, Targeting(), is_focus=False, is_sakuya=False,
-                               bomb_in_use=False, stage=1)
+    _, kills = host.shoot_hits(
+        p, Targeting(), is_focus=False, is_sakuya=False, bomb_in_use=False, stage=1
+    )
     assert kills == [e]
     assert not e.alive
 
@@ -199,8 +206,9 @@ class _DamageStubPlayer:
 
 def _graze_enemy_host() -> tuple[EnemyHost, object]:
     host = EnemyHost()
-    e = host.spawn(path=[Vec2(192, 100)], life=1000, speed=0.0,
-                   graze_size=Vec2(40.0, 40.0))
+    e = host.spawn(
+        path=[Vec2(192, 100)], life=1000, speed=0.0, graze_size=Vec2(40.0, 40.0)
+    )
     return host, e
 
 
@@ -208,8 +216,9 @@ def test_shoot_hits_graze_extra_without_bomb() -> None:
     """无 bomb: graze 盒追加 grazeDamage/2.5 (10 + 25/2.5 = 20)。"""
     host, e = _graze_enemy_host()
     p = _DamageStubPlayer(10, 25)
-    results, _ = host.shoot_hits(p, Targeting(), is_focus=True, is_sakuya=False,
-                                 bomb_in_use=False, stage=1)
+    results, _ = host.shoot_hits(
+        p, Targeting(), is_focus=True, is_sakuya=False, bomb_in_use=False, stage=1
+    )
     assert results[0][1].damage == 20
 
 
@@ -219,23 +228,41 @@ def test_shoot_hits_bomb_box_hit_skips_graze_extra() -> None:
     # bomb 盒命中 graze 盒 → 跳过
     host, e = _graze_enemy_host()
     p = _DamageStubPlayer(10, 25)
-    results, _ = host.shoot_hits(p, Targeting(), is_focus=True, is_sakuya=False,
-                                 bomb_in_use=True, stage=1,
-                                 bomb_box_hit=lambda pos, full: True)
+    results, _ = host.shoot_hits(
+        p,
+        Targeting(),
+        is_focus=True,
+        is_sakuya=False,
+        bomb_in_use=True,
+        stage=1,
+        bomb_box_hit=lambda pos, full: True,
+    )
     assert results[0][1].damage == 10
     # bomb 盒未命中 graze 盒 → 照常
     host, e = _graze_enemy_host()
     p = _DamageStubPlayer(10, 25)
-    results, _ = host.shoot_hits(p, Targeting(), is_focus=True, is_sakuya=False,
-                                 bomb_in_use=True, stage=1,
-                                 bomb_box_hit=lambda pos, full: False)
+    results, _ = host.shoot_hits(
+        p,
+        Targeting(),
+        is_focus=True,
+        is_sakuya=False,
+        bomb_in_use=True,
+        stage=1,
+        bomb_box_hit=lambda pos, full: False,
+    )
     assert results[0][1].damage == 20
     # 非 bomb 中: 谓词命中也不跳过 (C++ collisionOut 只在 bomb 中置位)
     host, e = _graze_enemy_host()
     p = _DamageStubPlayer(10, 25)
-    results, _ = host.shoot_hits(p, Targeting(), is_focus=True, is_sakuya=False,
-                                 bomb_in_use=False, stage=1,
-                                 bomb_box_hit=lambda pos, full: True)
+    results, _ = host.shoot_hits(
+        p,
+        Targeting(),
+        is_focus=True,
+        is_sakuya=False,
+        bomb_in_use=False,
+        stage=1,
+        bomb_box_hit=lambda pos, full: True,
+    )
     assert results[0][1].damage == 20
 
 
@@ -251,16 +278,30 @@ def test_mixed_bullet_bomb_damage_split_settlement() -> None:
     host, e = _graze_enemy_host()
     e.life = 100000
     p = _DamageStubPlayer(21, 0)  # 主盒 21, graze 盒 0(bomb 中)
-    results, _ = host.shoot_hits(p, Targeting(), is_focus=True, is_sakuya=False,
-                                 bomb_in_use=True, stage=1, spellcard_active=True,
-                                 used_bomb=True,
-                                 bomb_box_hit=lambda pos, full: True)
+    results, _ = host.shoot_hits(
+        p,
+        Targeting(),
+        is_focus=True,
+        is_sakuya=False,
+        bomb_in_use=True,
+        stage=1,
+        spellcard_active=True,
+        used_bomb=True,
+        bomb_box_hit=lambda pos, full: True,
+    )
     bullet_part = results[0][1].damage
     assert bullet_part == 21 // 7 == 3
     # bomb 盒路径: 符卡中 bomb_damage=True + used_bomb → /2.5
-    bomb_part = settle_damage(25, is_boss=True, is_focus=False, bomb_in_use=True,
-                              bomb_damage=True, stage=1, spellcard_active=True,
-                              used_bomb=True).damage
+    bomb_part = settle_damage(
+        25,
+        is_boss=True,
+        is_focus=False,
+        bomb_in_use=True,
+        bomb_damage=True,
+        stage=1,
+        spellcard_active=True,
+        used_bomb=True,
+    ).damage
     assert bomb_part == int(25 / 2.5) == 10
     # 现状合计 13, 与 C++ 合并口径 18 的偏差即本条测试钉住的语义
     assert bullet_part + bomb_part == 13
@@ -275,8 +316,9 @@ def test_targeting_skips_out_of_bounds_enemies() -> None:
     host, inside = _host_with_enemy_at(Vec2(192.0, 200.0))
     host.spawn(path=[Vec2(192.0, 600.0)], life=100, speed=0.0)  # 已飞出版底
     targeting = Targeting()
-    results, _ = host.shoot_hits(p, targeting, is_focus=False, is_sakuya=False,
-                                 bomb_in_use=False, stage=1)
+    results, _ = host.shoot_hits(
+        p, targeting, is_focus=False, is_sakuya=False, bomb_in_use=False, stage=1
+    )
     assert targeting.position_of_last_enemy_hit == inside.pos
     assert len(results) == 2  # 版外敌人照常受击结算, 只是不做追踪目标
 
@@ -287,7 +329,8 @@ def test_targeting_skips_enemy_not_yet_entered() -> None:
     p = make_player()
     host, _ = _host_with_enemy_at(Vec2(192.0, -100.0))
     targeting = Targeting()
-    host.shoot_hits(p, targeting, is_focus=False, is_sakuya=False,
-                    bomb_in_use=False, stage=1)
+    host.shoot_hits(
+        p, targeting, is_focus=False, is_sakuya=False, bomb_in_use=False, stage=1
+    )
     assert targeting.position_of_last_enemy_hit == Vec2(-999.0, -999.0)
     assert not targeting.targeting

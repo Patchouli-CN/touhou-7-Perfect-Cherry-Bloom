@@ -1,4 +1,4 @@
-""" 子弹命令系统 —— 移植自 BulletManager.cpp 的 RunCommands + 7 个 exFlags 更新器。
+"""子弹命令系统 —— 移植自 BulletManager.cpp 的 RunCommands + 7 个 exFlags 更新器。
 
 命令让弹幕"花活": 爆发 / 目标速度 / 目标角速度 / 转向后回速(相对/瞄准/绝对) / 反弹。
 用 IntFlag 表达 exFlags 激活位; 每颗弹持一个命令队列, 每帧:
@@ -25,21 +25,25 @@ SCREEN_W, SCREEN_H = 384.0, 448.0
 class CmdFlag(IntFlag):
     """命令类型(= exFlags 位, 值与 BulletManager.cpp RunCommands 的 cmd->type 一致)。"""
 
-    BURST = 0x1             # 爆发: 出场 16 帧内速度额外 +5 线性衰减到 +0
-    TARGET_VEL = 0x10       # 目标速度: 每帧叠加一个固定速度矢量
-    TARGET_ANGLE = 0x20     # 目标角: 角速度+加速度持续 duration 帧
-    DIR_CHANGE = 0x40       # 转向后回速: 先线性刹停, 再相对转向并恢复速度
-    DIR_CHANGE_AIM = 0x80   # 转向后回速: 转向瞄准玩家+偏移角
+    BURST = 0x1  # 爆发: 出场 16 帧内速度额外 +5 线性衰减到 +0
+    TARGET_VEL = 0x10  # 目标速度: 每帧叠加一个固定速度矢量
+    TARGET_ANGLE = 0x20  # 目标角: 角速度+加速度持续 duration 帧
+    DIR_CHANGE = 0x40  # 转向后回速: 先线性刹停, 再相对转向并恢复速度
+    DIR_CHANGE_AIM = 0x80  # 转向后回速: 转向瞄准玩家+偏移角
     DIR_CHANGE_ABS = 0x100  # 转向后回速: 转向绝对角
-    BOUNCE = 0x400          # 反弹(四边, 含底边)
-    BOUNCE_NO_FLOOR = 0x800 # 反弹(左右上三边, 底边不弹)
-    SPAWN_DELAY = 0x2000    # 延迟出屏判定(无更新器, 激活时直接置 spawn_delay)
+    BOUNCE = 0x400  # 反弹(四边, 含底边)
+    BOUNCE_NO_FLOOR = 0x800  # 反弹(左右上三边, 底边不弹)
+    SPAWN_DELAY = 0x2000  # 延迟出屏判定(无更新器, 激活时直接置 spawn_delay)
 
 
 # 带这些 exFlags 的弹出界后不立即销毁, 宽限 128 帧 (OnUpdate: exFlags & 0xdc0)
-OFFSCREEN_GRACE = int(CmdFlag.DIR_CHANGE | CmdFlag.DIR_CHANGE_AIM
-                      | CmdFlag.DIR_CHANGE_ABS | CmdFlag.BOUNCE
-                      | CmdFlag.BOUNCE_NO_FLOOR)
+OFFSCREEN_GRACE = int(
+    CmdFlag.DIR_CHANGE
+    | CmdFlag.DIR_CHANGE_AIM
+    | CmdFlag.DIR_CHANGE_ABS
+    | CmdFlag.BOUNCE
+    | CmdFlag.BOUNCE_NO_FLOOR
+)
 OFFSCREEN_GRACE_FRAMES = 128
 
 # step_commands 热路径用的 int 位型(避免 IntFlag 的 Python 级 __and__)
@@ -56,8 +60,8 @@ _F_BOUNCE_ANY = CmdFlag.BOUNCE.value | CmdFlag.BOUNCE_NO_FLOOR.value
 _SLOT_BURST = 0
 _SLOT_TARGET_VEL = 1
 _SLOT_TARGET_ANGLE = 2
-_SLOT_DIR_CHANGE = 3      # 0x40/0x80/0x100 共用一个槽
-_SLOT_BOUNCE = 4          # 0x400/0x800 共用一个槽
+_SLOT_DIR_CHANGE = 3  # 0x40/0x80/0x100 共用一个槽
+_SLOT_BOUNCE = 4  # 0x400/0x800 共用一个槽
 NUM_SLOTS = 5
 
 
@@ -98,12 +102,29 @@ class BulletState:
     bullets.Bullet 继承本类补上 sprite/age/grazed 等游戏层字段。
     """
 
-    __slots__ = ("pos", "angle", "speed", "vel", "size",
-                 "ex_flags", "more_flags", "commands", "cur_cmd_idx",
-                 "states", "spawn_delay")
+    __slots__ = (
+        "pos",
+        "angle",
+        "speed",
+        "vel",
+        "size",
+        "ex_flags",
+        "more_flags",
+        "commands",
+        "cur_cmd_idx",
+        "states",
+        "spawn_delay",
+    )
 
-    def __init__(self, pos: Vec2, angle: float, speed: float,
-                 vel: Vec2 | None = None, *, size: Vec2 = Vec2(16, 16)) -> None:
+    def __init__(
+        self,
+        pos: Vec2,
+        angle: float,
+        speed: float,
+        vel: Vec2 | None = None,
+        *,
+        size: Vec2 = Vec2(16, 16),
+    ) -> None:
         self.pos = pos
         self.angle = angle
         self.speed = speed
@@ -174,8 +195,9 @@ class BulletState:
                 st.angle = cmd.angle
                 st.timer = 0
                 st.duration = cmd.duration
-            elif t & (CmdFlag.DIR_CHANGE | CmdFlag.DIR_CHANGE_AIM
-                      | CmdFlag.DIR_CHANGE_ABS):
+            elif t & (
+                CmdFlag.DIR_CHANGE | CmdFlag.DIR_CHANGE_AIM | CmdFlag.DIR_CHANGE_ABS
+            ):
                 self.ex_flags |= t
                 st = self.states[_SLOT_DIR_CHANGE]
                 # ZUN quirk: 状态槽的 angle 装的是 cmd.speed, speed 装 cmd.angle
@@ -190,7 +212,7 @@ class BulletState:
                 st = self.states[_SLOT_BOUNCE]
                 st.speed = cmd.speed if cmd.speed >= 0.0 else self.speed
                 st.max_times = cmd.duration  # 允许反弹次数
-                st.duration = 0              # 复用为已反弹次数
+                st.duration = 0  # 复用为已反弹次数
             elif t == CmdFlag.SPAWN_DELAY:
                 self.spawn_delay = cmd.duration
                 self.cur_cmd_idx += 1
@@ -251,8 +273,9 @@ class BulletState:
             self.vel = Vec2.from_angle(self.angle, self.speed * dt)
         st.timer += 1
 
-    def _update_dir_change(self, dt: float, bit: CmdFlag, mode: str,
-                           player_pos: Vec2) -> None:
+    def _update_dir_change(
+        self, dt: float, bit: CmdFlag, mode: str, player_pos: Vec2
+    ) -> None:
         """UpdateBulletDirChange{,Absolute,AimAtPlayer}AndResume 三合一。
 
         前 duration 帧线性强减速到 0(vel 用衰减后的临时速度),
@@ -270,7 +293,8 @@ class BulletState:
                 self.angle = st.angle
             else:  # aim
                 self.angle = normalize_angle_diff(
-                    angle_to(self.pos, player_pos) + st.angle)
+                    angle_to(self.pos, player_pos) + st.angle
+                )
             self.speed = st.speed
             cur = self.speed
             st.timer = 0
@@ -287,14 +311,19 @@ class BulletState:
         """
         st = self.states[_SLOT_BOUNCE]
         hw, hh = self.size.x / 2.0, self.size.y / 2.0
-        in_bounds = (self.pos.x + hw >= 0.0 and self.pos.x - hw <= SCREEN_W
-                     and self.pos.y + hh >= 0.0 and self.pos.y - hh <= SCREEN_H)
+        in_bounds = (
+            self.pos.x + hw >= 0.0
+            and self.pos.x - hw <= SCREEN_W
+            and self.pos.y + hh >= 0.0
+            and self.pos.y - hh <= SCREEN_H
+        )
         if in_bounds:
             return
         if self.pos.x < 0.0 or self.pos.x >= SCREEN_W:
             self.angle = normalize_angle_diff(-self.angle - math.pi)
-        if self.pos.y < 0.0 or (self.pos.y >= SCREEN_H
-                                and (int(self.ex_flags) & CmdFlag.BOUNCE.value)):
+        if self.pos.y < 0.0 or (
+            self.pos.y >= SCREEN_H and (int(self.ex_flags) & CmdFlag.BOUNCE.value)
+        ):
             self.angle = -self.angle
         self.speed = st.speed
         self.vel = Vec2.from_angle(self.angle, self.speed * dt)

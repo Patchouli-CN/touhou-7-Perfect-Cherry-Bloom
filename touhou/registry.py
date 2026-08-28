@@ -34,6 +34,7 @@ data 为 GameData(缺省 None = 实现对局用自己的内置默认表, th07 �
 games.th07.data.TH07_DATA)。指令集拆分为独立子包是未来作品(th08)落地时的工作,
 这里只做接缝。
 """
+
 from __future__ import annotations
 
 import msgspec
@@ -71,45 +72,60 @@ __all__ = [
 @dataclass(frozen=True)
 class EclSpec:
     """一部作品的 ECL 虚拟机实现(指令集解释器 + 二进制文件格式)。"""
-    machine: type["EclMachineBase"]       # EclMachine 类(指令集/解释器实现)
-    file_format: type["EclFile"]   # EclFile 类(ecldata 二进制 parse/serialize;
-                        # 统一 enc/dec 入口 engine/ecl_codec.EclCodec 经此解析)
+
+    machine: type["EclMachineBase"]  # EclMachine 类(指令集/解释器实现)
+    file_format: type["EclFile"]  # EclFile 类(ecldata 二进制 parse/serialize;
+    # 统一 enc/dec 入口 engine/ecl_codec.EclCodec 经此解析)
 
 
 @dataclass(frozen=True)
 class AnmSpec:
     """一部作品的 ANM 格式变体。"""
-    format: type        # AnmFile 类(解析器)
-    version: int        # 期望的 anm 版本号(th07 = 2)
+
+    format: type  # AnmFile 类(解析器)
+    version: int  # 期望的 anm 版本号(th07 = 2)
 
 
 class GameData(msgspec.Struct, frozen=True):
     """作品数值表/名单(registry 只搬运; th07 实例见 games/th07/data.py)。"""
 
-    characters: tuple[str, ...] = ()          # 机体名单(下标 = shotType)
-    difficulties: tuple[str, ...] = ()        # 难度名单(下标 = difficulty)
-    extra_stages: tuple[str, ...] = ()        # Extra Start 后的关卡名单
-    stage_count: int = 6                      # 本篇面数(practice 选关上限)
-    practice_difficulty_count: int = 4        # practice 可选难度数(原版 4)
-    main_difficulty_count: int = 4            # 本篇 Start 可选难度数(原版 4;
-                                              # Extra/Phantasm 是额外关卡, 不算难度)
+    characters: tuple[str, ...] = ()  # 机体名单(下标 = shotType)
+    difficulties: tuple[str, ...] = ()  # 难度名单(下标 = difficulty)
+    extra_stages: tuple[str, ...] = ()  # Extra Start 后的关卡名单
+    stage_count: int = 6  # 本篇面数(practice 选关上限)
+    practice_difficulty_count: int = 4  # practice 可选难度数(原版 4)
+    main_difficulty_count: int = 4  # 本篇 Start 可选难度数(原版 4;
+    # Extra/Phantasm 是额外关卡, 不算难度)
     character_sht: dict[int, tuple[str, str]] = msgspec.field(
-        default_factory=dict)                 # 机体 → (非 focus, focus) .sht 文件
-    
-    characters: tuple[str, ...] = (           # 角色元数据（作品有多少角色，默认th07角色列表占位）
-        "ReimuA", "ReimuB", "MarisaA", "MarisaB", "SakuyaA", "SakuyaB"
+        default_factory=dict
+    )  # 机体 → (非 focus, focus) .sht 文件
+
+    characters: tuple[
+        str, ...
+    ] = (  # 角色元数据（作品有多少角色，默认th07角色列表占位）
+        "ReimuA",
+        "ReimuB",
+        "MarisaA",
+        "MarisaB",
+        "SakuyaA",
+        "SakuyaB",
     )
-    difficulties: tuple[str, ...] = (         # 难度元数据（作品有什么难度，考虑th07特殊情况）
-        "Easy", "Normal", "Hard", "Lunatic",
-        "Extra", "Phantasm"
+    difficulties: tuple[str, ...] = (  # 难度元数据（作品有什么难度，考虑th07特殊情况）
+        "Easy",
+        "Normal",
+        "Hard",
+        "Lunatic",
+        "Extra",
+        "Phantasm",
     )
-    
-    spellcard_scores: tuple[int, ...] = ()    # 符卡基础分值(代码值)
-    bomb_params: dict[tuple[int, bool], tuple[int, int, int, float]] = \
-        msgspec.field(default_factory=dict)   # (机体, focus) → 炸弹参数原始行
-    drop_table: tuple[int, ...] = ()          # 小怪随机掉落表
-    power_levels: tuple[int, ...] = ()        # 火力档位阈值
-    full_power: int = 128                     # 满火力值
+
+    spellcard_scores: tuple[int, ...] = ()  # 符卡基础分值(代码值)
+    bomb_params: dict[tuple[int, bool], tuple[int, int, int, float]] = msgspec.field(
+        default_factory=dict
+    )  # (机体, focus) → 炸弹参数原始行
+    drop_table: tuple[int, ...] = ()  # 小怪随机掉落表
+    power_levels: tuple[int, ...] = ()  # 火力档位阈值
+    full_power: int = 128  # 满火力值
     full_power_score_bonus: tuple[int, ...] = ()  # 满火力后小 P 递增分表
 
 
@@ -119,10 +135,11 @@ class GameHooks:
 
     默认值即 th07 规则; 新作品注册时按自己的资源命名覆盖。
     """
-    host: type | None = None          # EclHost 实现类(如 th07 的 GameEclHost)
+
+    host: type | None = None  # EclHost 实现类(如 th07 的 GameEclHost)
     stage_file: str = "stage{n}.std"  # 关卡背景/几何文件({n} = 关号)
     ecl_file: str = "ecldata{n}.ecl"  # 关卡 ECL 脚本文件
-    msg_file: str = "msg{n}.dat"      # 关卡对话文件
+    msg_file: str = "msg{n}.dat"  # 关卡对话文件
 
 
 @dataclass(frozen=True)
@@ -131,14 +148,15 @@ class GameSpec:
 
     各维度允许为 None(部分注册); hooks 未注册时回落到 th07 默认规则。
     """
+
     name: str
     ecl: EclSpec | None
     anm: AnmSpec | None
     hooks: GameHooks
     world: type | None  # 对局实现类(register_world_impl 登记)
     data: GameData | None = None  # 数值表(register_game_data 登记; None=未登记)
-    app: type | None = None       # 窗口 App 类(register_app 登记; None=未登记)
-    mods: type | None = None      # mod 能力提供者类(register_mods 登记; None=未登记)
+    app: type | None = None  # 窗口 App 类(register_app 登记; None=未登记)
+    mods: type | None = None  # mod 能力提供者类(register_mods 登记; None=未登记)
 
 
 # ---- 全局注册表(按维度分表; 同名不同维度允许共存) ----
@@ -155,39 +173,56 @@ _RENDERER: dict[str, type] = {}  # 渲染后端(与作品名无关的正交维�
 def _put(table: dict[str, Any], kind: str, name: str, value: Any) -> None:
     """写入一个维度; 同名重复注册报错(防静默覆盖)。"""
     if name in table:
-        raise DuplicateRegistrationError(f"{kind}重复注册: {name!r} (已注册 {table[name]!r})")
+        raise DuplicateRegistrationError(
+            f"{kind}重复注册: {name!r} (已注册 {table[name]!r})"
+        )
     table[name] = value
 
 
 def register_ecl(name: str, *, file_format: type) -> Callable[[type], type]:
     """注册作品的 ECL 虚拟机(装饰 EclMachine 实现类, 原样返回)。"""
+
     def deco(cls: type) -> type:
         _put(_ECL, "ECL 虚拟机", name, EclSpec(machine=cls, file_format=file_format))
         return cls
+
     return deco
 
 
 def register_anm(name: str, *, version: int) -> Callable[[type], type]:
     """注册作品的 ANM 格式变体(装饰 AnmFile 解析类, 原样返回)。"""
+
     def deco(cls: type) -> type:
         _put(_ANM, "ANM 格式", name, AnmSpec(format=cls, version=version))
         return cls
+
     return deco
 
 
-def register_game_hooks(name: str, *, stage_file: str = "stage{n}.std",
-                        ecl_file: str = "ecldata{n}.ecl",
-                        msg_file: str = "msg{n}.dat") -> Callable[[type], type]:
+def register_game_hooks(
+    name: str,
+    *,
+    stage_file: str = "stage{n}.std",
+    ecl_file: str = "ecldata{n}.ecl",
+    msg_file: str = "msg{n}.dat",
+) -> Callable[[type], type]:
     """注册游戏回调包(装饰 EclHost 宿主实现类, 原样返回)。
 
     关卡文件命名规则随包登记, 由对局实现在装载关卡资源时消费
     (games/th07/world.py 的 hooks 接缝)。
     """
+
     def deco(cls: type) -> type:
-        _put(_HOOKS, "游戏回调包", name,
-             GameHooks(host=cls, stage_file=stage_file,
-                       ecl_file=ecl_file, msg_file=msg_file))
+        _put(
+            _HOOKS,
+            "游戏回调包",
+            name,
+            GameHooks(
+                host=cls, stage_file=stage_file, ecl_file=ecl_file, msg_file=msg_file
+            ),
+        )
         return cls
+
     return deco
 
 
@@ -196,9 +231,11 @@ def register_world_impl(name: str) -> Callable[[type], type]:
 
     TouhouWorld/Game 的 ``game=`` 参数经此构造对局; 构造契约见模块 docstring。
     """
+
     def deco(cls: type) -> type:
         _put(_WORLD, "对局实现", name, cls)
         return cls
+
     return deco
 
 
@@ -228,9 +265,11 @@ def register_app(name: str) -> Callable[[type], type]:
     policy 的实参应有完整观测面, 如包出现存对局的 apis.basic.Game);
     不声明的 App 收不到该参数, 行为不变。
     """
+
     def deco(cls: type) -> type:
         _put(_APP, "窗口 App", name, cls)
         return cls
+
     return deco
 
 
@@ -246,9 +285,11 @@ def register_mods(name: str) -> Callable[[type], type]:
     (如 ``api.th07``)。作品专属机制(如 th07 樱点/结界)经此喂给 ModApi,
     不进通用核。
     """
+
     def deco(cls: type) -> type:
         _put(_MODS, "mod 能力提供者", name, cls)
         return cls
+
     return deco
 
 
@@ -276,16 +317,25 @@ def mod_namespace(name: str) -> Callable[[Any], Any]:
     def deco(obj: Any) -> Any:
         obj._mod_namespace = name
         return obj
+
     return deco
 
 
 def registered_games() -> list[str]:
     """全部已注册作品名(任一维度出现即算), 排序返回。"""
-    return sorted(set(_ECL) | set(_ANM) | set(_HOOKS) | set(_WORLD) | set(_DATA)
-                  | set(_APP) | set(_MODS))
+    return sorted(
+        set(_ECL)
+        | set(_ANM)
+        | set(_HOOKS)
+        | set(_WORLD)
+        | set(_DATA)
+        | set(_APP)
+        | set(_MODS)
+    )
 
 
 # ---- 渲染后端维度(与作品名正交: 后端名 → Renderer 实现类) ----
+
 
 def register_renderer(name: str) -> Callable[[type], type]:
     """注册渲染后端(装饰 Renderer 实现类, 原样返回)。
@@ -294,9 +344,11 @@ def register_renderer(name: str) -> Callable[[type], type]:
     engine/render/__init__.py 的 Renderer。``GameApp(renderer=name)`` 经
     get_renderer 解析; "pygame" 为默认后端。
     """
+
     def deco(cls: type) -> type:
         _put(_RENDERER, "渲染后端", name, cls)
         return cls
+
     return deco
 
 
@@ -309,28 +361,42 @@ def get_renderer(name: str) -> type:
     """按名取渲染后端类; 未注册报带已注册列表的 NotRegisteredError。"""
     if name not in _RENDERER:
         raise NotRegisteredError(
-            f"未注册的渲染后端: {name!r} (已注册: {registered_renderers()})")
+            f"未注册的渲染后端: {name!r} (已注册: {registered_renderers()})"
+        )
     return _RENDERER[name]
 
-@overload
-def get_game(name: str | None, report_err: Literal[False]) -> GameSpec | None:
-    ...
 
 @overload
-def get_game(name: str | None, report_err: Literal[True] = True) -> GameSpec:
-    ...
+def get_game(name: str | None, report_err: Literal[False]) -> GameSpec | None: ...
+
+
+@overload
+def get_game(name: str | None, report_err: Literal[True] = True) -> GameSpec: ...
+
 
 def get_game(name: str | None, report_err: bool = True) -> GameSpec | None:
     """按作品名取注册描述; 未注册时，如果`report_err`为`True`，则报带已注册列表的 NotRegisteredError。"""
-    if name not in _ECL and name not in _ANM \
-            and name not in _HOOKS and name not in _WORLD \
-            and name not in _DATA and name not in _APP \
-            and name not in _MODS:
+    if (
+        name not in _ECL
+        and name not in _ANM
+        and name not in _HOOKS
+        and name not in _WORLD
+        and name not in _DATA
+        and name not in _APP
+        and name not in _MODS
+    ):
         if report_err:
             raise NotRegisteredError(
-                f"未注册的作品: {name!r} (已注册: {registered_games()})")
+                f"未注册的作品: {name!r} (已注册: {registered_games()})"
+            )
         return None
-    return GameSpec(name=name, ecl=_ECL.get(name), anm=_ANM.get(name),
-                    hooks=_HOOKS.get(name, GameHooks()),
-                    world=_WORLD.get(name), data=_DATA.get(name),
-                    app=_APP.get(name), mods=_MODS.get(name))
+    return GameSpec(
+        name=name,
+        ecl=_ECL.get(name),
+        anm=_ANM.get(name),
+        hooks=_HOOKS.get(name, GameHooks()),
+        world=_WORLD.get(name),
+        data=_DATA.get(name),
+        app=_APP.get(name),
+        mods=_MODS.get(name),
+    )

@@ -1,4 +1,5 @@
 """Touhou: 结算/评级测试。"""
+
 from __future__ import annotations
 
 import sys

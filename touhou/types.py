@@ -12,6 +12,7 @@
   (运行时若直接 import apis.basic 会形成 apis → engine → types → apis
   循环, 故运行时代码请 ``from touhou.apis.basic import …``。)
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
     # 弹幕结构(仅类型检查期): ModdableEngine 协议的 fire 签名用;
     # 运行时不 import, 保持本模块"零引擎依赖"的分层约定
     from .engine.bullets import Burst
+
     # 公共数据类型再导出(仅类型检查期可见; 运行时请 from touhou.apis.basic import …)
     from .apis.basic import (
         BossSnapshot,
@@ -50,12 +52,15 @@ if TYPE_CHECKING:
         TouhouWorldEventStream,
         WorldData,
     )
+
     # 引擎侧公共结构(仅类型检查期): ECL 宿主接口/敌人状态/道具收集上下文
     from .engine.ecl import EclEnemyState, EclHost
     from .games.th07.items import GameContext
+
     # Vec2(仅类型检查期): ModdableBossFace 的 pos 声明用; utils 是叶子层,
     # 运行时也可 import, 这里随本模块惯例放 TYPE_CHECKING 保持零依赖
     from .utils import Vec2
+
     # 协议符合性静态断言用(见文件末尾; 运行时不 import, 无循环)
     from .games.th07.world import PerfectCherryBloom
 
@@ -107,6 +112,7 @@ InputSource: TypeAlias = "Input | Callable[[Game], Input]"
 
 
 # ---- 结构式 Protocol(鸭子类型, 引擎实体天然满足) ----
+
 
 @runtime_checkable
 class PosLike(Protocol):
@@ -186,10 +192,10 @@ class BossFace(Positioned, Protocol):
     def max_life(self) -> float: ...
 
     @property
-    def is_active(self) -> int: ...        # 0=无符卡 1=进行中 2=超时失败
+    def is_active(self) -> int: ...  # 0=无符卡 1=进行中 2=超时失败
 
     @property
-    def spellcard_idx(self) -> int: ...    # -1 = 非符卡阶段
+    def spellcard_idx(self) -> int: ...  # -1 = 非符卡阶段
 
 
 class BorderFace(Protocol):
@@ -333,13 +339,13 @@ class GameEngine(Protocol):
     def cleared(self) -> bool: ...
 
     @property
-    def result(self) -> dict | None: ...       # 总结算(门面只判 None/读出)
+    def result(self) -> dict | None: ...  # 总结算(门面只判 None/读出)
 
     @property
-    def stage_results(self) -> Any: ...        # 过关结算快照(门面只判 None)
+    def stage_results(self) -> Any: ...  # 过关结算快照(门面只判 None)
 
     @property
-    def ending(self) -> Any: ...               # 结局数据(门面只判 None)
+    def ending(self) -> Any: ...  # 结局数据(门面只判 None)
 
     # ---- globals / 资源访问面 ----
     @property
@@ -377,8 +383,14 @@ class GameEngine(Protocol):
     def lasers(self) -> LaserWorldFace: ...
 
     # ---- 推进与控制 ----
-    def tick(self, *, keys: tuple[bool, ...] | None = None, bomb: bool = False,
-             advance: bool = False, skip: bool = False) -> None: ...
+    def tick(
+        self,
+        *,
+        keys: tuple[bool, ...] | None = None,
+        bomb: bool = False,
+        advance: bool = False,
+        skip: bool = False,
+    ) -> None: ...
 
     def enter_stage(self, stage_no: int) -> None: ...
 
@@ -388,7 +400,8 @@ class GameEngine(Protocol):
 
 
 def _perfect_cherry_bloom_satisfies_game_engine(
-        impl: "PerfectCherryBloom") -> GameEngine:
+    impl: "PerfectCherryBloom",
+) -> GameEngine:
     """静态断言: th07 主逻辑天然满足 GameEngine 协议(鸭子, 无 adapter)。
 
     仅供 mypy 检查(协议面与实现对漂移时这里报错); 运行时不被调用。
@@ -414,15 +427,15 @@ class ModdablePlayerFace(PlayerFace, Protocol):
 class ModdableGlobalsFace(GameGlobalsFace, Protocol):
     """全局计数可写形态 —— 真实分的直接改写口(score, int)。"""
 
-    score: int                 # 覆写只读 property 为可赋值属性
+    score: int  # 覆写只读 property 为可赋值属性
 
 
 class ModdableBossFace(BossFace, Protocol):
     """Boss 可写形态 —— 在只读面上追加生命/位置的直接改写口。"""
 
-    life: float                # 覆写只读 property 为可赋值属性(当前生命;
-                               # 不改 max_life, 跌破阈值仍走引擎阶段切换)
-    pos: "Vec2"                # Vec2 不可变(frozen Struct), 写位置 = 整体重赋
+    life: float  # 覆写只读 property 为可赋值属性(当前生命;
+    # 不改 max_life, 跌破阈值仍走引擎阶段切换)
+    pos: "Vec2"  # Vec2 不可变(frozen Struct), 写位置 = 整体重赋
 
 
 class ModdableBulletWorldFace(BulletWorldFace, Protocol):
@@ -468,7 +481,8 @@ class ModdableEngine(GameEngine, Protocol):
 
 
 def _perfect_cherry_bloom_satisfies_moddable_engine(
-        impl: "PerfectCherryBloom") -> ModdableEngine:
+    impl: "PerfectCherryBloom",
+) -> ModdableEngine:
     """静态断言: th07 主逻辑天然满足 ModdableEngine 协议(鸭子, 无 adapter)。
 
     仅供 mypy 检查(协议面与实现对漂移时这里报错); 运行时不被调用。

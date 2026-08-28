@@ -3,6 +3,7 @@
 语义权威: th07/src/th07/EnemyEclInstr.cpp (各断言注释标 C++ 行号)。
 覆盖真实 ecldata 中出现的全部 idx 0..23; 9/15/19/20 为表现侧(只验证分派不炸)。
 """
+
 from __future__ import annotations
 
 import math
@@ -30,9 +31,15 @@ def _setup(*subs: list[bytes], difficulty: int = 1):
     """GameEclHost + 待跑 sub0 的 EclMachine (调用方布置世界后 m.step())。"""
     f = build_ecl(*subs)
     world = EclWorld(difficulty=difficulty)
-    host = GameEclHost(f, world, enemies=EnemyHost(), bullets=BulletWorld(),
-                       lasers=LaserWorld(), items=ItemWorld(),
-                       ecl_machine_cls=EclMachine)
+    host = GameEclHost(
+        f,
+        world,
+        enemies=EnemyHost(),
+        bullets=BulletWorld(),
+        lasers=LaserWorld(),
+        items=ItemWorld(),
+        ecl_machine_cls=EclMachine,
+    )
     m = EclMachine(f, world=world, host=host)
     m.enemy.life = 10
     m.start(0)
@@ -41,19 +48,37 @@ def _setup(*subs: list[bytes], difficulty: int = 1):
 
 def _ex_machine(idx: int, arg1: int = 0, **kw):
     """sub0: time0 RUN_EX_INS(idx, arg1) → 9999 UNIMP。"""
-    return _setup(
-        [_instr(0, OP.RUN_EX_INS, (idx, arg1)), _instr(9999, OP.UNIMP)], **kw)
+    return _setup([_instr(0, OP.RUN_EX_INS, (idx, arg1)), _instr(9999, OP.UNIMP)], **kw)
 
 
-def _fire(host: GameEclHost, at: tuple[float, float], *, sprite: int = 0,
-          sprite_offset: int = 0, count: int = 1, speed: float = 2.0,
-          angle: float = math.pi / 2) -> None:
-    host.bullets.fire(Burst(Vec2(*at), angle, Aim.RING_ABSOLUTE, count, 1,
-                            speed, speed, 0.0, sprite=sprite,
-                            sprite_offset=sprite_offset))
+def _fire(
+    host: GameEclHost,
+    at: tuple[float, float],
+    *,
+    sprite: int = 0,
+    sprite_offset: int = 0,
+    count: int = 1,
+    speed: float = 2.0,
+    angle: float = math.pi / 2,
+) -> None:
+    host.bullets.fire(
+        Burst(
+            Vec2(*at),
+            angle,
+            Aim.RING_ABSOLUTE,
+            count,
+            1,
+            speed,
+            speed,
+            0.0,
+            sprite=sprite,
+            sprite_offset=sprite_offset,
+        )
+    )
 
 
 # ---- 分派 ----
+
 
 def test_all_24_dispatched() -> None:
     assert sorted(GameEclHost._EX_DISPATCH) == list(range(24))
@@ -66,6 +91,7 @@ def test_passthrough_exins(idx: int) -> None:
 
 
 # ---- 0 SetPosToBoss (EnemyEclInstr.cpp:55) ----
+
 
 def test_ex0_set_pos_to_boss() -> None:
     m, host, world = _ex_machine(0, 2)
@@ -81,6 +107,7 @@ def test_ex0_set_pos_to_boss() -> None:
 
 
 # ---- 1 AliceCurveBullets (L66) ----
+
 
 def test_ex1_curves_matching_bullets() -> None:
     m, host, _ = _ex_machine(1, 0)
@@ -107,11 +134,12 @@ def test_ex1_selects_by_offset() -> None:
 
 # ---- 2 TurnBulletsIntoOtherBullets (L127) ----
 
+
 def test_ex2_transforms_offset2_within_radius() -> None:
     m, host, _ = _ex_machine(2, 0)  # 半径 128
     m.enemy.pos = Vec3(192.0, 200.0, 0.0)
-    _fire(host, (192, 220), sprite=2, sprite_offset=2)   # 距离 20 < 128 → 变换
-    _fire(host, (192, 400), sprite=2, sprite_offset=2)   # 距离 200 → 不动
+    _fire(host, (192, 220), sprite=2, sprite_offset=2)  # 距离 20 < 128 → 变换
+    _fire(host, (192, 400), sprite=2, sprite_offset=2)  # 距离 200 → 不动
     m.step()
     near, far = host.bullets.alive()[:2]
     assert near.dead
@@ -125,10 +153,11 @@ def test_ex2_transforms_offset2_within_radius() -> None:
 
 # ---- 4 DespawnLargeBulletAndSavePos (L196) ----
 
+
 def test_ex4_saves_large_bullet_pos() -> None:
     m, host, _ = _ex_machine(4, 0)
     _fire(host, (150, 250), sprite=10, sprite_offset=0)  # 64px 大玉
-    _fire(host, (50, 50), sprite=0)                      # 8px 小弹
+    _fire(host, (50, 50), sprite=0)  # 8px 小弹
     m.step()
     assert m.current.args.float_vars1[0] == pytest.approx(150.0)
     assert m.current.args.float_vars1[1] == pytest.approx(250.0)
@@ -145,6 +174,7 @@ def test_ex4_no_large_bullet_sets_minus999() -> None:
 
 # ---- 5 CopyMainBossMovement (L227) ----
 
+
 def test_ex5_copies_main_boss_movement() -> None:
     m, host, world = _ex_machine(5, 0)
     boss = type(m.enemy)()
@@ -159,6 +189,7 @@ def test_ex5_copies_main_boss_movement() -> None:
 
 
 # ---- 6 SplitBulletsOrShootBackwards (L242) ----
+
 
 def test_ex6_splits_offset6_bullets() -> None:
     m, host, _ = _ex_machine(6, 0, difficulty=1)
@@ -178,6 +209,7 @@ def test_ex6_splits_offset6_bullets() -> None:
 
 # ---- 7/8 激光交互 (L366/L454) ----
 
+
 def _laser(host: GameEclHost) -> Laser:
     laser = Laser(pos=Vec2(100, 100), angle=0.0, width=8.0, start_time=0)
     laser.offset_a = 0.0
@@ -192,7 +224,7 @@ def test_ex7_reflects_bullets_in_laser_rect() -> None:
     m.enemy.timer = 0  # timer % 2 == 激光下标 0
     _laser(host)
     _fire(host, (150, 100), angle=math.pi / 2)  # 盒内, 向下飞
-    _fire(host, (150, 300))                     # 盒外
+    _fire(host, (150, 300))  # 盒外
     m.step()
     inside, outside = host.bullets.alive()
     assert inside.state2 == 10 and inside.sprite == 5
@@ -217,11 +249,15 @@ def test_ex8_redirects_bullets_along_laser() -> None:
 
 # ---- 10/11 妖梦减速 (L556/L585) ----
 
+
 def test_ex10_ex11_game_speed() -> None:
     m, host, world = _setup(
-        [_instr(0, OP.RUN_EX_INS, (10, 2)),      # 半速
-         _instr(1, OP.RUN_EX_INS, (11, 1)),      # 恢复
-         _instr(9999, OP.UNIMP)])
+        [
+            _instr(0, OP.RUN_EX_INS, (10, 2)),  # 半速
+            _instr(1, OP.RUN_EX_INS, (11, 1)),  # 恢复
+            _instr(9999, OP.UNIMP),
+        ]
+    )
     _fire(host, (192, 100), speed=2.0)
     b = host.bullets.alive()[0]
     v0 = b.vel.y
@@ -245,6 +281,7 @@ def test_ex10_spawned_bullets_scaled() -> None:
 
 
 # ---- 12/21 大弹爆裂 (L621/L853) ----
+
 
 def test_ex12_bursts_large_bullets_normal() -> None:
     m, host, _ = _ex_machine(12, 0, difficulty=1)
@@ -273,12 +310,13 @@ def test_ex21_bursts_15_and_sprite_table() -> None:
 
 # ---- 13/14 妖梦弹幕操控 (L696/L725) ----
 
+
 def test_ex13_curves_bullets_below() -> None:
     m, host, _ = _ex_machine(13, 0)
     m.enemy.pos = Vec3(192.0, 100.0, 0.0)
-    _fire(host, (192, 200), speed=1.8)   # 正下方, x±16 内
-    _fire(host, (300, 200))              # x 窗外
-    _fire(host, (192, 400))              # y >= 352 外
+    _fire(host, (192, 200), speed=1.8)  # 正下方, x±16 内
+    _fire(host, (300, 200))  # x 窗外
+    _fire(host, (192, 400))  # y >= 352 外
     m.step()
     below, _, _ = host.bullets.alive()
     assert below.state2 == 1
@@ -306,6 +344,7 @@ def test_ex14_redirects_state2_1_to_player() -> None:
 
 # ---- 16/17/18 幽幽子蝶弹 (L757/L791/L829) ----
 
+
 def test_ex16_butterfly_spawns_backspread() -> None:
     m, host, _ = _ex_machine(16, 0)
     m.current.args.float_vars1[1] = 2.5
@@ -326,7 +365,7 @@ def test_ex17_butterfly_spawns_enemy() -> None:
         [_instr(0, 0), _instr(9999, OP.UNIMP)],  # sub1: 空转(不改 life)
     )
     _fire(host, (120, 130), sprite=8, sprite_offset=4, angle=0.5)  # 636 → 刷敌
-    _fire(host, (200, 200), sprite=8, sprite_offset=5)             # 637 → 只消弹
+    _fire(host, (200, 200), sprite=8, sprite_offset=5)  # 637 → 只消弹
     m.step()
     spawned = host.enemies.all()
     assert len(spawned) == 1
@@ -339,12 +378,13 @@ def test_ex17_butterfly_spawns_enemy() -> None:
 def test_ex18_counts_636_butterflies() -> None:
     m, host, _ = _ex_machine(18, 0)
     _fire(host, (100, 100), sprite=8, sprite_offset=4, count=2)  # 636 ×2
-    _fire(host, (200, 100), sprite=8, sprite_offset=6)           # 638 不计
+    _fire(host, (200, 100), sprite=8, sprite_offset=6)  # 638 不计
     m.step()
     assert m.current.args.int_vars1[0] == 2
 
 
 # ---- 22/23 Extra/Phantasm 大弹追踪 (L936/L1005) ----
+
 
 def test_ex22_odd_timer_spawns_dirchange_bullets() -> None:
     m, host, _ = _ex_machine(22, 0)
@@ -376,8 +416,7 @@ def test_ex22_even_timer_sprite3_count2_no_cmd() -> None:
     m.step()
     new = host.bullets.alive()[1:]
     assert len(new) == 2
-    assert all(b.sprite == 3 and b.sprite_offset == 2 and b.speed == 0.8
-               for b in new)
+    assert all(b.sprite == 3 and b.sprite_offset == 2 and b.speed == 0.8 for b in new)
     assert all(not b.commands for b in new)
 
 
@@ -409,12 +448,16 @@ def test_ex23_variants() -> None:
 
 # ---- SET_EX_INS 每帧回调路径 ----
 
+
 def test_set_ex_ins_per_frame_callback() -> None:
     """SET_EX_INS(22) 注册后每帧触发(对照 EclManager.cpp:2169); -1 注销。"""
     m, host, _ = _setup(
-        [_instr(0, OP.SET_EX_INS, (22, 0)),
-         _instr(4, OP.SET_EX_INS, (-1, 0)),
-         _instr(9999, OP.UNIMP)])
+        [
+            _instr(0, OP.SET_EX_INS, (22, 0)),
+            _instr(4, OP.SET_EX_INS, (-1, 0)),
+            _instr(9999, OP.UNIMP),
+        ]
+    )
     _fire(host, (192, 100), sprite=10, sprite_offset=1)
     for _ in range(6):
         m.step()
@@ -454,6 +497,7 @@ def test_remove_all_bullets_clears_lasers() -> None:
 
 # ---- screenClearTime (BulletManager.cpp:480 / :289-292 / :627-630) ----
 
+
 def test_remove_all_bullets_sets_screen_clear_time() -> None:
     """RemoveAllBullets 末尾 screenClearTime=10: 窗口内新弹被压制,
     0x1000 moreFlag 豁免; 窗口随 BulletWorld.step 递减。"""
@@ -466,8 +510,9 @@ def test_remove_all_bullets_sets_screen_clear_time() -> None:
     _fire(host, (100, 100), count=4)
     assert len(host.bullets) == 4  # 只有之前被清的 4 颗, 新弹未入场
     # 0x1000 moreFlag 豁免
-    host.bullets.fire(Burst(Vec2(100, 100), 0.0, Aim.RING_ABSOLUTE, 2, 1,
-                            2.0, 2.0, 0.0, flags=0x1000))
+    host.bullets.fire(
+        Burst(Vec2(100, 100), 0.0, Aim.RING_ABSOLUTE, 2, 1, 2.0, 2.0, 0.0, flags=0x1000)
+    )
     assert len(host.bullets) == 6
     for _ in range(10):
         host.bullets.step()  # 顺带清掉 dead 弹 + 窗口递减到 0
@@ -480,6 +525,7 @@ def test_screen_clear_time_blocks_laser_spawn() -> None:
     """SpawnLaserPattern: screenClearTime 窗口内, 无 flag 4 的激光不生成
     (BulletManager.cpp:627-630)。"""
     from touhou.engine.ecl import EnemyLaserShooter
+
     m, host, world = _setup([_instr(9999, OP.UNIMP)])
     host.bullets.screen_clear_time = 5
     props = EnemyLaserShooter(pos=Vec3(100.0, 100.0, 0.0), flags=0)
@@ -494,9 +540,11 @@ def test_command_queue_truncates_at_first_empty_slot() -> None:
     """C RunCommands 在第一个 type==0 槽停止 (BulletManager.cpp:318-320):
     稀疏槽位(0 空 1 有)后面的命令不激活 —— 按截断处理。"""
     from touhou.engine.ecl import BulletCommandData, EnemyBulletShooter
+
     m, host, world = _setup([_instr(9999, OP.UNIMP)])
-    props = EnemyBulletShooter(pos=Vec3(100.0, 100.0, 0.0), count1=1, count2=1,
-                               speed1=2.0, aim_mode=3)
+    props = EnemyBulletShooter(
+        pos=Vec3(100.0, 100.0, 0.0), count1=1, count2=1, speed1=2.0, aim_mode=3
+    )
     props.commands[1] = BulletCommandData(type=int(CmdFlag.BURST))
     host.spawn_bullet_pattern(props)
     b = host.bullets.alive()[0]

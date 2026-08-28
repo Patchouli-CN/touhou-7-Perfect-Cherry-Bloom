@@ -3,6 +3,7 @@
 数值权威: th07/src/th07/BulletManager.cpp (SpawnSingleBullet / RunCommands /
 UpdateBullet* / OnUpdate)。
 """
+
 from __future__ import annotations
 
 import math
@@ -32,7 +33,9 @@ from touhou.utils import Vec2, angle_to  # noqa: E402
 P = Vec2(100, 100)  # 玩家占位
 
 
-def _mk(angle: float = 0.0, speed: float = 3.0, pos: Vec2 = Vec2(100, 100)) -> BulletState:
+def _mk(
+    angle: float = 0.0, speed: float = 3.0, pos: Vec2 = Vec2(100, 100)
+) -> BulletState:
     return BulletState(pos=pos, angle=angle, speed=speed)
 
 
@@ -118,8 +121,8 @@ def test_rank_lerp_endpoints() -> None:
 
 
 def test_rank_lerp_int_truncates_toward_zero() -> None:
-    assert rank_lerp_int(1, 4, 16) == 2   # 16*3/32=1.5 → 1
-    assert rank_lerp_int(5, 0, 16) == 3   # 16*(-5)/32=-2.5 → C++ 截断 -2 (非 floor -3)
+    assert rank_lerp_int(1, 4, 16) == 2  # 16*3/32=1.5 → 1
+    assert rank_lerp_int(5, 0, 16) == 3  # 16*(-5)/32=-2.5 → C++ 截断 -2 (非 floor -3)
 
 
 # ======================================================================
@@ -128,8 +131,19 @@ def test_rank_lerp_int_truncates_toward_zero() -> None:
 def test_world_step_runs_commands_before_movement() -> None:
     w = BulletWorld()
     cmd = BulletCommand(CmdFlag.TARGET_ANGLE, speed=-2.0, angle=0.0, duration=60)
-    w.fire(Burst(Vec2(100, 100), 0.0, Aim.SPREAD_ABSOLUTE, 1, 1, 3.0, 3.0, 0.0,
-                 commands=(cmd,)))
+    w.fire(
+        Burst(
+            Vec2(100, 100),
+            0.0,
+            Aim.SPREAD_ABSOLUTE,
+            1,
+            1,
+            3.0,
+            3.0,
+            0.0,
+            commands=(cmd,),
+        )
+    )
     b = w.alive()[0]
     w.step()
     # 命令先跑: 速度 3→1 后再位移 → x=101 (若先位移则是 103)
@@ -139,8 +153,19 @@ def test_world_step_runs_commands_before_movement() -> None:
 
 def test_spawn_runs_run_commands_immediately() -> None:
     w = BulletWorld()
-    w.fire(Burst(P, 0.0, Aim.SPREAD_ABSOLUTE, 1, 1, 3.0, 3.0, 0.0,
-                 commands=(BulletCommand(CmdFlag.BURST),)))
+    w.fire(
+        Burst(
+            P,
+            0.0,
+            Aim.SPREAD_ABSOLUTE,
+            1,
+            1,
+            3.0,
+            3.0,
+            0.0,
+            commands=(BulletCommand(CmdFlag.BURST),),
+        )
+    )
     b = w.alive()[0]
     assert b.ex_flags & CmdFlag.BURST  # SpawnSingleBullet 末尾的 RunCommands
     w.step()
@@ -151,8 +176,19 @@ def test_spawn_runs_run_commands_immediately() -> None:
 def test_spawn_delay_survives_offscreen_until_delay_ends() -> None:
     w = BulletWorld()
     cmd = BulletCommand(CmdFlag.SPAWN_DELAY, duration=30)
-    w.fire(Burst(Vec2(-50, 100), 0.0, Aim.SPREAD_ABSOLUTE, 1, 1, 1.0, 1.0, 0.0,
-                 commands=(cmd,)))
+    w.fire(
+        Burst(
+            Vec2(-50, 100),
+            0.0,
+            Aim.SPREAD_ABSOLUTE,
+            1,
+            1,
+            1.0,
+            1.0,
+            0.0,
+            commands=(cmd,),
+        )
+    )
     for _ in range(29):
         w.step()
     assert len(w) == 1  # 延迟期间出界不销毁(仍在移动)
@@ -162,8 +198,7 @@ def test_spawn_delay_survives_offscreen_until_delay_ends() -> None:
 
 def test_fire_sets_more_flags_and_type_size() -> None:
     w = BulletWorld()
-    w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 2, 1, 2.0, 2.0, 0.0,
-                 sprite=8, flags=0x200))
+    w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 2, 1, 2.0, 2.0, 0.0, sprite=8, flags=0x200))
     b = w.alive()[0]
     assert b.more_flags == 0x200
     assert b.size == Vec2(32.0, 32.0)  # 弹型 8 = 32px 刀弹
@@ -175,23 +210,25 @@ def test_fire_sets_more_flags_and_type_size() -> None:
 def test_dir_change_relative_slows_then_turns() -> None:
     b = _mk(angle=0.0, speed=3.0)
     # ZUN quirk: cmd.speed 进状态槽 angle(转向量), cmd.angle 进 speed(新速度)
-    b.add_command(BulletCommand(CmdFlag.DIR_CHANGE, speed=1.0, angle=2.0,
-                                duration=10, loop=1))
+    b.add_command(
+        BulletCommand(CmdFlag.DIR_CHANGE, speed=1.0, angle=2.0, duration=10, loop=1)
+    )
     for _ in range(5):
         step_bullet(b, P)
     # 刹停中: cur = 3 - 4*3/10 = 1.8
     assert abs(b.vel.length - 1.8) < 1e-9
     for _ in range(6):
         step_bullet(b, P)
-    assert abs(b.angle - 1.0) < 1e-9   # 相对转向 += 1.0
-    assert b.speed == 2.0              # 恢复目标速度
+    assert abs(b.angle - 1.0) < 1e-9  # 相对转向 += 1.0
+    assert b.speed == 2.0  # 恢复目标速度
     assert not (b.ex_flags & CmdFlag.DIR_CHANGE)  # loop=1 跑完清位
 
 
 def test_dir_change_absolute_sets_angle() -> None:
     b = _mk(angle=0.5, speed=3.0)
-    b.add_command(BulletCommand(CmdFlag.DIR_CHANGE_ABS, speed=1.0, angle=2.0,
-                                duration=10, loop=1))
+    b.add_command(
+        BulletCommand(CmdFlag.DIR_CHANGE_ABS, speed=1.0, angle=2.0, duration=10, loop=1)
+    )
     for _ in range(11):
         step_bullet(b, P)
     assert abs(b.angle - 1.0) < 1e-9  # 绝对角 = st.angle(=cmd.speed), 不是 0.5+1.0
@@ -200,8 +237,11 @@ def test_dir_change_absolute_sets_angle() -> None:
 
 def test_dir_change_aim_at_player() -> None:
     b = _mk(angle=0.0, speed=3.0, pos=Vec2(100, 100))
-    b.add_command(BulletCommand(CmdFlag.DIR_CHANGE_AIM, speed=0.25, angle=2.0,
-                                duration=10, loop=1))
+    b.add_command(
+        BulletCommand(
+            CmdFlag.DIR_CHANGE_AIM, speed=0.25, angle=2.0, duration=10, loop=1
+        )
+    )
     player = Vec2(100, 200)  # 正下方
     for _ in range(10):
         step_bullet(b, player)
@@ -213,8 +253,9 @@ def test_dir_change_aim_at_player() -> None:
 
 def test_dir_change_loops_before_clearing() -> None:
     b = _mk(angle=0.0, speed=3.0)
-    b.add_command(BulletCommand(CmdFlag.DIR_CHANGE, speed=0.5, angle=2.0,
-                                duration=10, loop=2))
+    b.add_command(
+        BulletCommand(CmdFlag.DIR_CHANGE, speed=0.5, angle=2.0, duration=10, loop=2)
+    )
     for _ in range(11):
         step_bullet(b, P)
     assert b.ex_flags & CmdFlag.DIR_CHANGE  # 第一次转向后仍在(loop=2)
@@ -240,13 +281,13 @@ def test_bounce_floor_only_with_floor_flag() -> None:
     b.add_command(BulletCommand(CmdFlag.BOUNCE, speed=-1.0, duration=3))
     step_bullet(b, P)
     assert abs(b.angle - (-math.pi / 2)) < 1e-9  # 向下 → 向上
-    assert b.ex_flags & CmdFlag.BOUNCE           # 次数未尽, 位保留
+    assert b.ex_flags & CmdFlag.BOUNCE  # 次数未尽, 位保留
     # BOUNCE_NO_FLOOR(0x800): 底边不弹
     b2 = _mk(angle=math.pi / 2, speed=2.0, pos=Vec2(200, 457))
     b2.add_command(BulletCommand(CmdFlag.BOUNCE_NO_FLOOR, speed=-1.0, duration=3))
     step_bullet(b2, P)
-    assert abs(b2.angle - math.pi / 2) < 1e-9    # 角度不变(仍向下)
-    assert b2.speed == 2.0                       # 但回弹速度已重置
+    assert abs(b2.angle - math.pi / 2) < 1e-9  # 角度不变(仍向下)
+    assert b2.speed == 2.0  # 但回弹速度已重置
 
 
 def test_offscreen_grace_128_frames_for_commanded_bullets() -> None:
@@ -257,8 +298,19 @@ def test_offscreen_grace_128_frames_for_commanded_bullets() -> None:
     assert len(w) == 0
     # 带转向命令的弹出界宽限 128 帧
     cmd = BulletCommand(CmdFlag.DIR_CHANGE, speed=0.1, angle=1.0, duration=500)
-    w.fire(Burst(Vec2(-50, 100), math.pi, Aim.SPREAD_ABSOLUTE, 1, 1, 2.0, 2.0, 0.0,
-                 commands=(cmd,)))
+    w.fire(
+        Burst(
+            Vec2(-50, 100),
+            math.pi,
+            Aim.SPREAD_ABSOLUTE,
+            1,
+            1,
+            2.0,
+            2.0,
+            0.0,
+            commands=(cmd,),
+        )
+    )
     for _ in range(127):
         w.step()
     assert len(w) == 1
@@ -272,8 +324,12 @@ def test_offscreen_grace_128_frames_for_commanded_bullets() -> None:
 def test_bullet_type_specs_table() -> None:
     assert len(BULLET_TYPE_SPECS) == 16
     s0 = BULLET_TYPE_SPECS[0]
-    assert (s0.anm_file_idx, s0.height, s0.graze_size, s0.collision_type) == \
-        (0x200, 8.0, Vec2(4, 4), 5)
+    assert (s0.anm_file_idx, s0.height, s0.graze_size, s0.collision_type) == (
+        0x200,
+        8.0,
+        Vec2(4, 4),
+        5,
+    )
     s1 = BULLET_TYPE_SPECS[1]
     assert (s1.graze_size, s1.collision_type) == (Vec2(6, 6), 3)  # 16px 默认档
     s2 = BULLET_TYPE_SPECS[2]
@@ -301,12 +357,32 @@ def test_bullet_type_size_fallback() -> None:
 # 弹型 0-6 → T=10/16/32 (fast/normal/slow), 弹型 7-9 → 32, 弹型 10 → 24
 # ======================================================================
 
-def _spawn_one(flag: int, *, sprite: int = 1, speed: float = 2.0,
-               angle: float = math.pi / 2, pos: Vec2 = Vec2(192, 100),
-               commands: tuple = ()) -> tuple[BulletWorld, Bullet]:
+
+def _spawn_one(
+    flag: int,
+    *,
+    sprite: int = 1,
+    speed: float = 2.0,
+    angle: float = math.pi / 2,
+    pos: Vec2 = Vec2(192, 100),
+    commands: tuple = (),
+) -> tuple[BulletWorld, Bullet]:
     w = BulletWorld()
-    w.fire(Burst(pos, angle, Aim.RING_ABSOLUTE, 1, 1, speed, speed, 0.0,
-                 sprite=sprite, flags=flag, commands=commands))
+    w.fire(
+        Burst(
+            pos,
+            angle,
+            Aim.RING_ABSOLUTE,
+            1,
+            1,
+            speed,
+            speed,
+            0.0,
+            sprite=sprite,
+            flags=flag,
+            commands=commands,
+        )
+    )
     return w, w.alive()[0]
 
 
@@ -427,8 +503,7 @@ def test_screen_clear_time_suppresses_new_bullets() -> None:
     n = w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 8, 1, 2.0, 2.0, 0.0))
     assert n == 0 and len(w) == 0
     # 带 0x1000 moreFlag 的弹不受窗口压制 (C: moreFlags & 0x1000 豁免)
-    n = w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 8, 1, 2.0, 2.0, 0.0,
-                     flags=0x1000))
+    n = w.fire(Burst(P, 0.0, Aim.RING_ABSOLUTE, 8, 1, 2.0, 2.0, 0.0, flags=0x1000))
     assert n == 8 and len(w) == 8
     # 窗口每帧递减, 10 帧后恢复正常生成
     for _ in range(10):
@@ -456,11 +531,24 @@ def test_screen_clear_time_rng_still_consumed() -> None:
 # 宽限位 (0xdc0) 在屏外跑完清零后, outOfBoundsTime 逐帧递减而非立即销毁
 # ======================================================================
 def test_offscreen_grace_residual_countdown() -> None:
-    cmd = BulletCommand(CmdFlag.DIR_CHANGE, speed=0.0, angle=-1000.0,
-                        duration=8, loop=1)
+    cmd = BulletCommand(
+        CmdFlag.DIR_CHANGE, speed=0.0, angle=-1000.0, duration=8, loop=1
+    )
     w = BulletWorld()
-    w.fire(Burst(Vec2(192, 20), -math.pi / 2, Aim.RING_ABSOLUTE, 1, 1,
-                 8.0, 8.0, 0.0, sprite=0, commands=(cmd,)))
+    w.fire(
+        Burst(
+            Vec2(192, 20),
+            -math.pi / 2,
+            Aim.RING_ABSOLUTE,
+            1,
+            1,
+            8.0,
+            8.0,
+            0.0,
+            sprite=0,
+            commands=(cmd,),
+        )
+    )
     b = w.alive()[0]
     for _ in range(9):
         w.step()  # 第 9 帧: 转向命令在屏外跑完, ex_flags 清零 (残余 oob=5)
@@ -483,8 +571,9 @@ def test_target_vel_bakes_time_scale_at_activation() -> None:
     cmd = BulletCommand(CmdFlag.TARGET_VEL, speed=2.0, angle=0.0, duration=10)
     w = BulletWorld()
     w.time_scale = 0.25  # 妖梦减速中
-    w.fire(Burst(P, math.pi / 2, Aim.RING_ABSOLUTE, 1, 1, 1.0, 1.0, 0.0,
-                 commands=(cmd,)))
+    w.fire(
+        Burst(P, math.pi / 2, Aim.RING_ABSOLUTE, 1, 1, 1.0, 1.0, 0.0, commands=(cmd,))
+    )
     b = w.alive()[0]
     # 出生 vel = 1.0*0.25 向下; 激活时 vec3 = 2.0*0.25 = 0.5 向 +x
     assert b.vel.distance(Vec2(0.0, 0.25)) < 1e-9

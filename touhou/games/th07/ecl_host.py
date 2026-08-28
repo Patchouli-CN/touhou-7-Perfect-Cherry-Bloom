@@ -1,4 +1,4 @@
-""" ECL 宿主实现 —— 把 EclHost 钩子接到游戏世界。
+"""ECL 宿主实现 —— 把 EclHost 钩子接到游戏世界。
 
 GameEclHost 持有 BulletWorld/LaserWorld/ItemWorld/EnemyHost 的引用:
 - spawn_bullet_pattern: EnemyBulletShooter → Burst 展开进 BulletWorld
@@ -77,9 +77,17 @@ class GameEclHost(EclHost):
     命名规则(默认值即 th07 的 stage{n}.std / ecldata{n}.ecl / msg{n}.dat)。
     """
 
-    def __init__(self, ecl_file: EclFile, world, *, enemies: EnemyHost,
-                 bullets: BulletWorld, lasers: LaserWorld, items: ItemWorld,
-                 ecl_machine_cls: type[EclMachineBase]) -> None:
+    def __init__(
+        self,
+        ecl_file: EclFile,
+        world,
+        *,
+        enemies: EnemyHost,
+        bullets: BulletWorld,
+        lasers: LaserWorld,
+        items: ItemWorld,
+        ecl_machine_cls: type[EclMachineBase],
+    ) -> None:
         self.file = ecl_file
         self.world = world
         self.enemies = enemies
@@ -88,24 +96,32 @@ class GameEclHost(EclHost):
         self.items = items
         # VM 类构造注入(解耦硬编码实例化; PerfectCherryBloom 注入 EclMachineTh07)
         self.ecl_machine_cls = ecl_machine_cls
-        self.frozen = False       # 炸弹中/玩家非 ALIVE (freeze_ecl_during_bombs 用)
-        self.bomb_in_use = False  # 炸弹中 (invisible_on_bomb 规则用, EclManager.cpp:2261)
-        self.spellcard_idx = -1   # 当前符卡全局 idx (g_EnemyManager.spellcardInfo.spellcardIdx)
-        self.power = 0.0          # spawn_item 满火力转换用(每帧由 impl 同步)
-        self.last_msg_id = -1     # msg_read 记录(最近一次 MsgRead 的原始 arg0)
+        self.frozen = False  # 炸弹中/玩家非 ALIVE (freeze_ecl_during_bombs 用)
+        self.bomb_in_use = (
+            False  # 炸弹中 (invisible_on_bomb 规则用, EclManager.cpp:2261)
+        )
+        self.spellcard_idx = (
+            -1
+        )  # 当前符卡全局 idx (g_EnemyManager.spellcardInfo.spellcardIdx)
+        self.power = 0.0  # spawn_item 满火力转换用(每帧由 impl 同步)
+        self.last_msg_id = -1  # msg_read 记录(最近一次 MsgRead 的原始 arg0)
         # 消息系统(impl 装入): msg_vm 为 None 时维持旧行为(仅记录, 不停轴)
         self.msg_vm: MsgVm | None = None
-        self.msg_character = 0    # C g_GameManager.character (0=灵梦 1=魔理沙 2=咲夜)
-        self.boss_health: tuple = ()   # set_boss_health 登记(GUI 血条数据)
-        self.boss_life_markers = 0     # set_boss_life_markers 登记
+        self.msg_character = 0  # C g_GameManager.character (0=灵梦 1=魔理沙 2=咲夜)
+        self.boss_health: tuple = ()  # set_boss_health 登记(GUI 血条数据)
+        self.boss_life_markers = 0  # set_boss_life_markers 登记
         self.enemy_by_state: dict[int, EclEnemy] = {}
         # ---- 事件透出(impl 接线; 均为可选) ----
-        self.on_set_boss: SetBossHook | None = None          # (idx, EclEnemyState|None)
-        self.on_begin_spellcard: BeginSpellcardHook | None = None  # (state, gui_id, idx, name)
-        self.on_end_spellcard: EndSpellcardHook | None = None      # (state)
-        self.on_spellcard_timeout: EndSpellcardHook | None = None  # (state) 捕获失败记账
-        self.on_set_power: IntHook | None = None             # (value)
-        self.on_add_cherry_plus: IntHook | None = None       # (value)
+        self.on_set_boss: SetBossHook | None = None  # (idx, EclEnemyState|None)
+        self.on_begin_spellcard: BeginSpellcardHook | None = (
+            None  # (state, gui_id, idx, name)
+        )
+        self.on_end_spellcard: EndSpellcardHook | None = None  # (state)
+        self.on_spellcard_timeout: EndSpellcardHook | None = (
+            None  # (state) 捕获失败记账
+        )
+        self.on_set_power: IntHook | None = None  # (value)
+        self.on_add_cherry_plus: IntHook | None = None  # (value)
         # 发声队列(schema.sound.SoundQueue, impl 注入; None = 静音)
         self.sound: SoundQueue | None = None
         # BGM 事件(impl 帧末收走): ("music_file", name) / ("fadeout", 秒)
@@ -123,9 +139,18 @@ class GameEclHost(EclHost):
             self.sound.play(idx)
 
     # ---- 每帧同步(impl 在跑时间轴/敌人前调用) ----
-    def frame_update(self, *, player_pos: Vec2, difficulty: int, rank: int,
-                     power: float, shottype: int, spellcard_active: bool,
-                     frozen: bool, bomb_in_use: bool = False) -> None:
+    def frame_update(
+        self,
+        *,
+        player_pos: Vec2,
+        difficulty: int,
+        rank: int,
+        power: float,
+        shottype: int,
+        spellcard_active: bool,
+        frozen: bool,
+        bomb_in_use: bool = False,
+    ) -> None:
         w = self.world
         w.player_pos.set(player_pos.x, player_pos.y, 0.0)
         w.difficulty = difficulty
@@ -161,14 +186,32 @@ class GameEclHost(EclHost):
                 t = CmdFlag(c.type)
             except ValueError:
                 continue
-            cmds.append(BulletCommand(t, speed=c.speed, angle=c.angle,
-                                      duration=c.duration, loop=c.loop_count,
-                                      flag=c.flag))
-        self.bullets.fire(Burst(pos, base, aim, props.count1, props.count2,
-                                props.speed1, props.speed2, props.angle2,
-                                sprite=props.sprite, sprite_offset=props.sprite_offset,
-                                commands=tuple(cmds),
-                                flags=props.flags))
+            cmds.append(
+                BulletCommand(
+                    t,
+                    speed=c.speed,
+                    angle=c.angle,
+                    duration=c.duration,
+                    loop=c.loop_count,
+                    flag=c.flag,
+                )
+            )
+        self.bullets.fire(
+            Burst(
+                pos,
+                base,
+                aim,
+                props.count1,
+                props.count2,
+                props.speed1,
+                props.speed2,
+                props.angle2,
+                sprite=props.sprite,
+                sprite_offset=props.sprite_offset,
+                commands=tuple(cmds),
+                flags=props.flags,
+            )
+        )
         if props.flags & 0x200:
             # 发弹音 (BulletManager.cpp:611-615, SpawnBulletPattern 尾部)
             self._play_sound(props.sound_idx)
@@ -185,13 +228,20 @@ class GameEclHost(EclHost):
         angle = props.angle1
         if props.type == 0:  # C: type 0 (MOVING) 出生即瞄玩家
             angle = angle_to(pos, self.bullets.player_pos) + angle
-        laser = Laser(pos=pos, angle=angle, width=props.width, speed=props.speed1,
-                      start_time=props.start_time,
-                      hitbox_start_time=props.hitbox_start_time,
-                      duration=props.duration, end_time=props.end_time,
-                      hitbox_end_time=props.hitbox_end_time,
-                      start_length=props.start_length, flags=props.flags,
-                      color=props.sprite_offset)
+        laser = Laser(
+            pos=pos,
+            angle=angle,
+            width=props.width,
+            speed=props.speed1,
+            start_time=props.start_time,
+            hitbox_start_time=props.hitbox_start_time,
+            duration=props.duration,
+            end_time=props.end_time,
+            hitbox_end_time=props.hitbox_end_time,
+            start_length=props.start_length,
+            flags=props.flags,
+            color=props.sprite_offset,
+        )
         laser.offset_a = props.start_offset
         laser.offset_b = props.end_offset
         self.lasers.lasers.append(laser)
@@ -227,9 +277,16 @@ class GameEclHost(EclHost):
         handle.offset_b = end
 
     # ---- 敌人 ----
-    def spawn_enemy(self, sub_id: int, pos: Vec3, life: int, item_drop: int,
-                    score: int, mirror: int, context_args: EclContextArgs
-                    ) -> EclEnemy | None:
+    def spawn_enemy(
+        self,
+        sub_id: int,
+        pos: Vec3,
+        life: int,
+        item_drop: int,
+        score: int,
+        mirror: int,
+        context_args: EclContextArgs,
+    ) -> EclEnemy | None:
         """EnemyManager::SpawnEnemy(Ex): 立即跑一帧 RunEcl, 失败则不登记。"""
         machine = self.ecl_machine_cls(self.file, world=self.world, host=self)
         e = EclEnemy(machine, host=self)
@@ -259,8 +316,9 @@ class GameEclHost(EclHost):
         if 0 <= st.boss_id < 8 and self.world.bosses[st.boss_id] is st:
             self.world.bosses[st.boss_id] = None
         # 渲染层死亡特效用(只读记录; C++ 在 life<=0 死亡分支播 deathAnm1/2)
-        self.gone_events.append((id(st), st.pos.x, st.pos.y, st.life,
-                                 st.death_anm, bool(st.is_boss)))
+        self.gone_events.append(
+            (id(st), st.pos.x, st.pos.y, st.life, st.death_anm, bool(st.is_boss))
+        )
 
     def clear_field(self, source: EclEnemy) -> None:
         """回调切阶段时的清场 (C: 非 boss 敌 life=0, !canDie 的跑死亡回调)。"""
@@ -268,8 +326,11 @@ class GameEclHost(EclHost):
             if e is source or not e.alive or e.is_boss:
                 continue
             e.life = 0
-            if isinstance(e, EclEnemy) and not e.state.can_die \
-                    and e.state.death_callback_sub >= 0:
+            if (
+                isinstance(e, EclEnemy)
+                and not e.state.can_die
+                and e.state.death_callback_sub >= 0
+            ):
                 e._run_death_callback()
 
     def on_timer_callback(self, e: EclEnemy) -> None:
@@ -293,13 +354,20 @@ class GameEclHost(EclHost):
             if isinstance(e, EclEnemy):
                 if e.state.is_projectile:
                     # isProjectile 掉弹消点, 出生即吸附 (EnemyManager.cpp:1486 SpawnItem(…, 1))
-                    self.items.spawn(e.pos, ItemType.POINT_BULLET, power=self.power,
-                                     state=STATE_ATTRACT)
+                    self.items.spawn(
+                        e.pos,
+                        ItemType.POINT_BULLET,
+                        power=self.power,
+                        state=STATE_ATTRACT,
+                    )
                     g = getattr(self.world, "globals", None)
                     if g is not None:
-                        g.add_popup(e.pos, popup,
-                                    POPUP_YELLOW if popup >= score_max
-                                    else POPUP_WHITE, kind=1)
+                        g.add_popup(
+                            e.pos,
+                            popup,
+                            POPUP_YELLOW if popup >= score_max else POPUP_WHITE,
+                            kind=1,
+                        )
                     total += popup
                     popup = min(popup + 30, score_max)
                 if not e.state.can_die and e.state.death_callback_sub >= 0:
@@ -324,19 +392,23 @@ class GameEclHost(EclHost):
         末尾置 screenClearTime=10 (:480): 窗口内新弹/新激光被压制。"""
         for b in self.bullets.alive():
             if spawn_items:
-                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
-                                 state=STATE_ATTRACT)
+                self.items.spawn(
+                    b.pos, ItemType.POINT_BULLET, power=self.power, state=STATE_ATTRACT
+                )
             b.dead = True
         self.lasers.remove_all(
-            spawn_items=spawn_items, skip_flag4=True,
-            spawn_item=self._spawn_point_bullet if spawn_items else None)
+            spawn_items=spawn_items,
+            skip_flag4=True,
+            spawn_item=self._spawn_point_bullet if spawn_items else None,
+        )
         self.bullets.screen_clear_time = 10  # BulletManager.cpp:480
 
     def _spawn_point_bullet(self, pos: Vec2) -> None:
         """弹消点道具 (C RemoveAllBullets/DespawnBullets 的 this->itemType);
         出生即吸附 (BulletManager.cpp:468/546 的 SpawnItem(…, 1))。"""
-        self.items.spawn(pos, ItemType.POINT_BULLET, power=self.power,
-                         state=STATE_ATTRACT)
+        self.items.spawn(
+            pos, ItemType.POINT_BULLET, power=self.power, state=STATE_ATTRACT
+        )
 
     def remove_bullets_in_radius(self, pos: Vec3, radius: float) -> None:
         """BulletManager::RemoveBulletsInRadius: 半径内弹转弹消点道具,
@@ -346,8 +418,9 @@ class GameEclHost(EclHost):
             dx = b.pos.x - pos.x
             dy = b.pos.y - pos.y
             if dx * dx + dy * dy <= r2:
-                self.items.spawn(b.pos, ItemType.POINT_BULLET, power=self.power,
-                                 state=STATE_ATTRACT)
+                self.items.spawn(
+                    b.pos, ItemType.POINT_BULLET, power=self.power, state=STATE_ATTRACT
+                )
                 b.dead = True
 
     # ---- Boss/符卡(事件透出, 记账在 impl/boss.py) ----
@@ -361,8 +434,9 @@ class GameEclHost(EclHost):
     def set_boss_life_markers(self, n: int) -> None:
         self.boss_life_markers = n
 
-    def begin_spellcard(self, enemy: EclEnemyState, gui_id: int,
-                        spellcard_idx: int, name: str) -> None:
+    def begin_spellcard(
+        self, enemy: EclEnemyState, gui_id: int, spellcard_idx: int, name: str
+    ) -> None:
         self.world.spellcard_active = True
         self.spellcard_idx = spellcard_idx
         if self.on_begin_spellcard is not None:
@@ -395,8 +469,8 @@ class GameEclHost(EclHost):
             return
         vm.read(msg_id + self.msg_character * 10)
         if vm.has_current_msg_idx():
-            self.remove_all_bullets(True)      # 弹转道具…
-            self.remove_all_enemies(0, 0)      # …随即被下一行清掉(同 C 顺序)
+            self.remove_all_bullets(True)  # 弹转道具…
+            self.remove_all_enemies(0, 0)  # …随即被下一行清掉(同 C 顺序)
             self.items.remove_all_items()
 
     def msg_wait(self) -> bool:
@@ -413,8 +487,7 @@ class GameEclHost(EclHost):
         if self.on_add_cherry_plus is not None:
             self.on_add_cherry_plus(value)
 
-    def run_ex_instr(self, idx: int, enemy: EclEnemyState, instr,
-                     ctx=None) -> bool:
+    def run_ex_instr(self, idx: int, enemy: EclEnemyState, instr, ctx=None) -> bool:
         """24 条 boss 特技 (EnemyEclInstr.cpp g_EclExInstr) 的分派。
 
         语义逐条照抄 C++(各方法注释标行号); 闪屏/特效等纯视觉部分留注释不接
@@ -432,7 +505,9 @@ class GameEclHost(EclHost):
     @staticmethod
     def _ex_arg1(instr, default: int = 0) -> int:
         """C 直接读 instr->args[1].i (不做变量解析)。"""
-        return instr.arg_int(1) if instr is not None and len(instr.args) > 1 else default
+        return (
+            instr.arg_int(1) if instr is not None and len(instr.args) > 1 else default
+        )
 
     def _ex0_set_pos_to_boss(self, enemy: EclEnemyState, instr, ctx) -> None:
         # EnemyEclInstr.cpp:55 ExInsSetPosToBoss
@@ -469,17 +544,27 @@ class GameEclHost(EclHost):
             b.commands = []  # memset(bullet->commands, 0, ...)
             b.cur_cmd_idx = 0
             if self.world.difficulty < 3:
-                b.set_command(0, BulletCommand(CmdFlag.TARGET_ANGLE,
-                                               speed=0.016666668, angle=turn,
-                                               duration=60))
+                b.set_command(
+                    0,
+                    BulletCommand(
+                        CmdFlag.TARGET_ANGLE, speed=0.016666668, angle=turn, duration=60
+                    ),
+                )
             else:
-                b.set_command(0, BulletCommand(CmdFlag.TARGET_ANGLE,
-                                               speed=0.005263158, angle=turn,
-                                               duration=240))
+                b.set_command(
+                    0,
+                    BulletCommand(
+                        CmdFlag.TARGET_ANGLE,
+                        speed=0.005263158,
+                        angle=turn,
+                        duration=240,
+                    ),
+                )
             b.state2 = 1
 
-    def _ex2_turn_bullets_into_other_bullets(self, enemy: EclEnemyState,
-                                             instr, ctx) -> None:
+    def _ex2_turn_bullets_into_other_bullets(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:127 ExInsTurnBulletsIntoOtherBullets
         sel = self._ex_arg1(instr)
         if sel == 0:
@@ -495,18 +580,29 @@ class GameEclHost(EclHost):
             if math.sqrt(dx * dx + dy * dy) >= radius:
                 continue
             props = EnemyBulletShooter(
-                sprite=0, sprite_offset=6,
+                sprite=0,
+                sprite_offset=6,
                 pos=Vec3(b.pos.x, b.pos.y, 0.0),
-                angle1=0.0, angle2=-math.pi, speed1=0.7,
-                count1=2, count2=1, flags=2, aim_mode=6)
+                angle1=0.0,
+                angle2=-math.pi,
+                speed1=0.7,
+                count1=2,
+                count2=1,
+                flags=2,
+                aim_mode=6,
+            )
             props.commands[0] = BulletCommandData(
-                type=int(CmdFlag.TARGET_VEL), duration=180,
-                speed=rng.in_range(0.0, 0.005) + 0.013, angle=1.5707964)
+                type=int(CmdFlag.TARGET_VEL),
+                duration=180,
+                speed=rng.in_range(0.0, 0.005) + 0.013,
+                angle=1.5707964,
+            )
             self.spawn_bullet_pattern(props)
             b.dead = True  # bullet->Initialize()
 
-    def _ex4_despawn_large_bullet_and_save_pos(self, enemy: EclEnemyState,
-                                               instr, ctx) -> None:
+    def _ex4_despawn_large_bullet_and_save_pos(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:196 ExInsDespawnLargeBulletAndSavePos
         if ctx is None:
             return
@@ -528,26 +624,36 @@ class GameEclHost(EclHost):
         enemy.move_radius = boss.move_radius
         enemy.move_angular_velocity = boss.move_angular_velocity
 
-    def _ex6_split_bullets_or_shoot_backwards(self, enemy: EclEnemyState,
-                                              instr, ctx) -> None:
+    def _ex6_split_bullets_or_shoot_backwards(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:242 ExInsSplitBulletsOrShootBackwards
         sel = self._ex_arg1(instr)
         diff = self.world.difficulty
         for b in list(self.bullets.alive()):
-            if not ((sel == 0 and b.sprite_offset == 6)
-                    or (sel == 1 and b.sprite_offset == 15)
-                    or (sel == 2 and b.sprite_offset == 2)):
+            if not (
+                (sel == 0 and b.sprite_offset == 6)
+                or (sel == 1 and b.sprite_offset == 15)
+                or (sel == 2 and b.sprite_offset == 2)
+            ):
                 continue
             props = EnemyBulletShooter(
-                sprite=6, sprite_offset=15,
+                sprite=6,
+                sprite_offset=15,
                 pos=Vec3(b.pos.x, b.pos.y, 0.0),
                 angle1=add_normalize_angle(b.angle, math.pi),
-                angle2=0.5235988, speed1=b.speed * 1.1,
-                count1=4 if diff < 3 else 2, count2=1, flags=2, aim_mode=1)
+                angle2=0.5235988,
+                speed1=b.speed * 1.1,
+                count1=4 if diff < 3 else 2,
+                count2=1,
+                flags=2,
+                aim_mode=1,
+            )
             if diff >= 3:
                 props.angle2 = 1.5707964
             props.commands[0] = BulletCommandData(
-                type=int(CmdFlag.SPAWN_DELAY), duration=130)
+                type=int(CmdFlag.SPAWN_DELAY), duration=130
+            )
             if sel == 0:
                 props.flags = 0x2002
             elif sel == 1:
@@ -575,19 +681,30 @@ class GameEclHost(EclHost):
             b.dead = True
 
     @staticmethod
-    def _point_in_rotated_rect(px: float, py: float, cx: float, cy: float,
-                               sx: float, sy: float, pivot: PosLike,
-                               sine: float, cosine: float) -> bool:
+    def _point_in_rotated_rect(
+        px: float,
+        py: float,
+        cx: float,
+        cy: float,
+        sx: float,
+        sy: float,
+        pivot: PosLike,
+        sine: float,
+        cosine: float,
+    ) -> bool:
         # EnemyEclInstr.cpp:336 IsPointInRotatedRect
         dx = px - pivot.x
         dy = py - pivot.y
         rx = dx * cosine + dy * sine + pivot.x
         ry = dy * cosine - dx * sine + pivot.y
-        return (cx - sx / 2.0 <= rx <= cx + sx / 2.0
-                and cy - sy / 2.0 <= ry <= cy + sy / 2.0)
+        return (
+            cx - sx / 2.0 <= rx <= cx + sx / 2.0
+            and cy - sy / 2.0 <= ry <= cy + sy / 2.0
+        )
 
-    def _ex7_reflect_bullets_from_lasers(self, enemy: EclEnemyState,
-                                         instr, ctx) -> None:
+    def _ex7_reflect_bullets_from_lasers(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:366 ExInsReflectBulletsFromLasers
         for i, laser in enumerate(self.lasers.lasers):
             if not laser.in_use or enemy.timer % 2 != i:
@@ -600,8 +717,16 @@ class GameEclHost(EclHost):
             sine, cosine = math.sin(laser.angle), math.cos(laser.angle)
             for b in self.bullets.alive():
                 if not self._point_in_rotated_rect(
-                        b.pos.x, b.pos.y, cx, cy, size_x, laser.width,
-                        laser.pos, sine, cosine):
+                    b.pos.x,
+                    b.pos.y,
+                    cx,
+                    cy,
+                    size_x,
+                    laser.width,
+                    laser.pos,
+                    sine,
+                    cosine,
+                ):
                     continue
                 if b.state2 > 0:
                     b.state2 -= 1
@@ -611,15 +736,16 @@ class GameEclHost(EclHost):
                     b.speed -= 0.1
                 dot = cosine * b.vel.y + sine * b.vel.x
                 b.angle = add_normalize_angle(
-                    laser.angle, 1.5707964 if dot >= 0.0 else -1.5707964)
+                    laser.angle, 1.5707964 if dot >= 0.0 else -1.5707964
+                )
                 b.vel = Vec2.from_angle(
-                    b.angle, self.world.framerate_multiplier * b.speed)
+                    b.angle, self.world.framerate_multiplier * b.speed
+                )
                 b.state2 = 10
                 b.sprite = 5  # bulletTypeTemplates[5]; C 另 SetActiveSprite 换皮
                 b.size = bullet_type_size(5)
 
-    def _ex8_shoot_bullets_along_laser(self, enemy: EclEnemyState,
-                                       instr, ctx) -> None:
+    def _ex8_shoot_bullets_along_laser(self, enemy: EclEnemyState, instr, ctx) -> None:
         # EnemyEclInstr.cpp:454 ExInsShootBulletsAlongLaser
         rng = self.world.rng
         diff = self.world.difficulty
@@ -637,8 +763,16 @@ class GameEclHost(EclHost):
                 if b.state2 == i + 1 or b.state2 < 0:
                     continue
                 if not self._point_in_rotated_rect(
-                        b.pos.x, b.pos.y, cx, cy, size_x, laser.width * 1.5,
-                        laser.pos, sine, cosine):
+                    b.pos.x,
+                    b.pos.y,
+                    cx,
+                    cy,
+                    size_x,
+                    laser.width * 1.5,
+                    laser.pos,
+                    sine,
+                    cosine,
+                ):
                     continue
                 if diff < 2:
                     b.speed *= rng.in_range(0.0, 0.3) + 0.7
@@ -670,8 +804,7 @@ class GameEclHost(EclHost):
         for b in self.bullets.alive():
             b.vel = b.vel * mult
 
-    def _ex11_youmu_restore_game_speed(self, enemy: EclEnemyState,
-                                       instr, ctx) -> None:
+    def _ex11_youmu_restore_game_speed(self, enemy: EclEnemyState, instr, ctx) -> None:
         # EnemyEclInstr.cpp:585 ExInsYoumuRestoreGameSpeed
         # (C 先置 1/arg 再强制回 1.0 + forceIntegerTimer, 终值恒 1.0)
         mult = self.world.framerate_multiplier
@@ -681,9 +814,15 @@ class GameEclHost(EclHost):
         self.world.framerate_multiplier = 1.0
         self.bullets.time_scale = 1.0
 
-    def _burst_large_bullets(self, enemy: EclEnemyState, instr, ctx,
-                             count_by_diff: tuple[int, ...], y_range: float,
-                             sprite_table: tuple[tuple[int, int], ...]) -> None:
+    def _burst_large_bullets(
+        self,
+        enemy: EclEnemyState,
+        instr,
+        ctx,
+        count_by_diff: tuple[int, ...],
+        y_range: float,
+        sprite_table: tuple[tuple[int, int], ...],
+    ) -> None:
         # EnemyEclInstr.cpp:621/853 ExInsBurstLargeBullets{,2} 公共部分
         # (BombEffects 不接)
         rng = self.world.rng
@@ -699,17 +838,28 @@ class GameEclHost(EclHost):
                 if sel == 0:
                     angle1 = rng.in_range(0.0, 4.712389) - 1.5707964
                 else:
-                    angle1 = add_normalize_angle(rng.in_range(0.0, 4.712389),
-                                                 0.7853982)
+                    angle1 = add_normalize_angle(rng.in_range(0.0, 4.712389), 0.7853982)
                 props = EnemyBulletShooter(
-                    sprite=sprite, sprite_offset=offset,
-                    pos=Vec3(b.pos.x + rng.in_range(0.0, 32.0) - 16.0,
-                             b.pos.y + rng.in_range(0.0, 32.0) - 16.0, 0.0),
-                    angle1=angle1, speed1=0.1, count1=1, count2=1,
-                    flags=2 if j & 1 else 0, aim_mode=1)
+                    sprite=sprite,
+                    sprite_offset=offset,
+                    pos=Vec3(
+                        b.pos.x + rng.in_range(0.0, 32.0) - 16.0,
+                        b.pos.y + rng.in_range(0.0, 32.0) - 16.0,
+                        0.0,
+                    ),
+                    angle1=angle1,
+                    speed1=0.1,
+                    count1=1,
+                    count2=1,
+                    flags=2 if j & 1 else 0,
+                    aim_mode=1,
+                )
                 props.commands[0] = BulletCommandData(
-                    type=int(CmdFlag.TARGET_ANGLE), duration=100, angle=0.0,
-                    speed=rng.in_range(0.0, 0.008) + 0.01)
+                    type=int(CmdFlag.TARGET_ANGLE),
+                    duration=100,
+                    angle=0.0,
+                    speed=rng.in_range(0.0, 0.008) + 0.01,
+                )
                 self.spawn_bullet_pattern(props)
             b.dead = True
 
@@ -717,35 +867,52 @@ class GameEclHost(EclHost):
         # EnemyEclInstr.cpp:621: 数量 10/18/22/25, y 窗 ±64 (H/L  ±48)
         diff = self.world.difficulty
         self._burst_large_bullets(
-            enemy, instr, ctx, (10, 18, 22, 25),
+            enemy,
+            instr,
+            ctx,
+            (10, 18, 22, 25),
             64.0 if diff < 2 else 48.0,
-            ((0, 2), (3, 2), (7, 1)))
+            ((0, 2), (3, 2), (7, 1)),
+        )
 
-    def _ex13_youmu_curve_bullets_below(self, enemy: EclEnemyState,
-                                        instr, ctx) -> None:
+    def _ex13_youmu_curve_bullets_below(self, enemy: EclEnemyState, instr, ctx) -> None:
         # EnemyEclInstr.cpp:696 ExInsYoumuCurveBulletsBelow
         # (C 用弹槽下标 i 的奇偶选转向; Python 弹池无空槽, 用存活序号代替)
         for i, b in enumerate(self.bullets.alive()):
             if b.state2 != 0:
                 continue
-            if not (enemy.pos.y < b.pos.y < 352.0
-                    and enemy.pos.x - 16.0 < b.pos.x < enemy.pos.x + 16.0):
+            if not (
+                enemy.pos.y < b.pos.y < 352.0
+                and enemy.pos.x - 16.0 < b.pos.x < enemy.pos.x + 16.0
+            ):
                 continue
-            b.set_command(0, BulletCommand(
-                CmdFlag.TARGET_ANGLE, duration=160,
-                angle=0.05235988 if i & 1 else -0.05235988,
-                speed=-b.speed / 180.0))
+            b.set_command(
+                0,
+                BulletCommand(
+                    CmdFlag.TARGET_ANGLE,
+                    duration=160,
+                    angle=0.05235988 if i & 1 else -0.05235988,
+                    speed=-b.speed / 180.0,
+                ),
+            )
             b.state2 = 1
 
-    def _ex14_youmu_redirect_bullets_to_player(self, enemy: EclEnemyState,
-                                               instr, ctx) -> None:
+    def _ex14_youmu_redirect_bullets_to_player(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:725 ExInsYoumuRedirectBulletsToPlayer (BombEffects 不接)
         for b in self.bullets.alive():
             if b.state2 != 1:
                 continue
-            b.set_command(0, BulletCommand(
-                CmdFlag.TARGET_VEL, duration=90, speed=0.026666667,
-                angle=angle_to(b.pos, self.bullets.player_pos)))
+            b.set_command(
+                0,
+                BulletCommand(
+                    CmdFlag.TARGET_VEL,
+                    duration=90,
+                    speed=0.026666667,
+                    angle=angle_to(b.pos, self.bullets.player_pos),
+                ),
+            )
             b.clear_command(1)
             b.state2 = 2
 
@@ -753,8 +920,9 @@ class GameEclHost(EclHost):
         # EnemyEclInstr.cpp:751 ExInsFlashScreen —— BombEffects 闪屏, 纯视觉不接
         pass
 
-    def _ex16_yuyuko_transform_butterfly_bullets(self, enemy: EclEnemyState,
-                                                 instr, ctx) -> None:
+    def _ex16_yuyuko_transform_butterfly_bullets(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:757 ExInsYuyukoTransformButterflyBullets
         # 蝶弹 = sprite 8 (活动 sprite 632-639, etama.anm 实测)
         speed = ctx.args.float_vars1[1] if ctx is not None else 0.0
@@ -762,15 +930,22 @@ class GameEclHost(EclHost):
             if b.state2 != 0 or b.sprite != 8 or not 0 <= b.sprite_offset <= 7:
                 continue
             props = EnemyBulletShooter(
-                sprite=0, sprite_offset=6,
+                sprite=0,
+                sprite_offset=6,
                 pos=Vec3(b.pos.x, b.pos.y, 0.0),
                 angle1=add_normalize_angle(b.angle, math.pi),
-                angle2=0.3926991, speed1=speed, count1=5, count2=1,
-                flags=2, aim_mode=1)
+                angle2=0.3926991,
+                speed1=speed,
+                count1=5,
+                count2=1,
+                flags=2,
+                aim_mode=1,
+            )
             self.spawn_bullet_pattern(props)
 
-    def _ex17_yuyuko_butterfly_spawn_enemy(self, enemy: EclEnemyState,
-                                           instr, ctx) -> None:
+    def _ex17_yuyuko_butterfly_spawn_enemy(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:791 ExInsYuyukoButterflySpawnEnemy (BombEffects 不接)
         if ctx is None:
             return
@@ -782,21 +957,31 @@ class GameEclHost(EclHost):
                 args.float_vars1[0] = b.angle
                 args.float_vars1[7] = angle_offset
                 angle_offset += 0.7853982
-                self.spawn_enemy(ctx.sub_id + 1, Vec3(b.pos.x, b.pos.y, 0.0),
-                                 1, -2, 10, 0, args.clone())
+                self.spawn_enemy(
+                    ctx.sub_id + 1,
+                    Vec3(b.pos.x, b.pos.y, 0.0),
+                    1,
+                    -2,
+                    10,
+                    0,
+                    args.clone(),
+                )
                 b.dead = True
             elif 632 <= idx632 <= 639:
                 b.dead = True
 
-    def _ex18_yuyuko_count_butterfly_bullets(self, enemy: EclEnemyState,
-                                             instr, ctx) -> None:
+    def _ex18_yuyuko_count_butterfly_bullets(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:829 ExInsYuyukoCountButterflyBullets
         if ctx is None:
             return
         n = 0
         for b in self.bullets.alive():
-            if b.state2 == 0 \
-                    and bullet_active_sprite_idx(b.sprite, b.sprite_offset) == 636:
+            if (
+                b.state2 == 0
+                and bullet_active_sprite_idx(b.sprite, b.sprite_offset) == 636
+            ):
                 n += 1
         ctx.args.int_vars1[0] = n
 
@@ -804,8 +989,9 @@ class GameEclHost(EclHost):
         # EnemyEclInstr.cpp:919 —— Supervisor::FadeOutMusic(3.0)
         self.bgm_events.append(("fadeout", 3.0))
 
-    def _ex20_yuyuko_play_resurrection_bgm(self, enemy: EclEnemyState,
-                                           instr, ctx) -> None:
+    def _ex20_yuyuko_play_resurrection_bgm(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:925 —— PlayLoadedAudio(2) 失败回退 PlayAudio("bgm/th07_13b.mid")
         self.bgm_events.append(("music_file", "th07_13b.mid"))
 
@@ -813,56 +999,86 @@ class GameEclHost(EclHost):
         # EnemyEclInstr.cpp:853: 数量恒 15, y 窗 Hard ±128, 其余 ±180
         diff = self.world.difficulty
         self._burst_large_bullets(
-            enemy, instr, ctx, (15, 15, 15, 15),
+            enemy,
+            instr,
+            ctx,
+            (15, 15, 15, 15),
             128.0 if diff == 2 else 180.0,
-            ((0, 4), (3, 4), (7, 2)))
+            ((0, 4), (3, 4), (7, 2)),
+        )
 
-    def _ex22_spawn_bullets_with_dir_change(self, enemy: EclEnemyState,
-                                            instr, ctx) -> None:
+    def _ex22_spawn_bullets_with_dir_change(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:936 ExInsSpawnBulletsWithDirChange
         if enemy.timer % 3 == 0:
             return
         rng = self.world.rng
         odd = enemy.timer % 2 != 0
         for b in list(self.bullets.alive()):
-            if (b.ex_flags & 0x40) or b.pos.y >= 320.0 \
-                    or bullet_sprite_height(b.sprite, b.sprite_offset) <= 60.0:
+            if (
+                (b.ex_flags & 0x40)
+                or b.pos.y >= 320.0
+                or bullet_sprite_height(b.sprite, b.sprite_offset) <= 60.0
+            ):
                 continue
             props = EnemyBulletShooter(
                 sprite=1 if odd else 3,
                 sprite_offset=6 if b.sprite_offset == 1 else 2,
                 pos=Vec3(b.pos.x, b.pos.y, 0.0),
-                angle1=rng.in_range(0.0, 6.2831855) - math.pi, angle2=-math.pi,
+                angle1=rng.in_range(0.0, 6.2831855) - math.pi,
+                angle2=-math.pi,
                 speed1=1.2 if odd else 0.8,
-                count1=1 if odd else 2, count2=1, flags=0x208, aim_mode=3)
+                count1=1 if odd else 2,
+                count2=1,
+                flags=0x208,
+                aim_mode=3,
+            )
             if odd:
                 props.commands[0] = BulletCommandData(
-                    type=int(CmdFlag.DIR_CHANGE_AIM), duration=60, loop_count=1,
-                    speed=0.0, angle=3.1)
+                    type=int(CmdFlag.DIR_CHANGE_AIM),
+                    duration=60,
+                    loop_count=1,
+                    speed=0.0,
+                    angle=3.1,
+                )
             self.spawn_bullet_pattern(props)
 
-    def _ex23_spawn_bullets_with_dir_change2(self, enemy: EclEnemyState,
-                                             instr, ctx) -> None:
+    def _ex23_spawn_bullets_with_dir_change2(
+        self, enemy: EclEnemyState, instr, ctx
+    ) -> None:
         # EnemyEclInstr.cpp:1005 ExInsSpawnBulletsWithDirChange2
         if enemy.timer % 3 == 2:
             return
         rng = self.world.rng
         mod3 = enemy.timer % 3
         for b in list(self.bullets.alive()):
-            if (b.ex_flags & 0x40) or b.pos.y >= 320.0 \
-                    or bullet_sprite_height(b.sprite, b.sprite_offset) <= 60.0:
+            if (
+                (b.ex_flags & 0x40)
+                or b.pos.y >= 320.0
+                or bullet_sprite_height(b.sprite, b.sprite_offset) <= 60.0
+            ):
                 continue
             props = EnemyBulletShooter(
                 sprite=1 if mod3 else 3,
                 sprite_offset=10 if b.sprite_offset == 2 else 13,
                 pos=Vec3(b.pos.x, b.pos.y, 0.0),
-                angle1=rng.in_range(0.0, 6.2831855) - math.pi, angle2=-math.pi,
+                angle1=rng.in_range(0.0, 6.2831855) - math.pi,
+                angle2=-math.pi,
                 speed1=1.2 if mod3 else 0.8,
-                count1=1, count2=1, flags=0x208, aim_mode=3)
+                count1=1,
+                count2=1,
+                flags=0x208,
+                aim_mode=3,
+            )
             if mod3:
                 props.commands[0] = BulletCommandData(
-                    type=int(CmdFlag.DIR_CHANGE_AIM), duration=40, loop_count=1,
-                    speed=0.0, angle=2.9)
+                    type=int(CmdFlag.DIR_CHANGE_AIM),
+                    duration=40,
+                    loop_count=1,
+                    speed=0.0,
+                    angle=2.9,
+                )
             self.spawn_bullet_pattern(props)
 
     # idx → 实现 (g_EclExInstr 下标; idx 3 NoOp 在 EclMachineBase._run_ex 已短路)

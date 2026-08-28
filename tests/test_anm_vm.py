@@ -3,6 +3,7 @@
 合成指令测 VM 语义(对照 AnmManager.cpp::ExecuteScript), 真实 th07.dat
 测特效生命周期/敌人动画帧推进/自机脚本。
 """
+
 from __future__ import annotations
 
 import math
@@ -21,7 +22,11 @@ import pytest  # noqa: E402
 from touhou.schema.anm import AnmInstr  # noqa: E402
 from touhou.engine.view.anm_vm import AnmVm, ScriptRef, reset_and_run  # noqa: E402
 from touhou.engine.view.anm_fx import (  # noqa: E402
-    AnmScriptBank, EffectLayer, TransformCache, Vm2d)
+    AnmScriptBank,
+    EffectLayer,
+    TransformCache,
+    Vm2d,
+)
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
@@ -33,6 +38,7 @@ def I(opcode: int, *args, time: int = 0, flags: int = 0) -> AnmInstr:
     """合成指令: args 按 int 给; args_f 视图由 VM 侧分别解读, 这里仅 int 指令用。"""
     args_i = tuple(int(a) for a in args)
     import struct
+
     args_f = tuple(struct.unpack("<f", struct.pack("<i", a))[0] for a in args_i)
     return AnmInstr(opcode, time, flags, args_i, args_f)
 
@@ -40,6 +46,7 @@ def I(opcode: int, *args, time: int = 0, flags: int = 0) -> AnmInstr:
 def IF(opcode: int, *args, time: int = 0, flags: int = 0) -> AnmInstr:
     """合成指令: args 按 float 给。"""
     import struct
+
     args_f = tuple(float(a) for a in args)
     args_i = tuple(struct.unpack("<i", struct.pack("<f", a))[0] for a in args_f)
     return AnmInstr(opcode, time, flags, args_i, args_f)
@@ -48,6 +55,7 @@ def IF(opcode: int, *args, time: int = 0, flags: int = 0) -> AnmInstr:
 def IM(opcode: int, *args, time: int = 0, flags: int = 0) -> AnmInstr:
     """合成指令: 混合参数(int 按 int 视图, float 按 float 视图)。"""
     import struct
+
     args_i, args_f = [], []
     for a in args:
         if isinstance(a, float):
@@ -69,6 +77,7 @@ def run(instrs, frames: int = 1, sprite_base: int = 0, cb=None) -> AnmVm:
 
 # ---- 基本指令 ----
 
+
 def test_set_active_sprite_visible_and_base() -> None:
     got = []
     # SET_ACTIVE_SPRITE(7) + EXIT; sprite_base=100 → cb(107)
@@ -78,15 +87,17 @@ def test_set_active_sprite_visible_and_base() -> None:
 
 
 def test_scale_alpha_color_rotation_flip() -> None:
-    vm = run([
-        IF(7, 2.0, 0.5),          # SET_SCALE
-        I(8, 128),                # SET_ALPHA
-        I(9, 0x0080FF40),         # SET_COLOR 0x00RRGGBB → r=0x80 g=0xff b=0x40
-        IF(12, 0.0, 0.0, 1.0),    # SET_ROTATION z=1.0
-        I(10),                    # FLIP_X
-        I(11),                    # FLIP_Y
-        I(2),
-    ])
+    vm = run(
+        [
+            IF(7, 2.0, 0.5),  # SET_SCALE
+            I(8, 128),  # SET_ALPHA
+            I(9, 0x0080FF40),  # SET_COLOR 0x00RRGGBB → r=0x80 g=0xff b=0x40
+            IF(12, 0.0, 0.0, 1.0),  # SET_ROTATION z=1.0
+            I(10),  # FLIP_X
+            I(11),  # FLIP_Y
+            I(2),
+        ]
+    )
     assert vm.scale == [-2.0, -0.5]
     assert vm.color == [0x80, 0xFF, 0x40, 128]
     assert vm.rotation[2] == pytest.approx(1.0)
@@ -98,14 +109,15 @@ def test_blend_mode() -> None:
 
 
 def test_exit_hides_and_stops() -> None:
-    vm = run([I(3, 0), I(1)])     # EXIT_HIDE
+    vm = run([I(3, 0), I(1)])  # EXIT_HIDE
     assert vm.pc == -1 and not vm.visible
     pc_before = vm.pc
-    vm.execute()                  # 结束后 execute 无副作用
+    vm.execute()  # 结束后 execute 无副作用
     assert vm.pc == pc_before
 
 
 # ---- 插值 ----
+
 
 def test_fade_interpolation() -> None:
     # SET_ALPHA 200; FADE(0, 10) → 每帧插值, 第 10 帧到 0
@@ -121,7 +133,7 @@ def test_fade_interpolation() -> None:
 def test_interp_scale_and_rotate() -> None:
     # INTERP_SCALE_2(dur=4, ease=0, sx 1→3, sy 1→1); INTERP_ROTATE(dur=4, z 0→pi)
     vm = run([IM(36, 4, 0, 3.0, 1.0), IM(35, 4, 0, 0.0, 0.0, math.pi), I(20)])
-    for _ in range(3):                      # 首帧已执行 1 次, 共 4 帧到 t=1
+    for _ in range(3):  # 首帧已执行 1 次, 共 4 帧到 t=1
         vm.execute()
     assert vm.scale[0] == pytest.approx(3.0)
     assert vm.scale[1] == pytest.approx(1.0)
@@ -137,8 +149,8 @@ def test_pos_time_linear() -> None:
 
 
 def test_angle_vel_normalizes() -> None:
-    vm = run([IF(13, 0.0, 0.0, 2.0), I(20)])   # ANGVEL z=2.0
-    for _ in range(3):                          # 共 4 帧累计 8.0 > pi → 包回 [-pi,pi]
+    vm = run([IF(13, 0.0, 0.0, 2.0), I(20)])  # ANGVEL z=2.0
+    for _ in range(3):  # 共 4 帧累计 8.0 > pi → 包回 [-pi,pi]
         vm.execute()
     assert -math.pi <= vm.rotation[2] <= math.pi
     assert vm.rotation[2] == pytest.approx(8.0 - 2 * math.pi)
@@ -146,22 +158,23 @@ def test_angle_vel_normalizes() -> None:
 
 # ---- 控制流 ----
 
+
 def test_wait_holds_pc() -> None:
     # SET_ALPHA 10; WAIT(3); SET_ALPHA 99; EXIT
     vm = run([I(8, 10), I(79, 3), I(8, 99), I(2)])
     assert vm.color[3] == 10
     vm.execute()
-    assert vm.color[3] == 10      # 等待中
+    assert vm.color[3] == 10  # 等待中
     vm.execute()
     vm.execute()
-    assert vm.color[3] == 99      # 3 帧后放行
+    assert vm.color[3] == 99  # 3 帧后放行
     assert vm.pc == -1
 
 
 def test_dec_jump_loop() -> None:
     # var10000=2; L: DEC_JUMP(var10000, L, 0); EXIT → 减 2 次后退出
-    setv = I(37, 10000, 2, flags=1)          # INT_STORE var10000=2
-    decj = I(5, 10000, 16, 0, flags=1)       # 跳到自身(offset 16)
+    setv = I(37, 10000, 2, flags=1)  # INT_STORE var10000=2
+    decj = I(5, 10000, 16, 0, flags=1)  # 跳到自身(offset 16)
     vm = run([setv, decj, I(2)])
     assert vm.pc == -1
     assert vm.int_vars1[0] == 0
@@ -173,18 +186,20 @@ def test_cond_jump_int_eq() -> None:
     off_exit = 36
     vm = run([I(67, 5, 5, off_exit, 0), I(8, 77), I(2)])
     assert vm.pc == -1
-    assert vm.color[3] == 255                # 被跳过, 保持初始
+    assert vm.color[3] == 255  # 被跳过, 保持初始
     vm2 = run([I(67, 5, 6, off_exit, 0), I(8, 77), I(2)])
     assert vm2.color[3] == 77
 
 
 def test_int_float_var_ops() -> None:
     # var10000 = 3+4; fvar10004 = 1.5*2.0
-    vm = run([
-        I(49, 10000, 3, 4, flags=1),         # INT_ADD3 var=3+4
-        IF(50, 10004, 1.5, 2.0, flags=1),    # FLOAT_ADD3? op50: a,b=fv(1),fv(2) → 3.5
-        I(2),
-    ])
+    vm = run(
+        [
+            I(49, 10000, 3, 4, flags=1),  # INT_ADD3 var=3+4
+            IF(50, 10004, 1.5, 2.0, flags=1),  # FLOAT_ADD3? op50: a,b=fv(1),fv(2) → 3.5
+            I(2),
+        ]
+    )
     assert vm.int_vars1[0] == 7
     assert vm.float_vars[0] == pytest.approx(3.5)
 
@@ -201,27 +216,30 @@ def test_interrupt_jumps_to_label() -> None:
 
 
 def test_rand_and_trig() -> None:
-    vm = run([
-        I(59, 10000, 100, flags=1),          # RAND_INT var=rand%100
-        IF(61, 10004, math.pi / 2, flags=1), # SIN(pi/2)
-        I(2),
-    ])
+    vm = run(
+        [
+            I(59, 10000, 100, flags=1),  # RAND_INT var=rand%100
+            IF(61, 10004, math.pi / 2, flags=1),  # SIN(pi/2)
+            I(2),
+        ]
+    )
     assert 0 <= vm.int_vars1[0] < 100
     assert vm.float_vars[0] == pytest.approx(1.0)
 
 
 # ---- TransformCache ----
 
+
 def test_transform_cache_hit_and_quantize() -> None:
     tc = TransformCache()
     img = pygame.Surface((8, 8), pygame.SRCALPHA)
     a = tc.get(img, 1.0, 1.0, 0.0)
-    assert tc.get(img, 1.0, 1.0, 0.0) is a          # 命中: 同一对象
-    b = tc.get(img, 1.0, 1.0, math.radians(1.0))    # 量化到同一 3° 桶
+    assert tc.get(img, 1.0, 1.0, 0.0) is a  # 命中: 同一对象
+    b = tc.get(img, 1.0, 1.0, math.radians(1.0))  # 量化到同一 3° 桶
     assert b is a
-    c = tc.get(img, 1.0, 1.0, math.radians(4.0))    # 相邻桶 → 新对象
+    c = tc.get(img, 1.0, 1.0, math.radians(4.0))  # 相邻桶 → 新对象
     assert c is not a
-    d = tc.get(img, -1.0, 1.0, 0.0)                 # 翻转是不同键
+    d = tc.get(img, -1.0, 1.0, 0.0)  # 翻转是不同键
     assert d is not a
 
 
@@ -229,9 +247,9 @@ def test_additive_premultiplies_alpha() -> None:
     """C++ 加算=(SRCALPHA, ONE): 透明区(rgb 常为白)不得贡献颜色。"""
     tc = TransformCache()
     img = pygame.Surface((4, 1), pygame.SRCALPHA)
-    img.fill((255, 255, 255, 0))                    # 白 rgb + 全透明
-    img.set_at((0, 0), (200, 100, 50, 255))         # 一个不透明像素
-    vm2d = Vm2d(None, tc)                           # draw 不触 sbank
+    img.fill((255, 255, 255, 0))  # 白 rgb + 全透明
+    img.set_at((0, 0), (200, 100, 50, 255))  # 一个不透明像素
+    vm2d = Vm2d(None, tc)  # draw 不触 sbank
     vm2d.surf = img
     vm2d.vm.visible = True
     vm2d.vm.blend_mode = 1
@@ -253,7 +271,7 @@ def test_additive_vm_color_modulates() -> None:
     vm2d.surf = img
     vm2d.vm.visible = True
     vm2d.vm.blend_mode = 1
-    vm2d.vm.color = [128, 255, 255, 128]            # r 调制 + 半透明
+    vm2d.vm.color = [128, 255, 255, 128]  # r 调制 + 半透明
     dst = pygame.Surface((1, 1))
     dst.fill((0, 0, 0))
     vm2d.draw(dst, 0, 0)
@@ -265,10 +283,12 @@ def test_additive_vm_color_modulates() -> None:
 
 # ---- 真实数据: 特效生命周期 / 敌人动画 / 自机脚本 ----
 
+
 @pytest.fixture(scope="module")
 def bank():
     from touhou.games.th07.world import DEFAULT_DATA
     from touhou.engine.view.sprite_bank import SpriteBank
+
     return SpriteBank(DEFAULT_DATA)
 
 
@@ -284,8 +304,8 @@ def test_effect_lifecycle(bank) -> None:
     while len(fx) and frames < 600:
         fx.update()
         frames += 1
-    assert len(fx) == 0          # 回收
-    assert 0 < frames < 600      # 确实播放了若干帧
+    assert len(fx) == 0  # 回收
+    assert 0 < frames < 600  # 确实播放了若干帧
 
 
 @NEEDS_DAT
@@ -336,7 +356,7 @@ def test_enemy_animation_frames_advance(bank) -> None:
             seen.add(vm.vm.active_sprite_idx)
         if len(seen) > 1:
             animated += 1
-        assert vm.alive                       # 敌动画是循环脚本
+        assert vm.alive  # 敌动画是循环脚本
     assert animated >= 2
 
 
@@ -362,9 +382,9 @@ def test_hit_flash_script_is_additive(bank) -> None:
     vm = Vm2d(sb, TransformCache())
     assert vm.start(0x400 + 96)
     assert vm.vm.blend_mode == 1
-    assert vm.vm.color[3] < 255               # SET_ALPHA 96
+    assert vm.vm.color[3] < 255  # SET_ALPHA 96
     frames = 0
     while vm.alive and frames < 120:
         vm.execute()
         frames += 1
-    assert not vm.alive                       # FADE 到 0 后 EXIT_HIDE
+    assert not vm.alive  # FADE 到 0 后 EXIT_HIDE

@@ -1,4 +1,4 @@
-""" 战斗画面渲染(贴图精灵层) —— 对照 th07 反编译的绘制段做 2D 近似。
+"""战斗画面渲染(贴图精灵层) —— 对照 th07 反编译的绘制段做 2D 近似。
 
 实体动画跑 anm 脚本 VM(AnmVm, 见 anm_vm.py/anm_fx.py, 对照
 AnmManager.cpp::ExecuteScript): 敌人按 ECL SET_ANM 的 script 从第 0 帧
@@ -67,8 +67,8 @@ from .bomb_view import _FACE_ANM, BombView
 from .spellcard_view import _SC_BG_VMS, SpellcardBgView, SpellcardView
 from .stage_title_view import StageTitleView
 
-GAME_W, GAME_H = int(SCREEN.x), int(SCREEN.y)   # 384x448 游戏区
-GAME_X, GAME_Y = 32, 16                         # 游戏区在 640x480 窗口的左上
+GAME_W, GAME_H = int(SCREEN.x), int(SCREEN.y)  # 384x448 游戏区
+GAME_X, GAME_Y = 32, 16  # 游戏区在 640x480 窗口的左上
 WIN_W, WIN_H = 640, 480
 
 _ANM_OFFSET_PLAYER = 0x400
@@ -80,24 +80,28 @@ _ANM_OFFSET_ENEMY = 0x900
 _PLAYER_SCRIPT_IDLE = 0
 _PLAYER_SCRIPT_LEFT, _PLAYER_SCRIPT_LEFT_END = 1, 2
 _PLAYER_SCRIPT_RIGHT, _PLAYER_SCRIPT_RIGHT_END = 3, 4
-_PLAYER_OPTION_SCRIPTS = (128, 129)             # 子机(Player.cpp:2451-2452)
+_PLAYER_OPTION_SCRIPTS = (128, 129)  # 子机(Player.cpp:2451-2452)
 
 # 敌弹出生特效脚本(g_BulletTypeInfos spawnFast/Normal/SlowIdx,
 # BulletManager.cpp:16-28; spawn_state 2/4/8 → fast/normal/slow)
 _SPAWN_FX_GIDS: dict[int, tuple[int, int, int]] = {
     0: (0x212, 0x213, 0x214),
-    1: (0x215, 0x216, 0x217), 2: (0x215, 0x216, 0x217),
-    3: (0x215, 0x216, 0x217), 4: (0x215, 0x216, 0x217),
-    5: (0x215, 0x216, 0x217), 6: (0x215, 0x216, 0x217),
-    7: (0x218, 0x218, 0x218), 8: (0x218, 0x218, 0x218),
+    1: (0x215, 0x216, 0x217),
+    2: (0x215, 0x216, 0x217),
+    3: (0x215, 0x216, 0x217),
+    4: (0x215, 0x216, 0x217),
+    5: (0x215, 0x216, 0x217),
+    6: (0x215, 0x216, 0x217),
+    7: (0x218, 0x218, 0x218),
+    8: (0x218, 0x218, 0x218),
     9: (0x218, 0x218, 0x218),
     10: (0x2AA, 0x2AA, 0x2AA),
 }
 _SPAWN_FX_IDX = {2: 0, 4: 1, 8: 2}
 
 # 特效 effectId(EffectManager.cpp g_EffectMapping; 语义见 anm_fx.py)
-_FX_ENEMY_DEATH = 0        # deathAnm1=0 → 0x2ab 爆风环
-_FX_HIT_SPARK = 5          # 自机弹命中 (Player.cpp:896)
+_FX_ENEMY_DEATH = 0  # deathAnm1=0 → 0x2ab 爆风环
+_FX_HIT_SPARK = 5  # 自机弹命中 (Player.cpp:896)
 _FX_PLAYER_DEATH_BURST = 6
 _FX_PLAYER_DEATH_RING = 12
 _FX_FOCUS_RING = 24
@@ -110,9 +114,17 @@ _LASER_SPRITE_BASE = 152
 # 出生态敌弹本体透明度(spawn 特效 anm 叠加其上, 见 _SPAWN_FX_GIDS)
 _SPAWN_ALPHA = 96
 
-_FONT_CANDIDATES = ("msgothic", "ms gothic", "msmincho", "meiryo",
-                    "yu gothic", "hiragino sans", "noto sans cjk jp",
-                    "microsoft yahei", "simhei")
+_FONT_CANDIDATES = (
+    "msgothic",
+    "ms gothic",
+    "msmincho",
+    "meiryo",
+    "yu gothic",
+    "hiragino sans",
+    "noto sans cjk jp",
+    "microsoft yahei",
+    "simhei",
+)
 
 
 def _load_font(size: int):
@@ -141,8 +153,9 @@ def _load_font(size: int):
 class GameView:
     """战斗画面渲染器: render() 把一帧画到 384x448 的游戏区 surface 上。"""
 
-    def __init__(self, data_path: str | Path, *, character: int = 0,
-                 stage: int = 1) -> None:
+    def __init__(
+        self, data_path: str | Path, *, character: int = 0, stage: int = 1
+    ) -> None:
         self.bank = SpriteBank(data_path)
         self.character = character
         self._player_anm = f"player0{character // 2}.anm"
@@ -159,15 +172,15 @@ class GameView:
         self._tcache = TransformCache()
         self._sbanks: dict[str, AnmScriptBank] = {}
         self._fx: EffectLayer | None = None
-        self._enemy_vis: dict[int, dict] = {}       # id(EclEnemyState) → VM 状态
+        self._enemy_vis: dict[int, dict] = {}  # id(EclEnemyState) → VM 状态
         self._player_vm: Vm2d | None = None
-        self._player_script = -1                    # 当前自机脚本(局部 id)
-        self._prev_move_sign = 0                    # C previousHorizontalSpeed 符号
+        self._player_script = -1  # 当前自机脚本(局部 id)
+        self._prev_move_sign = 0  # C previousHorizontalSpeed 符号
         self._option_vms: list[Vm2d] = []
-        self._focus_fx = None                       # focus 判定点环 Effect 句柄
+        self._focus_fx = None  # focus 判定点环 Effect 句柄
         self._prev_focus = False
         self._prev_player_dead = False
-        self._shot_vis: dict[int, dict] = {}        # id(自机弹) → 命中爆炸 VM
+        self._shot_vis: dict[int, dict] = {}  # id(自机弹) → 命中爆炸 VM
         self._shot_fly: dict[int, Vm2d | None] = {}  # id(自机弹) → 飞行弹 VM
         self._spawn_fx: dict[tuple[int, int], Vm2d | None] = {}
         # (特效 gid, 出生剩余帧) → 共享 VM(同脚本同出生帧的弹共用, 见 _spawn_fx_vm)
@@ -181,13 +194,13 @@ class GameView:
         self._balpha: dict[tuple[int, int], tuple[pygame.Surface, pygame.Surface]] = {}
         # 出生态半透明弹: (id(img), alpha) → (原图, 调 alpha 后的副本)
         self._item_imgs: dict[int, pygame.Surface | None] = {}  # itemType → sprite
-        self._bg_ema_ms: float | None = None   # bg3d 耗时 EMA(动态降载用)
-        self._bg_cool = 0                      # 降载调整冷却(帧)
-        self._bg_period = 1                    # bg3d 渲染周期(>1 = 隔帧)
+        self._bg_ema_ms: float | None = None  # bg3d 耗时 EMA(动态降载用)
+        self._bg_cool = 0  # 降载调整冷却(帧)
+        self._bg_period = 1  # bg3d 渲染周期(>1 = 隔帧)
         self._bg_cache: pygame.Surface | None = None  # 隔帧复用的上一帧背景
         # ---- 过关转场预载(BUGS.md 增量#3, 见 _preload_next_stage) ----
-        self._preload_key: int | None = None       # 已建预载队列的下一关号
-        self._preload_queue: list[str] = []        # 待预载项(anm 名 / "bg3d")
+        self._preload_key: int | None = None  # 已建预载队列的下一关号
+        self._preload_queue: list[str] = []  # 待预载项(anm 名 / "bg3d")
         self._bg3d_pre: tuple[int, StageScene | None] | None = None  # 预建场景
 
     # ---- 关卡资源(换关时重载, 对照 Stage.cpp 的 stgNenm/stgNbg 切换) ----
@@ -208,7 +221,7 @@ class GameView:
         # 3D 背景(.std 场景): 加载失败留 None, _render_bg 退回 2D 平铺
         self._bg3d = None
         self._bg3d_broken = False
-        self._bg_period = 1          # 降载状态随场景重建重置
+        self._bg_period = 1  # 降载状态随场景重建重置
         self._bg_ema_ms = None
         self._bg_cache = None
         # 优先换用结算面板期间预建的场景 (_preload_next_stage); 未预建同步加载
@@ -239,8 +252,10 @@ class GameView:
     @staticmethod
     def _stage_preload_names(stage_no: int, character: int = 0) -> list[str]:
         """本关游戏内首用资源的 anm 清单(预载用)。"""
-        names = [_FACE_ANM[character // 2],          # bomb cutin/符卡宣言自机立绘
-                 f"face_{stage_no:02d}_00.anm"]      # 符卡宣言/对话 boss 立绘
+        names = [
+            _FACE_ANM[character // 2],  # bomb cutin/符卡宣言自机立绘
+            f"face_{stage_no:02d}_00.anm",
+        ]  # 符卡宣言/对话 boss 立绘
         # 符卡背景 eff (BeginSpellcard 的 spellcardVms, EclManager.cpp:676-679)
         names += [name for name, _, _ in _SC_BG_VMS.get(stage_no, ())]
         return names
@@ -264,9 +279,12 @@ class GameView:
         if self._preload_key != nxt:
             self._preload_key = nxt
             self._preload_queue = [
-                f"stg{nxt}enm.anm", f"std{nxt}txt.anm", f"stg{nxt}bg.anm",
+                f"stg{nxt}enm.anm",
+                f"std{nxt}txt.anm",
+                f"stg{nxt}bg.anm",
                 *self._stage_preload_names(nxt, getattr(game, "character", 0)),
-                "bg3d"]
+                "bg3d",
+            ]
         if not self._preload_queue:
             return
         item = self._preload_queue.pop(0)
@@ -280,7 +298,7 @@ class GameView:
 
     def _fonts(self) -> None:
         if self._font is None:
-            self._font = _load_font(15)   # 符卡名字号 (Gui.cpp:682-683 15x15)
+            self._font = _load_font(15)  # 符卡名字号 (Gui.cpp:682-683 15x15)
 
     # ---- anm VM 宿主 ----
     def _sbank(self, name: str, base: int) -> AnmScriptBank | None:
@@ -297,16 +315,22 @@ class GameView:
         """特效层(etama.anm 的特效段, ANM_OFFSET_BULLETS 基址)。"""
         if self._fx is None:
             self._fx = EffectLayer(
-                self._sbank("etama.anm", _ANM_OFFSET_BULLETS), self._tcache)
+                self._sbank("etama.anm", _ANM_OFFSET_BULLETS), self._tcache
+            )
         return self._fx
 
     # ---- 小工具 ----
-    def _blit_center(self, surf: pygame.Surface, img: pygame.Surface,
-                     x: float, y: float, alpha: int = 255) -> None:
+    def _blit_center(
+        self,
+        surf: pygame.Surface,
+        img: pygame.Surface,
+        x: float,
+        y: float,
+        alpha: int = 255,
+    ) -> None:
         if alpha < 255:
             img = self._alpha_img(img, alpha)
-        surf.blit(img, (int(x) - img.get_width() // 2,
-                        int(y) - img.get_height() // 2))
+        surf.blit(img, (int(x) - img.get_width() // 2, int(y) - img.get_height() // 2))
 
     # ---- 背景(3D .std 场景优先, 失败退回 2D 平铺竖滚近似) ----
     def _render_bg(self, surf: pygame.Surface, game=None) -> None:
@@ -324,7 +348,7 @@ class GameView:
             try:
                 ecl_world = getattr(game, "ecl_world", None)
                 wait = getattr(ecl_world, "script_wait_time", 0) or 0
-                self._bg3d.tick(wait)   # 只推进不渲染 (state 2 停画)
+                self._bg3d.tick(wait)  # 只推进不渲染 (state 2 停画)
             except Exception:
                 self._bg3d_broken = True
         if sc_ticks is not None:
@@ -344,8 +368,11 @@ class GameView:
                 # 半速); 隔帧只复用上一帧的画面
                 self._bg3d.tick(wait)
                 # 重负载降载: 动态分辨率到底后仍超预算 → 隔帧渲染(复用上一帧)
-                if self._bg_period > 1 and self.frame % self._bg_period != 0 \
-                        and self._bg_cache is not None:
+                if (
+                    self._bg_period > 1
+                    and self.frame % self._bg_period != 0
+                    and self._bg_cache is not None
+                ):
                     surf.blit(self._bg_cache, (0, 0))
                     return
                 t0 = time.perf_counter()
@@ -386,8 +413,7 @@ class GameView:
     _BG_SCALE_MAX = 0.45
 
     def _adapt_bg_resolution(self, dt_ms: float) -> None:
-        ema = dt_ms if self._bg_ema_ms is None \
-            else self._bg_ema_ms * 0.9 + dt_ms * 0.1
+        ema = dt_ms if self._bg_ema_ms is None else self._bg_ema_ms * 0.9 + dt_ms * 0.1
         self._bg_ema_ms = ema
         if self._bg_cool > 0:
             self._bg_cool -= 1
@@ -398,8 +424,9 @@ class GameView:
         if ema > self._BG_EMA_HI:
             if rs > self._BG_SCALE_MIN + 1e-9:
                 new = max(self._BG_SCALE_MIN, round(rs - 0.05, 2))
-                log.debug("bg3d 降内部分辨率 {:.2f} → {:.2f} (EMA {:.1f}ms)",
-                          rs, new, ema)
+                log.debug(
+                    "bg3d 降内部分辨率 {:.2f} → {:.2f} (EMA {:.1f}ms)", rs, new, ema
+                )
                 bg.set_render_scale(new)
                 self._bg_cool = 30
             elif self._bg_period < 2:
@@ -413,8 +440,9 @@ class GameView:
                 self._bg_cool = 60
             elif rs < self._BG_SCALE_MAX - 1e-9:
                 new = min(self._BG_SCALE_MAX, round(rs + 0.05, 2))
-                log.debug("bg3d 升内部分辨率 {:.2f} → {:.2f} (EMA {:.1f}ms)",
-                          rs, new, ema)
+                log.debug(
+                    "bg3d 升内部分辨率 {:.2f} → {:.2f} (EMA {:.1f}ms)", rs, new, ema
+                )
                 bg.set_render_scale(new)
                 self._bg_cool = 90
 
@@ -456,16 +484,22 @@ class GameView:
             key = id(st)
             vis = self._enemy_vis.get(key)
             if vis is None:
-                vis = {"vm": None, "gid": -1, "subs": {}, "fx_done": False,
-                       "intr": 0, "rot_z": 0.0}
+                vis = {
+                    "vm": None,
+                    "gid": -1,
+                    "subs": {},
+                    "fx_done": False,
+                    "intr": 0,
+                    "rot_z": 0.0,
+                }
                 self._enemy_vis[key] = vis
             if st.life > 0:
-                vis["fx_done"] = False      # 复活(dt2 切阶段)后允许再爆
+                vis["fx_done"] = False  # 复活(dt2 切阶段)后允许再爆
             if sb is not None:
                 gid = _ANM_OFFSET_ENEMY + sid
                 if vis["vm"] is None:
                     vis["vm"] = Vm2d(sb, self._tcache)
-                if vis["gid"] != gid:      # SET_ANM 切换 → 换脚本重跑
+                if vis["gid"] != gid:  # SET_ANM 切换 → 换脚本重跑
                     vis["vm"].start(gid)
                     vis["gid"] = gid
                 vm = vis["vm"]
@@ -478,7 +512,7 @@ class GameView:
                     vis["rot_z"] = st.primary_vm_rot_z
                     vm.vm.rotation[2] = st.primary_vm_rot_z
                 if st.primary_vm_auto_rotate:
-                    vm.vm.rotation[2] = st.angle   # EnemyManager.cpp:1194
+                    vm.vm.rotation[2] = st.angle  # EnemyManager.cpp:1194
                 vm.execute()
                 if e.is_boss:
                     # boss 魔法阵(近似: etama 符文圈慢转, 非 per-stage 原贴图)
@@ -504,8 +538,11 @@ class GameView:
                         img = self.bank.sprite(anm, spr)
                 if img is None:
                     # 兜底: 未知贴图画原版的"红方块"近似
-                    pygame.draw.rect(surf, (250, 40, 220),
-                                     (int(e.pos.x) - 12, int(e.pos.y) - 12, 24, 24))
+                    pygame.draw.rect(
+                        surf,
+                        (250, 40, 220),
+                        (int(e.pos.x) - 12, int(e.pos.y) - 12, 24, 24),
+                    )
                     continue
                 if getattr(st, "mirror", 0):
                     img = self.bank.flipped(img)
@@ -516,13 +553,14 @@ class GameView:
                 self._enemy_death_fx(e.pos.x, e.pos.y, st.death_anm)
         self._drain_gone_events(game)
 
-    def _draw_sub_anm(self, surf: pygame.Surface, vis: dict, sb, slot: int,
-                      st, pos) -> None:
+    def _draw_sub_anm(
+        self, surf: pygame.Surface, vis: dict, sb, slot: int, st, pos
+    ) -> None:
         """sub anm(SET_SUB_ANM → enemy->vms[slot], EclManager.cpp:1208)。
         位置 = 敌 pos + 该 sub VM 自己的 offset(EnemyManager.cpp:1183)。"""
         slid = st.sub_anm_idx[slot]
         if slid < 0:
-            vis["subs"].pop(slot, None)   # C: anmFileIdx=-1 停画
+            vis["subs"].pop(slot, None)  # C: anmFileIdx=-1 停画
             return
         sgid = _ANM_OFFSET_ENEMY + slid
         sub = vis["subs"].get(slot)
@@ -532,8 +570,7 @@ class GameView:
             sub = (svm, sgid)
             vis["subs"][slot] = sub
         sub[0].execute()
-        sub[0].draw(surf, pos.x + sub[0].vm.offset[0],
-                    pos.y + sub[0].vm.offset[1])
+        sub[0].draw(surf, pos.x + sub[0].vm.offset[0], pos.y + sub[0].vm.offset[1])
 
     # ---- 道具(etama entry1 script 28+itemType → sprite 4..12) ----
     def _item_img(self, t: int) -> pygame.Surface | None:
@@ -542,8 +579,9 @@ class GameView:
         img = self._item_imgs.get(t, False)
         if img is False:
             spr = self.bank.script_sprite("etama.anm", 28 + t, entry=1)
-            img = self.bank.sprite("etama.anm", spr, entry=1) \
-                if spr is not None else None
+            img = (
+                self.bank.sprite("etama.anm", spr, entry=1) if spr is not None else None
+            )
             self._item_imgs[t] = img
         return img
 
@@ -554,8 +592,9 @@ class GameView:
                 continue
             img = self._item_img(t)
             if img is None:
-                pygame.draw.rect(surf, (90, 255, 90),
-                                 (int(it.pos.x) - 5, int(it.pos.y) - 5, 10, 10))
+                pygame.draw.rect(
+                    surf, (90, 255, 90), (int(it.pos.x) - 5, int(it.pos.y) - 5, 10, 10)
+                )
                 continue
             self._blit_center(surf, img, it.pos.x, it.pos.y)
 
@@ -588,8 +627,11 @@ class GameView:
                         ghost.set_alpha(max(30, 120 - i * 8))
                         surf.blit(ghost, (int(hp.x) - w // 2, int(hp.y) - h // 2))
                 else:
-                    pygame.draw.rect(surf, (180, 240, 255),
-                                     (int(b.pos.x) - w // 2, int(b.pos.y) - h // 2, w, h))
+                    pygame.draw.rect(
+                        surf,
+                        (180, 240, 255),
+                        (int(b.pos.x) - w // 2, int(b.pos.y) - h // 2, w, h),
+                    )
                 continue
             if b.bullet_state == 2:
                 # 命中爆炸(Player.cpp:895: vm 切 anmFileIdx+32 脚本;
@@ -629,21 +671,24 @@ class GameView:
                 if svm is not None:
                     svm.execute()
                     # 长条弹(针/导弹)脚本无自转时按速度方向转(同原近似)
-                    if svm.vm.angle_vel[2] == 0.0 and svm.surf is not None \
-                            and svm.surf.get_height() > svm.surf.get_width() * 1.4 \
-                            and b.velocity.length > 0.1:
-                        svm.vm.rotation[2] = math.atan2(b.velocity.y,
-                                                        b.velocity.x) \
-                            + math.pi / 2
+                    if (
+                        svm.vm.angle_vel[2] == 0.0
+                        and svm.surf is not None
+                        and svm.surf.get_height() > svm.surf.get_width() * 1.4
+                        and b.velocity.length > 0.1
+                    ):
+                        svm.vm.rotation[2] = (
+                            math.atan2(b.velocity.y, b.velocity.x) + math.pi / 2
+                        )
                     svm.draw(surf, b.pos.x, b.pos.y)
                     continue
             if img is None:
-                pygame.draw.rect(surf, (120, 220, 255),
-                                 (int(b.pos.x) - 2, int(b.pos.y) - 6, 4, 12))
+                pygame.draw.rect(
+                    surf, (120, 220, 255), (int(b.pos.x) - 2, int(b.pos.y) - 6, 4, 12)
+                )
                 continue
             # 长条弹(针/导弹)按速度方向旋转, 方形弹(札/环)不转
-            if img.get_height() > img.get_width() * 1.4 \
-                    and b.velocity.length > 0.1:
+            if img.get_height() > img.get_width() * 1.4 and b.velocity.length > 0.1:
                 ang = -math.degrees(math.atan2(b.velocity.y, b.velocity.x)) - 90
                 img = self.bank.rotated(img, ang)
             self._blit_center(surf, img, b.pos.x, b.pos.y)
@@ -656,8 +701,7 @@ class GameView:
 
     # ---- 敌弹(全局 sprite idx 反查 etama; 长条弹旋转; 出生态半透明 +
     #      出生特效 anm, g_BulletTypeInfos spawnFast/Normal/SlowIdx) ----
-    def _bullet_img(self, sprite: int, sprite_offset: int
-                    ) -> pygame.Surface | None:
+    def _bullet_img(self, sprite: int, sprite_offset: int) -> pygame.Surface | None:
         """(弹型, sprite_offset) → etama sprite Surface(纯函数, 全帧缓存)。
 
         替代逐弹的 bullet_active_sprite_idx + global_to_local + sprite
@@ -667,10 +711,16 @@ class GameView:
         img = self._bspr.get(key, False)
         if img is False:
             idx = bullet_active_sprite_idx(sprite, sprite_offset)
-            loc = self.bank.global_to_local("etama.anm", idx, _ANM_OFFSET_BULLETS) \
-                if idx >= 0 else None
-            img = self.bank.sprite("etama.anm", loc[1], entry=loc[0]) \
-                if loc is not None else None
+            loc = (
+                self.bank.global_to_local("etama.anm", idx, _ANM_OFFSET_BULLETS)
+                if idx >= 0
+                else None
+            )
+            img = (
+                self.bank.sprite("etama.anm", loc[1], entry=loc[0])
+                if loc is not None
+                else None
+            )
             self._bspr[key] = img
         return img
 
@@ -682,7 +732,7 @@ class GameView:
         """
         key = (id(img), alpha)
         hit = self._balpha.get(key)
-        if hit is not None and hit[0] is img:    # 持引用防 id 复用串键
+        if hit is not None and hit[0] is img:  # 持引用防 id 复用串键
             return hit[1]
         out = img.copy()
         if out.get_flags() & pygame.SRCALPHA:
@@ -713,7 +763,7 @@ class GameView:
                     svm = cand
             self._spawn_fx[key] = svm
             if svm is not None:
-                svm.execute()          # 与旧路径一致: 创建当帧再推进一次
+                svm.execute()  # 与旧路径一致: 创建当帧再推进一次
                 self._spawn_fx_done[key] = self.frame
             return svm
         if svm is not None and self._spawn_fx_done.get(key) != self.frame:
@@ -742,16 +792,22 @@ class GameView:
                     if svm is not None:
                         svm.draw(surf, b.pos.x, b.pos.y)
             if img is None:
-                pygame.draw.circle(surf, (235, 235, 90),
-                                   (int(b.pos.x), int(b.pos.y)), 4)
+                pygame.draw.circle(
+                    surf, (235, 235, 90), (int(b.pos.x), int(b.pos.y)), 4
+                )
                 continue
             if b.sprite in rotate_types and b.vel.length > 0.05:
                 ang = -math.degrees(math.atan2(b.vel.y, b.vel.x)) - 90
                 img = rotated(img, ang)
             if alpha < 255:
                 img = self._alpha_img(img, alpha)
-            blit(img, (int(b.pos.x) - img.get_width() // 2,
-                       int(b.pos.y) - img.get_height() // 2))
+            blit(
+                img,
+                (
+                    int(b.pos.x) - img.get_width() // 2,
+                    int(b.pos.y) - img.get_height() // 2,
+                ),
+            )
         for key in list(self._spawn_fx):
             if key not in seen_fx:
                 del self._spawn_fx[key]
@@ -776,12 +832,15 @@ class GameView:
             sy = l.pos.y + dy * l.offset_a
             cx = sx + dx * length / 2
             cy = sy + dy * length / 2
-            if l.state == 0 and l.timer < l.hitbox_start_time \
-                    and not l.hide_warning:
+            if l.state == 0 and l.timer < l.hitbox_start_time and not l.hide_warning:
                 # 预警细线(原版 SPAWNING 前段的细激光)
-                pygame.draw.line(surf, (255, 120, 160),
-                                 (int(sx), int(sy)),
-                                 (int(sx + dx * length), int(sy + dy * length)), 2)
+                pygame.draw.line(
+                    surf,
+                    (255, 120, 160),
+                    (int(sx), int(sy)),
+                    (int(sx + dx * length), int(sy + dy * length)),
+                    2,
+                )
                 continue
             deg = -math.degrees(l.angle) - 90
             if strip is not None:
@@ -794,19 +853,28 @@ class GameView:
                     beam = self.bank.rotated(beam, deg)
                     self._beam[key] = beam
                 self._blit_center(surf, beam, cx, cy, alpha=190)
-                core_key = (color + 16, max(2, int(w * 0.7)), qlen,
-                            int(round(deg / 6.0)) * 6 % 360)
+                core_key = (
+                    color + 16,
+                    max(2, int(w * 0.7)),
+                    qlen,
+                    int(round(deg / 6.0)) * 6 % 360,
+                )
                 core = self._beam.get(core_key)
                 if core is None:
                     core = pygame.transform.scale(
-                        strip, (max(2, int(w * 0.7)), qlen * 4))
+                        strip, (max(2, int(w * 0.7)), qlen * 4)
+                    )
                     core = self.bank.rotated(core, deg)
                     self._beam[core_key] = core
                 self._blit_center(surf, core, cx, cy, alpha=235)
             else:
-                pygame.draw.line(surf, (255, 80, 120), (int(sx), int(sy)),
-                                 (int(sx + dx * length), int(sy + dy * length)),
-                                 max(2, int(w)))
+                pygame.draw.line(
+                    surf,
+                    (255, 80, 120),
+                    (int(sx), int(sy)),
+                    (int(sx + dx * length), int(sy + dy * length)),
+                    max(2, int(w)),
+                )
 
     # ---- bomb 视觉(BombData.cpp 12 套 *Draw + cutin/横幅, 见 bomb_view.py) ----
     def _render_bomb(self, surf: pygame.Surface, game) -> None:
@@ -819,8 +887,9 @@ class GameView:
         dead = int(p.state) == 2
         # 玩家死亡大爆(Player::Die, Player.cpp:1234-1235)
         if dead and not self._prev_player_dead:
-            fx.spawn(_FX_PLAYER_DEATH_RING, p.pos.x, p.pos.y, 1,
-                     color=0xFF4040FF)      # Player.cpp:1234 的 D3DCOLOR
+            fx.spawn(
+                _FX_PLAYER_DEATH_RING, p.pos.x, p.pos.y, 1, color=0xFF4040FF
+            )  # Player.cpp:1234 的 D3DCOLOR
             fx.spawn(_FX_PLAYER_DEATH_BURST, p.pos.x, p.pos.y, 16)
         self._prev_player_dead = dead
         # focus 判定点环(Player.cpp:1438 SpawnEffect(24); :1462 退场 interrupt)
@@ -864,8 +933,9 @@ class GameView:
             # 子机(Player.cpp:2451-2452: 脚本 1152/1153, ANGVEL 旋转)
             while len(self._option_vms) < 2:
                 svm = Vm2d(sb, self._tcache)
-                svm.start(_ANM_OFFSET_PLAYER
-                          + _PLAYER_OPTION_SCRIPTS[len(self._option_vms)])
+                svm.start(
+                    _ANM_OFFSET_PLAYER + _PLAYER_OPTION_SCRIPTS[len(self._option_vms)]
+                )
                 self._option_vms.append(svm)
             if int(p.option_state) != 0:
                 for svm, op in zip(self._option_vms, p.options):
@@ -873,14 +943,11 @@ class GameView:
                     svm.draw(surf, op.x, op.y, tint_alpha=alpha)
             self._player_vm.draw(surf, p.pos.x, p.pos.y, tint_alpha=alpha)
         else:
-            pygame.draw.circle(surf, (255, 255, 255),
-                               (int(p.pos.x), int(p.pos.y)), 8)
+            pygame.draw.circle(surf, (255, 255, 255), (int(p.pos.x), int(p.pos.y)), 8)
         if p.focus:
             # focus 判定点中心(红环白点; 旋转环由特效层脚本 0x2c2 画)
-            pygame.draw.circle(surf, (255, 60, 60),
-                               (int(p.pos.x), int(p.pos.y)), 5, 1)
-            pygame.draw.circle(surf, (255, 255, 255),
-                               (int(p.pos.x), int(p.pos.y)), 2)
+            pygame.draw.circle(surf, (255, 60, 60), (int(p.pos.x), int(p.pos.y)), 5, 1)
+            pygame.draw.circle(surf, (255, 255, 255), (int(p.pos.x), int(p.pos.y)), 2)
 
     # ---- boss UI(血条/位置标记/符卡横幅) ----
     def _render_boss_ui(self, surf: pygame.Surface, game) -> None:
@@ -891,8 +958,7 @@ class GameView:
         if boss.max_life > 0 and boss.life > 0:
             frac = max(0.0, min(1.0, boss.life / boss.max_life))
             pygame.draw.rect(surf, (60, 20, 30), (2, 2, GAME_W - 4, 4))
-            pygame.draw.rect(surf, (255, 60, 80),
-                             (2, 2, int((GAME_W - 4) * frac), 4))
+            pygame.draw.rect(surf, (255, 60, 80), (2, 2, int((GAME_W - 4) * frac), 4))
             for threshold, _cb in boss.life_thresholds:
                 if boss.max_life > 0:
                     tx = 2 + int((GAME_W - 4) * threshold / boss.max_life)
@@ -900,9 +966,11 @@ class GameView:
         # boss 位置标记(原版在屏幕 y=472 的红三角, 即游戏区底缘)
         if boss.is_active or boss.life > 0:
             mx = int(boss.pos.x)
-            pygame.draw.polygon(surf, (255, 50, 60),
-                                [(mx - 5, GAME_H - 6), (mx + 5, GAME_H - 6),
-                                 (mx, GAME_H - 1)])
+            pygame.draw.polygon(
+                surf,
+                (255, 50, 60),
+                [(mx - 5, GAME_H - 6), (mx + 5, GAME_H - 6), (mx, GAME_H - 1)],
+            )
         # 符卡剩余秒数(近似; 符卡名横幅已升级为 spellcard_view 的原版构图)
         if boss.is_active == 1 and boss.spellcard_idx >= 0:
             self._fonts()

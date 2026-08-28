@@ -1,4 +1,4 @@
-""" 对话消息系统(msg1.dat..msg8.dat) —— Pythonic。
+"""对话消息系统(msg1.dat..msg8.dat) —— Pythonic。
 
 对照 th07 反编译源码 `Gui.cpp/.hpp` 还原:
 
@@ -53,6 +53,7 @@ from ..exceptions import MsgParseError
 
 # ---- 指令集(照抄 Gui.hpp MsgOpcode) ----
 
+
 class MsgOpcode(IntEnum):
     DELETE = 0
     SHOW_PORTRAIT = 1
@@ -72,6 +73,7 @@ class MsgOpcode(IntEnum):
 
 
 # ---- 解析 ----
+
 
 class MsgInstr(msgspec.Struct, frozen=True):
     """一条 msg 指令。args 保留原始字节, 按 opcode 提供解析视图。"""
@@ -139,7 +141,7 @@ class MsgFile(msgspec.Struct):
                 time, opcode, argsize = struct.unpack_from("<HBB", data, pos)
                 if pos + 4 + argsize > len(data):
                     raise MsgParseError(f"msg {idx}: 指令截断 (pos={pos})")
-                instrs.append(MsgInstr(time, opcode, data[pos + 4: pos + 4 + argsize]))
+                instrs.append(MsgInstr(time, opcode, data[pos + 4 : pos + 4 + argsize]))
                 pos += 4 + argsize
                 if opcode == MsgOpcode.DELETE:
                     break
@@ -155,11 +157,11 @@ class MsgFile(msgspec.Struct):
 
 # ---- 运行时状态 ----
 
-FONT_SIZE = 15                      # MsgRead: fontSize=15
-TEXT_COLORS_A = (0xE8F0FF, 0xFFE8F0, 0, 0)   # 前景色(AARRGGBB 低 24 位作 RGB)
-TEXT_COLORS_B = (0, 0, 0, 0)                 # 描边色
-PAUSE_MIN_FRAMES = 12               # Z 键提前结束 PAUSE 的最短停留(RunMsg: <12 不响应)
-TYPEWRITER_FRAMES_PER_CHAR = 2      # 打字机速度(视觉近似, 原版由 anm 脚本控制)
+FONT_SIZE = 15  # MsgRead: fontSize=15
+TEXT_COLORS_A = (0xE8F0FF, 0xFFE8F0, 0, 0)  # 前景色(AARRGGBB 低 24 位作 RGB)
+TEXT_COLORS_B = (0, 0, 0, 0)  # 描边色
+PAUSE_MIN_FRAMES = 12  # Z 键提前结束 PAUSE 的最短停留(RunMsg: <12 不响应)
+TYPEWRITER_FRAMES_PER_CHAR = 2  # 打字机速度(视觉近似, 原版由 anm 脚本控制)
 
 # SWITCH 的 interrupt 约定(由 msg 脚本实际用法归纳):
 # 立绘 1=入场, 3=亮(说话方), 4=暗(非说话方), 5=退场; 文本行同组值控制显隐。
@@ -169,7 +171,7 @@ class MsgPortraitState(msgspec.Struct):
     """一侧立绘的渲染状态(C 里是 AnmVm, 这里只留渲染需要的最小字段)。"""
 
     visible: bool = False
-    face: int = 0                   # CHANGE_FACE/SHOW_PORTRAIT 的 anmScriptIdx
+    face: int = 0  # CHANGE_FACE/SHOW_PORTRAIT 的 anmScriptIdx
     pending_interrupt: int = 0
 
     @property
@@ -189,7 +191,7 @@ class MsgLineState(msgspec.Struct):
     visible: bool = False
     text: str = ""
     color: int = 0
-    reveal: int = 0                 # 打字机已显示字符数
+    reveal: int = 0  # 打字机已显示字符数
     pending_interrupt: int = 0
 
     def set_text(self, text: str, color: int) -> None:
@@ -214,7 +216,7 @@ class MsgVm:
     def __init__(self, msg_file: Optional[MsgFile] = None) -> None:
         self.msg_file = msg_file
         self.current_msg_idx = -1
-        self.instr_idx = 0          # 当前指令下标(模拟 curInstr 指针)
+        self.instr_idx = 0  # 当前指令下标(模拟 curInstr 指针)
         self.timer = 0
         self.frames_elapsed_during_pause = 0
         self.ignore_wait_counter = 0
@@ -223,7 +225,7 @@ class MsgVm:
         self.portraits = [MsgPortraitState(), MsgPortraitState()]
         self.dialogue_lines = [MsgLineState(), MsgLineState()]
         self.intro_lines = [MsgLineState(), MsgLineState()]
-        self.finished_stage = 0     # STAGERESULTS 置 1
+        self.finished_stage = 0  # STAGERESULTS 置 1
         self.events: list[str] = []  # 透出事件: "music:idx"/"next_level" 等
         self._type_timer = 0
 
@@ -303,7 +305,10 @@ class MsgVm:
                 self.frames_elapsed_during_pause = 0
             elif op == MsgOpcode.PAUSE:
                 if self.dialogue_skippable == 0 or not skip_held:
-                    if not advance_pressed or self.frames_elapsed_during_pause < PAUSE_MIN_FRAMES:
+                    if (
+                        not advance_pressed
+                        or self.frames_elapsed_during_pause < PAUSE_MIN_FRAMES
+                    ):
                         if self.frames_elapsed_during_pause < cur.pause_duration:
                             self.frames_elapsed_during_pause += 1
                             self._post_step()

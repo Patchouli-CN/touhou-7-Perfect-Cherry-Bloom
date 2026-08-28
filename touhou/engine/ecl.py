@@ -1,4 +1,4 @@
-""" ECL 字节码解析与解释器状态结构 —— Pythonic。
+"""ECL 字节码解析与解释器状态结构 —— Pythonic。
 
 对照 th07 反编译源码 `EclManager.cpp/.hpp`、`EnemyEclInstr.cpp` 还原:
 .ecl 文件解析(头/sub 表/时间轴表) + 解释器读写的状态结构 + 时间轴执行器。
@@ -50,8 +50,9 @@ PLAYFIELD_H = 448.0
 
 # ---- 枚举(照抄 EclManager.hpp; TH07 变量命名空间 EclVarId 在 games/th07/ecl_vm.py) ----
 
+
 class EclOpcode(IntEnum):
-    UNIMP = 1                       # RunEcl 直接返回错误(= 脚本结束/despawn)
+    UNIMP = 1  # RunEcl 直接返回错误(= 脚本结束/despawn)
     JUMP = 2
     DEC_JUMP = 3
     SET_INT = 4
@@ -214,7 +215,9 @@ class EclOpcode(IntEnum):
 
 # ---- 文件结构(解析) ----
 
-_INSTR_HEADER = struct.Struct("<IhhBBH")  # time, id, size, unused, skipOnDifficulty, paramMask
+_INSTR_HEADER = struct.Struct(
+    "<IhhBBH"
+)  # time, id, size, unused, skipOnDifficulty, paramMask
 _INSTR_HEADER_SIZE = _INSTR_HEADER.size  # 12
 _TIMELINE_HEADER = struct.Struct("<hhhh")  # time, arg0, opcode, size
 
@@ -225,13 +228,13 @@ _TERMINATOR_ID = -1
 class EclInstr(msgspec.Struct, frozen=True):
     """一条解析好的 ECL 指令。args 是 u32 原始字, 按 paramMask 解释。"""
 
-    offset: int            # 文件内绝对偏移(模拟 C 的 EclRawInstr*)
-    time: int              # u32: 到点(context time == time)才执行
-    id: int                # i16: EclOpcode 或 -1(终止)
-    size: int              # i16: 整条字节数(含 12 字节头)
-    unused: int            # u8: 指令头保留字节(执行语义不用, 原样保留保 round-trip)
-    skip_difficulty: int   # u8 位掩码: 当前难度位为 1 才执行(0xFF = 全难度)
-    param_mask: int        # u16: bit i = 1 → args[i] 是变量 id 而非立即数
+    offset: int  # 文件内绝对偏移(模拟 C 的 EclRawInstr*)
+    time: int  # u32: 到点(context time == time)才执行
+    id: int  # i16: EclOpcode 或 -1(终止)
+    size: int  # i16: 整条字节数(含 12 字节头)
+    unused: int  # u8: 指令头保留字节(执行语义不用, 原样保留保 round-trip)
+    skip_difficulty: int  # u8 位掩码: 当前难度位为 1 才执行(0xFF = 全难度)
+    param_mask: int  # u16: bit i = 1 → args[i] 是变量 id 而非立即数
     args: tuple[int, ...]  # u32 字
 
     def arg_int(self, idx: int) -> int:
@@ -262,9 +265,9 @@ class EclTimelineInstr(msgspec.Struct, frozen=True):
     """时间轴指令(32 字节, 参数固定 6 个 u32, 前 3 个常作 Float3 坐标)。"""
 
     offset: int
-    time: int     # i16, <0 表示时间轴结束
-    arg0: int     # i16, 通常是 sub id
-    opcode: int   # i16: 0..7 spawn, 8 msg, 9 msgWait, 10 boss中断, 11 火力, 12 等boss
+    time: int  # i16, <0 表示时间轴结束
+    arg0: int  # i16, 通常是 sub id
+    opcode: int  # i16: 0..7 spawn, 8 msg, 9 msgWait, 10 boss中断, 11 火力, 12 等boss
     size: int
     args: tuple[int, ...]
 
@@ -296,9 +299,11 @@ class EclFile(msgspec.Struct):
 
     def __repr__(self) -> str:
         # _instr_at 等索引/保留字段不进 repr (对照原 dataclass 的 field(repr=False))
-        return (f"EclFile(sub_count={self.sub_count!r}, "
-                f"timeline_count={self.timeline_count!r}, subs={self.subs!r}, "
-                f"timelines={self.timelines!r})")
+        return (
+            f"EclFile(sub_count={self.sub_count!r}, "
+            f"timeline_count={self.timeline_count!r}, subs={self.subs!r}, "
+            f"timelines={self.timelines!r})"
+        )
 
     @classmethod
     def parse(cls, data: bytes) -> "EclFile":
@@ -306,7 +311,9 @@ class EclFile(msgspec.Struct):
             raise EclParseError("文件太小, 没有完整 EclRawHeader")
         sub_count, timeline_count = struct.unpack_from("<hh", data, 0)
         if not (0 <= sub_count <= 4096 and 0 <= timeline_count <= 16):
-            raise EclParseError(f"非法 header: subCount={sub_count} timelineCount={timeline_count}")
+            raise EclParseError(
+                f"非法 header: subCount={sub_count} timelineCount={timeline_count}"
+            )
         timeline_offsets = struct.unpack_from("<16i", data, 4)
         sub_offsets = struct.unpack_from(f"<{sub_count}i", data, 68)
 
@@ -317,7 +324,9 @@ class EclFile(msgspec.Struct):
             while True:
                 if off + _INSTR_HEADER_SIZE > len(data):
                     raise EclParseError(f"sub {sub_id}: 指令越界 (off={off})")
-                time, op_id, size, unused, skip, mask = _INSTR_HEADER.unpack_from(data, off)
+                time, op_id, size, unused, skip, mask = _INSTR_HEADER.unpack_from(
+                    data, off
+                )
                 if size < _INSTR_HEADER_SIZE or (size - _INSTR_HEADER_SIZE) % 4 != 0:
                     raise EclParseError(f"sub {sub_id}: 非法 size={size} (off={off})")
                 if off + size > len(data):
@@ -340,8 +349,11 @@ class EclFile(msgspec.Struct):
             while off < len(data):  # 时间轴可以没有终止符, 直接延伸到 EOF
                 if off + _TIMELINE_HEADER.size > len(data):
                     # 尾部可能有 4 字节截短终止记录(如 ff ff 04 00, time=-1)
-                    tail = struct.unpack_from("<h", data, off)[0] \
-                        if off + 2 <= len(data) else -1
+                    tail = (
+                        struct.unpack_from("<h", data, off)[0]
+                        if off + 2 <= len(data)
+                        else -1
+                    )
                     if tail < 0:
                         break
                     raise EclParseError(f"timeline {i}: 越界 (off={off})")
@@ -359,8 +371,15 @@ class EclFile(msgspec.Struct):
             nxt = timeline_offsets[i + 1] if i + 1 < timeline_count else len(data)
             trailing.append(data[off:nxt])
 
-        return cls(sub_count, timeline_count, subs, timelines, instr_at,
-                   tuple(timeline_offsets), trailing)
+        return cls(
+            sub_count,
+            timeline_count,
+            subs,
+            timelines,
+            instr_at,
+            tuple(timeline_offsets),
+            trailing,
+        )
 
     def serialize(self) -> bytes:
         """把解析结果写回 .ecl 二进制(parse 的逆运算)。
@@ -391,24 +410,39 @@ class EclFile(msgspec.Struct):
                 continue  # 空 sub 无偏移可还原(手工构造的边界情形)
             struct.pack_into("<i", buf, 68 + 4 * sub_id, sub[0].offset)
             for ins in sub:
-                _INSTR_HEADER.pack_into(buf, ins.offset, ins.time, ins.id,
-                                        ins.size, ins.unused,
-                                        ins.skip_difficulty, ins.param_mask)
+                _INSTR_HEADER.pack_into(
+                    buf,
+                    ins.offset,
+                    ins.time,
+                    ins.id,
+                    ins.size,
+                    ins.unused,
+                    ins.skip_difficulty,
+                    ins.param_mask,
+                )
                 if ins.args:
-                    struct.pack_into(f"<{len(ins.args)}I", buf,
-                                     ins.offset + _INSTR_HEADER_SIZE, *ins.args)
+                    struct.pack_into(
+                        f"<{len(ins.args)}I",
+                        buf,
+                        ins.offset + _INSTR_HEADER_SIZE,
+                        *ins.args,
+                    )
         for i, tl in enumerate(self.timelines):
             tail_start = self._timeline_offsets[i]
             for tins in tl:
-                _TIMELINE_HEADER.pack_into(buf, tins.offset, tins.time,
-                                           tins.arg0, tins.opcode, tins.size)
+                _TIMELINE_HEADER.pack_into(
+                    buf, tins.offset, tins.time, tins.arg0, tins.opcode, tins.size
+                )
                 if tins.args:
-                    struct.pack_into(f"<{len(tins.args)}I", buf,
-                                     tins.offset + _TIMELINE_HEADER.size,
-                                     *tins.args)
+                    struct.pack_into(
+                        f"<{len(tins.args)}I",
+                        buf,
+                        tins.offset + _TIMELINE_HEADER.size,
+                        *tins.args,
+                    )
                 tail_start = tins.offset + tins.size
             tail = self._timeline_trailing[i]
-            buf[tail_start:tail_start + len(tail)] = tail
+            buf[tail_start : tail_start + len(tail)] = tail
         return bytes(buf)
 
     def instr_at(self, offset: int) -> Optional[EclInstr]:
@@ -428,6 +462,7 @@ class EclFile(msgspec.Struct):
 
 
 # ---- 解释器状态 ----
+
 
 class Vec3(msgspec.Struct):
     """可变三维向量(C Float3)。屏幕系 y 向下。"""
@@ -476,9 +511,14 @@ class EclContextArgs(msgspec.Struct):
     global_floats: list[float] = msgspec.field(default_factory=lambda: [0.0] * 4)
 
     def clone(self) -> "EclContextArgs":
-        return EclContextArgs(list(self.int_vars1), list(self.float_vars1),
-                              list(self.int_vars2), list(self.float_vars2),
-                              list(self.global_ints), list(self.global_floats))
+        return EclContextArgs(
+            list(self.int_vars1),
+            list(self.float_vars1),
+            list(self.int_vars2),
+            list(self.float_vars2),
+            list(self.global_ints),
+            list(self.global_floats),
+        )
 
 
 class BulletCommandData(msgspec.Struct):
@@ -503,10 +543,11 @@ class EnemyBulletShooter(msgspec.Struct):
     speed1: float = 0.0
     speed2: float = 0.0
     commands: list[BulletCommandData] = msgspec.field(
-        default_factory=lambda: [BulletCommandData() for _ in range(6)])
+        default_factory=lambda: [BulletCommandData() for _ in range(6)]
+    )
     count1: int = 0
     count2: int = 0
-    aim_mode: int = 0       # = opcode - 64, 对应 bullets.Aim
+    aim_mode: int = 0  # = opcode - 64, 对应 bullets.Aim
     flags: int = 0
     sound_idx: int = 0
     sound_override: int = -1
@@ -523,7 +564,8 @@ class EnemyLaserShooter(msgspec.Struct):
     speed1: float = 0.0
     speed2: float = 0.0
     commands: list[BulletCommandData] = msgspec.field(
-        default_factory=lambda: [BulletCommandData() for _ in range(5)])
+        default_factory=lambda: [BulletCommandData() for _ in range(5)]
+    )
     start_offset: float = 0.0
     end_offset: float = 0.0
     start_length: float = 0.0
@@ -533,7 +575,7 @@ class EnemyLaserShooter(msgspec.Struct):
     end_time: int = 0
     hitbox_start_time: int = 0
     hitbox_end_time: int = 0
-    type: int = 0           # 0 = 跟随敌人, 1 = 固定(注意 C 里 MOVING→0, FIXED→1)
+    type: int = 0  # 0 = 跟随敌人, 1 = 固定(注意 C 里 MOVING→0, FIXED→1)
     flags: int = 0
     sound_override: int = -1
 
@@ -543,20 +585,28 @@ class EclInterpState(msgspec.Struct):
 
     active: bool = False
     timer: int = 0
-    duration: int = 0       # args[0]
-    func_idx: int = 0       # args[1]: 0..6=lerp, 7=cubic hermite
-    easing: int = 0         # args[2]: 0 线性, 1..3 ease-in, 4..6 ease-out
-    params: list[float] = msgspec.field(default_factory=lambda: [0.0] * 4)  # p0,p1,m0,m1
-    target_var: int = 0     # args[7]: 目标变量 id
+    duration: int = 0  # args[0]
+    func_idx: int = 0  # args[1]: 0..6=lerp, 7=cubic hermite
+    easing: int = 0  # args[2]: 0 线性, 1..3 ease-in, 4..6 ease-out
+    params: list[float] = msgspec.field(
+        default_factory=lambda: [0.0] * 4
+    )  # p0,p1,m0,m1
+    target_var: int = 0  # args[7]: 目标变量 id
 
     def clear(self) -> None:
         self.active = False
         self.timer = 0
 
     def clone(self) -> "EclInterpState":
-        return EclInterpState(self.active, self.timer, self.duration,
-                              self.func_idx, self.easing, list(self.params),
-                              self.target_var)
+        return EclInterpState(
+            self.active,
+            self.timer,
+            self.duration,
+            self.func_idx,
+            self.easing,
+            list(self.params),
+            self.target_var,
+        )
 
 
 class EclContext(msgspec.Struct):
@@ -565,20 +615,29 @@ class EclContext(msgspec.Struct):
     instr_offset: int = 0
     time: int = 0
     wait_timer: int = 0
-    ex_instr_idx: int = -1             # SET_EX_INS 注册的每帧回调(-1=无)
+    ex_instr_idx: int = -1  # SET_EX_INS 注册的每帧回调(-1=无)
     ex_instr: Optional[EclInstr] = None
     args: EclContextArgs = msgspec.field(default_factory=EclContextArgs)
     interps: list[EclInterpState] = msgspec.field(
-        default_factory=lambda: [EclInterpState() for _ in range(8)])
+        default_factory=lambda: [EclInterpState() for _ in range(8)]
+    )
     laser_not_in_use: int = 0
     is_periodic_sub: int = 0
     sub_id: int = -1
 
     def clone(self) -> "EclContext":
-        return EclContext(self.instr_offset, self.time, self.wait_timer,
-                          self.ex_instr_idx, self.ex_instr, self.args.clone(),
-                          [i.clone() for i in self.interps],
-                          self.laser_not_in_use, self.is_periodic_sub, self.sub_id)
+        return EclContext(
+            self.instr_offset,
+            self.time,
+            self.wait_timer,
+            self.ex_instr_idx,
+            self.ex_instr,
+            self.args.clone(),
+            [i.clone() for i in self.interps],
+            self.laser_not_in_use,
+            self.is_periodic_sub,
+            self.sub_id,
+        )
 
 
 class EclEnemyState(msgspec.Struct):
@@ -611,16 +670,19 @@ class EclEnemyState(msgspec.Struct):
     life: int = 0
     max_life: int = 0
     score: int = 0
-    timer: int = 0                     # C enemy->timer(每帧 +1)
+    timer: int = 0  # C enemy->timer(每帧 +1)
     item_drop: int = 0
     last_damage: int = 0
     boss_id: int = -1
     # C 敌人模板默认值 (EnemyManager.hpp:350-351): soundIdx=SOUND_BOMB_MARISA_A_FOCUS(7),
     # soundOverride=SOUND_25; 发射音门槛 flags&0x200 (BulletManager.cpp:611)
     bullet_props: EnemyBulletShooter = msgspec.field(
-        default_factory=lambda: EnemyBulletShooter(sound_idx=7, sound_override=25))
+        default_factory=lambda: EnemyBulletShooter(sound_idx=7, sound_override=25)
+    )
     laser_props: EnemyLaserShooter = msgspec.field(default_factory=EnemyLaserShooter)
-    lasers: list = msgspec.field(default_factory=lambda: [None] * 32)  # 宿主返回的激光句柄
+    lasers: list = msgspec.field(
+        default_factory=lambda: [None] * 32
+    )  # 宿主返回的激光句柄
     laser_idx: int = 0
     shoot_interval: int = 0
     shoot_interval_timer: int = 0
@@ -698,16 +760,28 @@ class EclEnemyState(msgspec.Struct):
                 p.y = self.upper_move_limit.y
 
     def bullet_rank_amount1(self, rank: int) -> int:
-        return cdiv(rank * (self.bullet_rank_amount1_high - self.bullet_rank_amount1_low), 32) \
+        return (
+            cdiv(
+                rank * (self.bullet_rank_amount1_high - self.bullet_rank_amount1_low),
+                32,
+            )
             + self.bullet_rank_amount1_low
+        )
 
     def bullet_rank_amount2(self, rank: int) -> int:
-        return cdiv(rank * (self.bullet_rank_amount2_high - self.bullet_rank_amount2_low), 32) \
+        return (
+            cdiv(
+                rank * (self.bullet_rank_amount2_high - self.bullet_rank_amount2_low),
+                32,
+            )
             + self.bullet_rank_amount2_low
+        )
 
     def bullet_rank_speed(self, rank: float) -> float:
-        return rank * (self.bullet_rank_speed_high - self.bullet_rank_speed_low) / 32 \
+        return (
+            rank * (self.bullet_rank_speed_high - self.bullet_rank_speed_low) / 32
             + self.bullet_rank_speed_low
+        )
 
     def shoot_interval_rank_delta(self, rank: int) -> int:
         """Enemy::ShootInterval: low=interval/5, high=-interval/5 的 rank 插值。"""
@@ -717,12 +791,13 @@ class EclEnemyState(msgspec.Struct):
 
 # ---- 世界与宿主接口 ----
 
+
 class EclWorld(msgspec.Struct):
     """ECL 可见的全局状态(g_GameManager/g_GlobalEclVars/g_Player 的切片)。"""
 
     rng: Rng = msgspec.field(default_factory=Rng)
-    difficulty: int = 1            # 0=E 1=N 2=H 3=L
-    rank: int = 16                 # 0..32
+    difficulty: int = 1  # 0=E 1=N 2=H 3=L
+    rank: int = 16  # 0..32
     player_pos: Vec3 = msgspec.field(default_factory=lambda: Vec3(192.0, 400.0, 0.0))
     player_shottype: int = 0
     current_power: int = 0
@@ -730,7 +805,8 @@ class EclWorld(msgspec.Struct):
     global_ints: list[int] = msgspec.field(default_factory=lambda: [0] * 4)
     global_floats: list[float] = msgspec.field(default_factory=lambda: [0.0] * 4)
     bosses: list[Optional[EclEnemyState]] = msgspec.field(
-        default_factory=lambda: [None] * 8)
+        default_factory=lambda: [None] * 8
+    )
     spellcard_active: bool = False  # g_EnemyManager.spellcardInfo.isActive
     framerate_multiplier: float = 1.0  # g_Supervisor.effectiveFramerateMultiplier
     script_wait_time: int = 0
@@ -757,7 +833,7 @@ class EclHost:
 
     # 体术豁免 (EclManager.cpp:2261-2276) 读取的宿主上下文; GameEclHost 每帧同步
     bomb_in_use: bool = False
-    spellcard_idx: int = -1     # g_EnemyManager.spellcardInfo.spellcardIdx
+    spellcard_idx: int = -1  # g_EnemyManager.spellcardInfo.spellcardIdx
 
     # ---- 弹幕/激光(结构化输出) ----
     def spawn_bullet_pattern(self, props: EnemyBulletShooter) -> None:
@@ -794,9 +870,16 @@ class EclHost:
         pass
 
     # ---- 敌人/道具/清场 ----
-    def spawn_enemy(self, sub_id: int, pos: Vec3, life: int, item_drop: int,
-                    score: int, mirror: int, context_args: EclContextArgs
-                    ) -> EclEnemy | None:
+    def spawn_enemy(
+        self,
+        sub_id: int,
+        pos: Vec3,
+        life: int,
+        item_drop: int,
+        score: int,
+        mirror: int,
+        context_args: EclContextArgs,
+    ) -> EclEnemy | None:
         """SpawnEnemy: 返回入场敌人(失败 None); 默认宿主无操作。"""
         return None
 
@@ -823,8 +906,9 @@ class EclHost:
     def set_boss_life_markers(self, n: int) -> None:
         pass
 
-    def begin_spellcard(self, enemy: EclEnemyState, gui_id: int,
-                        spellcard_idx: int, name: str) -> None:
+    def begin_spellcard(
+        self, enemy: EclEnemyState, gui_id: int, spellcard_idx: int, name: str
+    ) -> None:
         pass
 
     def end_spellcard(self, enemy: EclEnemyState) -> None:
@@ -844,18 +928,19 @@ class EclHost:
     def set_power(self, value: int) -> None:
         pass
 
-    def add_cherry_plus(self, value: int) -> None:
-        pass
-
     def set_script_wait_time(self, value: int) -> None:
         pass
 
     def boss_active(self, idx: int) -> bool:
         return False
 
-    def run_ex_instr(self, idx: int, enemy: EclEnemyState,
-                     instr: Optional[EclInstr],
-                     ctx: Optional[EclContext] = None) -> bool:
+    def run_ex_instr(
+        self,
+        idx: int,
+        enemy: EclEnemyState,
+        instr: Optional[EclInstr],
+        ctx: Optional[EclContext] = None,
+    ) -> bool:
         """ECL ex 指令(24 条 boss 专用特技)。返回 True = 宿主已处理。
 
         ctx 是触发时的当前上下文 (C 里 ExIns 直接读写 enemy->currentContext:
@@ -865,17 +950,23 @@ class EclHost:
 
     def on_unhandled_opcode(self, machine: "EclMachineBase", instr: EclInstr) -> None:
         """未实现指令的钩子(默认记日志跳过)。"""
-        log.warning("未实现的 ECL 指令 id={} offset={:#x} sub={}, 已跳过",
-                    instr.id, instr.offset, machine.current.sub_id)
+        log.warning(
+            "未实现的 ECL 指令 id={} offset={:#x} sub={}, 已跳过",
+            instr.id,
+            instr.offset,
+            machine.current.sub_id,
+        )
 
 
 # ---- 时间轴(EnemyManager::RunEclTimeline) ----
 
+
 class EclTimelineRunner:
     """一条时间轴的执行器。每帧 step() 一次。"""
 
-    def __init__(self, ecl_file: EclFile, index: int, world: EclWorld,
-                 host: EclHost) -> None:
+    def __init__(
+        self, ecl_file: EclFile, index: int, world: EclWorld, host: EclHost
+    ) -> None:
         self.timelines = ecl_file.timelines[index]
         self.world = world
         self.host = host
@@ -896,12 +987,25 @@ class EclTimelineRunner:
                     if not self._boss_present():
                         pos = self._pos_of(instr)
                         if op & 1:  # 奇数: 默认 life/itemDrop/score
-                            host.spawn_enemy(instr.arg0, pos, -1, -1, -1,
-                                             1 if op >= 2 else 0, EclContextArgs())
+                            host.spawn_enemy(
+                                instr.arg0,
+                                pos,
+                                -1,
+                                -1,
+                                -1,
+                                1 if op >= 2 else 0,
+                                EclContextArgs(),
+                            )
                         else:
-                            host.spawn_enemy(instr.arg0, pos, instr.arg_int(3),
-                                             instr.arg_int(4), instr.arg_int(5),
-                                             1 if op >= 2 else 0, EclContextArgs())
+                            host.spawn_enemy(
+                                instr.arg0,
+                                pos,
+                                instr.arg_int(3),
+                                instr.arg_int(4),
+                                instr.arg_int(5),
+                                1 if op >= 2 else 0,
+                                EclContextArgs(),
+                            )
                 elif op == 8:
                     host.msg_read(instr.arg0)  # C 还会加 character*10, 交给宿主
                 elif op == 9:

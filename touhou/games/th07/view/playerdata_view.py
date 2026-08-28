@@ -1,4 +1,4 @@
-""" Player Data(Result 画面)渲染(pygame) —— 风格对齐 result_view。
+"""Player Data(Result 画面)渲染(pygame) —— 风格对齐 result_view。
 
 【th07 专属】数据装配直接调 games/th07/playerdata.py(符卡页/统计页语义绑死
 th07 的 catk/clrd 口径), 属后端内聚的有意耦合; 新作品复用窗口版需自带
@@ -27,8 +27,7 @@ from ....schema.archive import GameArchive
 from .. import playerdata
 from ....engine.score_store import ScoreStore
 from .result_view import _load_font
-from .screens import (CHARACTERS, DIFFICULTIES, PLAYERDATA_SECTIONS,
-                      PlayerDataFlow)
+from .screens import CHARACTERS, DIFFICULTIES, PLAYERDATA_SECTIONS, PlayerDataFlow
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
 
 _LABEL = (190, 190, 220)
@@ -67,12 +66,16 @@ class PlayerDataView:
         self._font = _load_font(20)
         self._font_big = _load_font(28)
 
-    def _text(self, surf, font, s: str, x: int, y: int,
-              color=_VALUE) -> None:
+    def _text(self, surf, font, s: str, x: int, y: int, color=_VALUE) -> None:
         surf.blit(font.render(s, True, color), (x, y))
 
-    def render(self, surf: pygame.Surface, flow: PlayerDataFlow,
-               store: ScoreStore | None, frame: int = 0) -> None:
+    def render(
+        self,
+        surf: pygame.Surface,
+        flow: PlayerDataFlow,
+        store: ScoreStore | None,
+        frame: int = 0,
+    ) -> None:
         if self._bg is not None:
             surf.blit(pygame.transform.scale(self._bg, (TITLE_W, TITLE_H)), (0, 0))
         else:
@@ -86,8 +89,7 @@ class PlayerDataView:
         diff_name = DIFFICULTIES[flow.difficulty]
         char_name = CHARACTERS[flow.character]
         self._text(surf, fb, f"Player Data - {section}", 70, 40, _HEADER)
-        self._text(surf, f, f"难度 {diff_name}    机体 {char_name}",
-                   70, 76, _ACCENT)
+        self._text(surf, f, f"难度 {diff_name}    机体 {char_name}", 70, 76, _ACCENT)
 
         if store is None:
             self._text(surf, f, "(无记录)", 70, 120, _DIM)
@@ -99,30 +101,42 @@ class PlayerDataView:
             self._render_stats(surf, f, store)
 
         if frame % 60 < 45:  # 闪烁提示
-            self._text(surf, f, "↑↓: 难度  ←→: 机体  Z: 切板块  X/Esc: 返回",
-                       70, TITLE_H - 36, _LABEL)
+            self._text(
+                surf,
+                f,
+                "↑↓: 难度  ←→: 机体  Z: 切板块  X/Esc: 返回",
+                70,
+                TITLE_H - 36,
+                _LABEL,
+            )
 
     # ---- 分数榜: 难度×机体 Top10 ----
     def _render_highscore(self, surf, f, flow, store) -> None:
         rows = playerdata.highscore_rows(store, flow.difficulty, flow.character)
         y = 108
-        self._text(surf, f, "Rank  Name       Score        Stage",
-                   90, y, _LABEL)
+        self._text(surf, f, "Rank  Name       Score        Stage", 90, y, _LABEL)
         y += 26
         for i, r in enumerate(rows):
-            line = (f"{i + 1:>2}.   {r['name']:<9} {r['score']:>12,}"
-                    f"   Stage {r['stage']}")
+            line = (
+                f"{i + 1:>2}.   {r['name']:<9} {r['score']:>12,}   Stage {r['stage']}"
+            )
             self._text(surf, f, line, 90, y)
             y += 26
 
     # ---- 符卡: 捕获汇总 + 遇过的卡 ----
     def _render_spellcard(self, surf, f, flow, store) -> None:
         page = playerdata.spellcard_page(store, flow.character)
-        rate = (page["successes"] / page["attempts"] * 100.0
-                if page["attempts"] else 0.0)
-        self._text(surf, f, f"捕获 {page['captured']}/{page['attempted']} 张"
-                            f"    次数 {page['successes']}/{page['attempts']}"
-                            f" ({rate:.1f}%)", 90, 108, _ACCENT)
+        rate = page["successes"] / page["attempts"] * 100.0 if page["attempts"] else 0.0
+        self._text(
+            surf,
+            f,
+            f"捕获 {page['captured']}/{page['attempted']} 张"
+            f"    次数 {page['successes']}/{page['attempts']}"
+            f" ({rate:.1f}%)",
+            90,
+            108,
+            _ACCENT,
+        )
         y = 140
         if not page["cards"]:
             self._text(surf, f, "(尚未遇到符卡)", 90, y, _DIM)
@@ -155,11 +169,11 @@ class PlayerDataView:
         y += 14
         self._text(surf, f, "通关情况(到达面数):", 90, y, _LABEL)
         y += 26
-        self._text(surf, f, "        " + "  ".join(f"{c:>3}" for c in _CLRD_COLS),
-                   90, y, _DIM)
+        self._text(
+            surf, f, "        " + "  ".join(f"{c:>3}" for c in _CLRD_COLS), 90, y, _DIM
+        )
         y += 24
         for ch, c in enumerate(st["clrd"]):
-            cells = "  ".join(f"{v:>3}" if v else "  -"
-                               for v in c["without_retries"])
+            cells = "  ".join(f"{v:>3}" if v else "  -" for v in c["without_retries"])
             self._text(surf, f, f"{CHARACTERS[ch]:<8}{cells}", 90, y)
             y += 24

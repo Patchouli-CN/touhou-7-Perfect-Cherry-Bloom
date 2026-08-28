@@ -2,6 +2,7 @@
 
 对照 SoundPlayer.cpp(SOUND_BUFFER_IDX_VOL/g_SFXList/PlaySoundByIdx)。
 """
+
 from __future__ import annotations
 
 import sys
@@ -34,6 +35,7 @@ OP = EclOpcode
 
 
 # ---- SE 索引表(SoundPlayer.cpp:10-77) ----
+
 
 def test_se_table_covers_38_slots() -> None:
     assert len(SE) == 38
@@ -69,6 +71,7 @@ def test_se_file_mapping_spot_checks() -> None:
 
 # ---- SoundQueue 节流(PlaySoundByIdx, SoundPlayer.cpp:597-623) ----
 
+
 def test_queue_dedupes_same_idx_within_frame() -> None:
     q = SoundQueue()
     q.play(SE.SOUND_20)
@@ -96,20 +99,56 @@ def test_queue_take_clears_and_ignores_out_of_range() -> None:
 # ---- 引擎播放点(无 dat, 手工对象) ----
 
 _SD_SND = ShotData(
-    initial_bombs=3.0, initial_respawn_timer=5, hitbox_radius=4.0,
-    grab_item_radius=48.0, item_collect_speed=4.0, item_collect_radius=16.0,
-    cherry_penalty_multiplier=0.5, poc_y=128.0,
-    speed=4.0, speed_focus=2.0, speed_diagonal=2.8, speed_diagonal_focus=1.4,
-    levels=[ShotLevel(0, [
-        ShotEntry(fire_interval=4, fire_offset=0, offset=(0.0, -16.0),
-                  hitbox=(6.0, 6.0), angle=-1.5707964, speed=10.0, damage=1,
-                  option=0, bullet_state2=0, fire_cb=1, update_cb=0,
-                  draw_cb=0, hit_cb=0, sound_idx=0),
-        ShotEntry(fire_interval=-1, fire_offset=0, offset=(0.0, 0.0),
-                  hitbox=(0.0, 0.0), angle=0.0, speed=0.0, damage=0,
-                  option=0, bullet_state2=0, fire_cb=0, update_cb=0,
-                  draw_cb=0, hit_cb=0),
-    ])],
+    initial_bombs=3.0,
+    initial_respawn_timer=5,
+    hitbox_radius=4.0,
+    grab_item_radius=48.0,
+    item_collect_speed=4.0,
+    item_collect_radius=16.0,
+    cherry_penalty_multiplier=0.5,
+    poc_y=128.0,
+    speed=4.0,
+    speed_focus=2.0,
+    speed_diagonal=2.8,
+    speed_diagonal_focus=1.4,
+    levels=[
+        ShotLevel(
+            0,
+            [
+                ShotEntry(
+                    fire_interval=4,
+                    fire_offset=0,
+                    offset=(0.0, -16.0),
+                    hitbox=(6.0, 6.0),
+                    angle=-1.5707964,
+                    speed=10.0,
+                    damage=1,
+                    option=0,
+                    bullet_state2=0,
+                    fire_cb=1,
+                    update_cb=0,
+                    draw_cb=0,
+                    hit_cb=0,
+                    sound_idx=0,
+                ),
+                ShotEntry(
+                    fire_interval=-1,
+                    fire_offset=0,
+                    offset=(0.0, 0.0),
+                    hitbox=(0.0, 0.0),
+                    angle=0.0,
+                    speed=0.0,
+                    damage=0,
+                    option=0,
+                    bullet_state2=0,
+                    fire_cb=0,
+                    update_cb=0,
+                    draw_cb=0,
+                    hit_cb=0,
+                ),
+            ],
+        )
+    ],
 )
 
 
@@ -157,9 +196,15 @@ def test_player_graze_sound() -> None:
 def _host_with_sound(*subs: list[bytes]) -> tuple[EclMachine, GameEclHost]:
     f = build_ecl(*subs)
     world = EclWorld(difficulty=1)
-    host = GameEclHost(f, world, enemies=EnemyHost(), bullets=BulletWorld(),
-                       lasers=LaserWorld(), items=ItemWorld(),
-                       ecl_machine_cls=EclMachine)
+    host = GameEclHost(
+        f,
+        world,
+        enemies=EnemyHost(),
+        bullets=BulletWorld(),
+        lasers=LaserWorld(),
+        items=ItemWorld(),
+        ecl_machine_cls=EclMachine,
+    )
     host.sound = SoundQueue()
     m = EclMachine(f, world=world, host=host)
     m.enemy.life = 10
@@ -170,7 +215,8 @@ def _host_with_sound(*subs: list[bytes]) -> tuple[EclMachine, GameEclHost]:
 def test_ecl_play_sound_passthrough() -> None:
     """ECL PLAY_SOUND(105) 原样透传 idx (EclManager.cpp:1662-1664)。"""
     m, host = _host_with_sound(
-        [_instr(0, OP.PLAY_SOUND, (16,)), _instr(9999, OP.UNIMP)])
+        [_instr(0, OP.PLAY_SOUND, (16,)), _instr(9999, OP.UNIMP)]
+    )
     m.step()
     assert host.sound.take() == [16]
 
@@ -182,12 +228,21 @@ def test_ecl_bullet_spawn_sound_gated_by_flag_0x200() -> None:
     只设 sound_idx 并置 0x200 (EclManager.cpp:1866-1878), 被后续 spawn 覆写。
     """
     m, host = _host_with_sound(
-        [_instr(0, OP.SET_BULLET_SOUND, (8, -1)),
-         _instr(1, OP.SPAWN_BULLET_PATTERN_RING_ABS,
-                (0, 1, 1, _f(2.0), _f(2.0), 0, 0, 0x200)),
-         _instr(2, OP.SPAWN_BULLET_PATTERN_RING_ABS,
-                (0, 1, 1, _f(2.0), _f(2.0), 0, 0, 0)),
-         _instr(9999, OP.UNIMP)])
+        [
+            _instr(0, OP.SET_BULLET_SOUND, (8, -1)),
+            _instr(
+                1,
+                OP.SPAWN_BULLET_PATTERN_RING_ABS,
+                (0, 1, 1, _f(2.0), _f(2.0), 0, 0, 0x200),
+            ),
+            _instr(
+                2,
+                OP.SPAWN_BULLET_PATTERN_RING_ABS,
+                (0, 1, 1, _f(2.0), _f(2.0), 0, 0, 0),
+            ),
+            _instr(9999, OP.UNIMP),
+        ]
+    )
     m.step()  # t0: SET_BULLET_SOUND(sound_idx=8, 置 0x200)
     m.step()  # t1: 发弹 flags=0x200 → 播 8
     assert host.sound.take() == [8]
@@ -199,14 +254,19 @@ def test_ex19_ex20_bgm_events() -> None:
     """幽幽子终符: ex19 → FadeOutMusic(3.0), ex20 → th07_13b.mid
     (EnemyEclInstr.cpp:919/:925)。"""
     m, host = _host_with_sound(
-        [_instr(0, OP.RUN_EX_INS, (19, 0)), _instr(1, OP.RUN_EX_INS, (20, 0)),
-         _instr(9999, OP.UNIMP)])
+        [
+            _instr(0, OP.RUN_EX_INS, (19, 0)),
+            _instr(1, OP.RUN_EX_INS, (20, 0)),
+            _instr(9999, OP.UNIMP),
+        ]
+    )
     m.step()
     m.step()
     assert host.bgm_events == [("fadeout", 3.0), ("music_file", "th07_13b.mid")]
 
 
 # ---- impl 整合(真实 dat) ----
+
 
 def _game() -> PerfectCherryBloom:
     return PerfectCherryBloom(data_path=DAT, character=0, difficulty=1)
@@ -306,13 +366,24 @@ def test_impl_player_death_sound() -> None:
     import math
 
     from touhou.engine.bullets import Aim, Burst
+
     g = _game()
     _enter_field(g)
     g.ecl_timelines = []
     g.host.clear()
     g.bullets.clear()
-    g.bullets.fire(Burst(Vec2(g.player.pos.x, g.player.pos.y - 8),
-                         math.pi / 2, Aim.RING_ABSOLUTE, 1, 1, 4.0, 4.0, 0.0))
+    g.bullets.fire(
+        Burst(
+            Vec2(g.player.pos.x, g.player.pos.y - 8),
+            math.pi / 2,
+            Aim.RING_ABSOLUTE,
+            1,
+            1,
+            4.0,
+            4.0,
+            0.0,
+        )
+    )
     seen = _collect_sounds(g, 60)
     assert SE.PICHUN in seen
     assert g.player.state != PlayerState.ALIVE
@@ -320,9 +391,11 @@ def test_impl_player_death_sound() -> None:
 
 # ---- 播放层容错 ----
 
+
 def test_sound_player_silent_without_mixer() -> None:
     """mixer 未初始化: ensure_loaded/play_frame/play_music 全部静默不炸。"""
     import pygame
+
     was_init = pygame.mixer.get_init()
     if was_init:
         pygame.mixer.quit()
@@ -330,8 +403,9 @@ def test_sound_player_silent_without_mixer() -> None:
         sp = SoundPlayer(DAT)
         sp.ensure_loaded()
         assert not sp._enabled
-        sp.play_frame([0, 4, 30], [("music", 0), ("fadeout", 4.0)],
-                      ("bgm/th07_02.mid",))
+        sp.play_frame(
+            [0, 4, 30], [("music", 0), ("fadeout", 4.0)], ("bgm/th07_02.mid",)
+        )
         sp.play_music("th07_02.mid")
         sp.stop_music()
     finally:
@@ -345,6 +419,7 @@ def test_sound_player_silent_without_mixer() -> None:
 def test_sound_player_bad_path_degrades() -> None:
     """dat 路径无效: 加载失败静音降级, 不抛异常。"""
     import pygame
+
     if not pygame.mixer.get_init():
         try:
             pygame.mixer.init()
@@ -365,8 +440,10 @@ def test_db_to_gain() -> None:
 
 # ---- 主音量(Option 菜单) ----
 
+
 def test_set_se_volume_scales_individual_volumes() -> None:
     """SE 主音量在各 SE 独立音量(SE_VOLUMES)基础上整体缩放。"""
+
     class FakeSound:
         def __init__(self):
             self.v = None
@@ -389,10 +466,9 @@ def test_set_bgm_volume_calls_mixer(monkeypatch) -> None:
     import pygame
 
     calls = []
-    monkeypatch.setattr(pygame.mixer.music, "set_volume",
-                        lambda v: calls.append(v))
+    monkeypatch.setattr(pygame.mixer.music, "set_volume", lambda v: calls.append(v))
     sp = SoundPlayer(DAT)
-    sp.set_bgm_volume(0.3)          # _enabled=False: 不触 mixer, 只存
+    sp.set_bgm_volume(0.3)  # _enabled=False: 不触 mixer, 只存
     assert calls == []
     assert sp._bgm_volume == 0.3
     sp._enabled = True
@@ -410,6 +486,7 @@ def test_bgm_source_validation_and_current_bgm() -> None:
 
 
 # ---- BGM 暂停/恢复(AUDIO_PAUSE/AUDIO_UNPAUSE, SoundPlayer.cpp:846-868) ----
+
 
 def _enabled_player(wav: bool = True) -> SoundPlayer:
     """启用态假播放器: wav=True 时伪装 thbgm 已解析(WAV 音源生效)。"""
@@ -432,16 +509,15 @@ def test_pause_music_wav_only(monkeypatch) -> None:
 
     calls = []
     monkeypatch.setattr(pygame.mixer.music, "pause", lambda: calls.append("pause"))
-    monkeypatch.setattr(pygame.mixer.music, "unpause",
-                        lambda: calls.append("unpause"))
+    monkeypatch.setattr(pygame.mixer.music, "unpause", lambda: calls.append("unpause"))
     sp = _enabled_player(wav=True)
     sp.pause_music()
     assert calls == ["pause"] and sp._music_paused
-    sp.pause_music()                       # 幂等: 不重复 pause
+    sp.pause_music()  # 幂等: 不重复 pause
     assert calls == ["pause"]
     sp.unpause_music()
     assert calls == ["pause", "unpause"] and not sp._music_paused
-    sp.unpause_music()                     # 幂等
+    sp.unpause_music()  # 幂等
     assert calls == ["pause", "unpause"]
     # MIDI 音源: 不暂停(原版如此)
     sp2 = _enabled_player(wav=False)
@@ -455,7 +531,7 @@ def test_pause_music_skipped_when_disabled(monkeypatch) -> None:
 
     calls = []
     monkeypatch.setattr(pygame.mixer.music, "pause", lambda: calls.append(1))
-    sp = SoundPlayer(DAT)                  # _enabled=False
+    sp = SoundPlayer(DAT)  # _enabled=False
     sp.pause_music()
     sp.unpause_music()
     assert calls == []
@@ -468,15 +544,16 @@ def test_poll_wav_loop_skips_while_paused(monkeypatch) -> None:
 
     calls = []
     monkeypatch.setattr(pygame.mixer.music, "get_busy", lambda: False)
-    monkeypatch.setattr(pygame.mixer.music, "play",
-                        lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(
+        pygame.mixer.music, "play", lambda *a, **k: calls.append((a, k))
+    )
     sp = _enabled_player(wav=True)
     sp._wav_bgm = _fake_track()
     sp._music_paused = True
     sp.poll_loop()
-    assert calls == []                     # 暂停中不回卷
+    assert calls == []  # 暂停中不回卷
     sp._music_paused = False
-    sp.poll_loop()                         # 非暂停: get_busy()=False → 回卷
+    sp.poll_loop()  # 非暂停: get_busy()=False → 回卷
     assert len(calls) == 1
 
 
@@ -487,9 +564,8 @@ def test_poll_loop_public_guarded_by_enabled(monkeypatch) -> None:
 
     calls = []
     monkeypatch.setattr(pygame.mixer.music, "get_busy", lambda: False)
-    monkeypatch.setattr(pygame.mixer.music, "play",
-                        lambda *a, **k: calls.append(1))
-    sp = SoundPlayer(DAT)                  # 未启用
+    monkeypatch.setattr(pygame.mixer.music, "play", lambda *a, **k: calls.append(1))
+    sp = SoundPlayer(DAT)  # 未启用
     sp._wav_bgm = _fake_track()
     sp.poll_loop()
     assert calls == []
@@ -504,8 +580,7 @@ def test_play_music_same_name_while_paused_unpauses(monkeypatch) -> None:
     import pygame
 
     calls = []
-    monkeypatch.setattr(pygame.mixer.music, "unpause",
-                        lambda: calls.append("unpause"))
+    monkeypatch.setattr(pygame.mixer.music, "unpause", lambda: calls.append("unpause"))
     sp = _enabled_player(wav=True)
     sp._current_bgm = "th07_02.mid"
     sp._music_paused = True

@@ -54,13 +54,13 @@ class EndingView:
 
     def __init__(self, data_path=DEFAULT_DATA) -> None:
         self._data_path = Path(data_path)
-        self._archive = None          # 懒开(渲染第一帧才解包)
+        self._archive = None  # 懒开(渲染第一帧才解包)
         self._bg_cache: dict[str, pygame.Surface | None] = {}
         self._font = _load_font(15)
         self._hint_font = _load_font(18)
         # ---- 播放器/立绘 VM 状态 ----
         self._player: EndingPlayer | None = None
-        self._player_for: int | None = None   # id(EndingData), 换结局重建
+        self._player_for: int | None = None  # id(EndingData), 换结局重建
         self._sprite_bank: SpriteBank | None = None
         self._staff_sbank: AnmScriptBank | None = None
         self._tcache = TransformCache()
@@ -83,9 +83,9 @@ class EndingView:
                 raw = self._arch().load(name)
                 img = pygame.image.load(io.BytesIO(raw))
                 try:
-                    img = img.convert()   # 有显示模式时转格式(快)
+                    img = img.convert()  # 有显示模式时转格式(快)
                 except pygame.error:
-                    pass                  # headless(无 set_mode)直接用原图
+                    pass  # headless(无 set_mode)直接用原图
                 self._bg_cache[name] = img
             except Exception:
                 self._bg_cache[name] = None  # 缺资源 → 纯色底
@@ -102,8 +102,7 @@ class EndingView:
         if self._staff_sbank is None:
             if self._sprite_bank is None:
                 self._sprite_bank = SpriteBank(self._data_path)
-            sbank = AnmScriptBank(self._sprite_bank, "staff01.anm",
-                                  ANM_OFFSET_STAFF)
+            sbank = AnmScriptBank(self._sprite_bank, "staff01.anm", ANM_OFFSET_STAFF)
             self._staff_sbank = sbank if sbank.ok else None
         return self._staff_sbank
 
@@ -130,7 +129,7 @@ class EndingView:
         self._faces_version = player.faces_version
         sbank = self._staff()
         for vm_idx in set(self._face_vms) - set(player.faces):
-            del self._face_vms[vm_idx]     # @R/@F 清掉的槽位
+            del self._face_vms[vm_idx]  # @R/@F 清掉的槽位
             self._face_keys.pop(vm_idx, None)
         if sbank is None:
             return
@@ -149,9 +148,15 @@ class EndingView:
                 self._face_keys.pop(vm_idx, None)
 
     # ---- 渲染 ----
-    def render(self, surf: pygame.Surface, ending: EndingData, frame: int,
-               *, advance_held: bool = False,
-               advance_pressed: bool = False) -> None:
+    def render(
+        self,
+        surf: pygame.Surface,
+        ending: EndingData,
+        frame: int,
+        *,
+        advance_held: bool = False,
+        advance_pressed: bool = False,
+    ) -> None:
         player = self._get_player(ending)
         player.tick(advance_held=advance_held, advance_pressed=advance_pressed)
         if player.music_events:
@@ -176,8 +181,11 @@ class EndingView:
             vm.draw(surf, float(pos[0]), float(pos[1]))
         # 文本行 (sprites[i].pos = (64, i*16+392), 色随 @c)
         for i, line in enumerate(player.texts[:TEXT_MAX_SLOTS]):
-            color = ((line.color >> 16) & 255, (line.color >> 8) & 255,
-                     line.color & 255)
+            color = (
+                (line.color >> 16) & 255,
+                (line.color >> 8) & 255,
+                line.color & 255,
+            )
             t = self._font.render(line.text, True, color)
             surf.blit(t, (TEXT_X, TEXT_Y0 + i * TEXT_LINE_H))
         # 淡入淡出覆盖 (FadingEffect → DrawSquare 全屏)

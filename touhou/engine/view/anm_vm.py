@@ -69,10 +69,10 @@ class SpriteTex:
         self.v0 = y / th
         self.u1 = (x + w) / tw
         self.v1 = (y + h) / th
-        self.w = float(w)          # widthPx
-        self.h = float(h)          # heightPx
+        self.w = float(w)  # widthPx
+        self.h = float(h)  # heightPx
         # 区域 alpha 全 255 → 可用于遮挡标记(带孔的 sprite 不标记, 防误剔除)
-        self.opaque = bool((tex[y:y + h, x:x + w, 3] == 255).all())
+        self.opaque = bool((tex[y : y + h, x : x + w, 3] == 255).all())
 
 
 class ScriptRef:
@@ -143,7 +143,7 @@ class AnmVm:
         self.int_vars1 = [0] * 4
         self.float_vars = [0.0] * 4
         self.int_vars2 = [0] * 2
-        self.color = [255, 255, 255, 255]      # r,g,b,a
+        self.color = [255, 255, 255, 255]  # r,g,b,a
         self.visible = False
         self.active = True
         self.blend_mode = 0
@@ -158,7 +158,7 @@ class AnmVm:
         self.sprite: SpriteTex | None = None
         self.active_sprite_idx = -1
         self.script: ScriptRef | None = None
-        self.pc = -1                            # currentInstruction 下标, -1=结束
+        self.pc = -1  # currentInstruction 下标, -1=结束
         self.pos_interp_initial = np.zeros(3)
         self.pos_interp_final = np.zeros(3)
         self.rot_interp_initial = [0.0, 0.0, 0.0]
@@ -225,76 +225,76 @@ class AnmVm:
             ai = ins.args_i
             af = ins.args_f
             fl = ins.flags
-            iv = lambda k: self._int_value(ai[k], fl >> k & 1)      # noqa: E731
-            fv = lambda k: self._float_value(af[k], fl >> k & 1)    # noqa: E731
+            iv = lambda k: self._int_value(ai[k], fl >> k & 1)  # noqa: E731
+            fv = lambda k: self._float_value(af[k], fl >> k & 1)  # noqa: E731
             advance = True
-            if op in (-1, 1):                    # EXIT_HIDE / EXIT_HIDE2
+            if op in (-1, 1):  # EXIT_HIDE / EXIT_HIDE2
                 self.visible = False
                 self.pc = -1
                 return
-            if op == 2:                          # EXIT
+            if op == 2:  # EXIT
                 self.pc = -1
                 return
-            if op == 3:                          # SET_ACTIVE_SPRITE
+            if op == 3:  # SET_ACTIVE_SPRITE
                 self.visible = True
                 # C: SetActiveSprite(vm, arg + spriteIndices[anmFileIdx])
                 self._set_sprite_cb(iv(0) + ref.sprite_base)
-            elif op == 7:                        # SET_SCALE
+            elif op == 7:  # SET_SCALE
                 self.scale = [fv(0), fv(1)]
-            elif op == 8:                        # SET_ALPHA
+            elif op == 8:  # SET_ALPHA
                 self.color[3] = ai[0] & 255
-            elif op == 9:                        # SET_COLOR
+            elif op == 9:  # SET_COLOR
                 self.color[0] = (ai[0] >> 16) & 255
                 self.color[1] = (ai[0] >> 8) & 255
                 self.color[2] = ai[0] & 255
-            elif op == 4:                        # JUMP
+            elif op == 4:  # JUMP
                 self.time = ai[1]
                 self.pc = ref.offsets.get(ai[0], -1)
                 continue
-            elif op == 5:                        # DEC_JUMP
+            elif op == 5:  # DEC_JUMP
                 cur = self._int_load_ptr(ai[0], fl & 1) - 1
                 self._int_store(ai[0], fl & 1, cur)
                 if self._int_value(ai[0], fl & 1) > 0:
                     self.time = ai[2]
                     self.pc = ref.offsets.get(ai[1], -1)
                     continue
-            elif op == 6:                        # SET_TRANSLATION
+            elif op == 6:  # SET_TRANSLATION
                 v = np.array([fv(0), fv(1), fv(2)])
                 if self.use_offset:
                     self.offset = v
                 else:
                     self.pos = v
-            elif op == 10:                       # FLIP_X
+            elif op == 10:  # FLIP_X
                 self.scale[0] *= -1.0
-            elif op == 11:                       # FLIP_Y
+            elif op == 11:  # FLIP_Y
                 self.scale[1] *= -1.0
-            elif op == 12:                       # SET_ROTATION
+            elif op == 12:  # SET_ROTATION
                 self.rotation = [fv(0), fv(1), fv(2)]
-            elif op == 13:                       # SET_ANGLE_VEL
+            elif op == 13:  # SET_ANGLE_VEL
                 self.angle_vel = [fv(0), fv(1), fv(2)]
-            elif op == 14:                       # SET_SCALE_SPEED
+            elif op == 14:  # SET_SCALE_SPEED
                 self.scale_growth = [fv(0), fv(1)]
-            elif op == 29:                       # INTERP_SCALE
+            elif op == 29:  # INTERP_SCALE
                 self.interp_start[4] = 0
                 self.interp_end[4] = iv(2)
                 self.ease[4] = 0
                 self.scale_interp_initial = list(self.scale)
                 self.scale_interp_final = [fv(0), fv(1)]
-            elif op == 15:                       # FADE
+            elif op == 15:  # FADE
                 self.color_interp_initial[3] = self.color[3]
                 self.color_interp_final[3] = ai[0] & 255
                 self.interp_start[2] = 0
                 self.interp_end[2] = iv(1)
                 self.ease[2] = 0
-            elif op == 16:                       # SET_BLEND
+            elif op == 16:  # SET_BLEND
                 self.blend_mode = ai[0]
-            elif op in (17, 18, 19):             # POS_TIME_LINEAR/DECEL/ACCEL
+            elif op in (17, 18, 19):  # POS_TIME_LINEAR/DECEL/ACCEL
                 self.ease[0] = {17: 0, 18: 4, 19: 6}[op]
                 self._pos_interp_setup(fv, iv, 0)
-            elif op == 32:                       # INTERP_POS
+            elif op == 32:  # INTERP_POS
                 self.ease[0] = ai[1] & 255
                 self._pos_interp_setup(fv, iv, 0, arg_base=2, dur_arg=0)
-            elif op == 79:                       # WAIT
+            elif op == 79:  # WAIT
                 if self.wait_timer == 0:
                     self.wait_timer = iv(0)
                 else:
@@ -306,7 +306,7 @@ class AnmVm:
                     advance = False
                     self._epilogue()
                     return
-            elif op in (20, 23):                 # STOP / STOP_HIDE
+            elif op in (20, 23):  # STOP / STOP_HIDE
                 if op == 23:
                     self.visible = False
                 if not self.pending_interrupt:
@@ -316,59 +316,104 @@ class AnmVm:
                     return
                 self._handle_interrupt()
                 continue
-            elif op == 28:                       # SET_VISIBILITY
+            elif op == 28:  # SET_VISIBILITY
                 self.visible = bool(ai[0])
-            elif op == 22:                       # ANM_22: anchor=3
+            elif op == 22:  # ANM_22: anchor=3
                 self.anchor = 3
-            elif op == 24:                       # SET_USE_OFFSET
+            elif op == 24:  # SET_USE_OFFSET
                 self.use_offset = bool(ai[0])
-            elif op == 25:                       # SET_AUTO_ROTATE
+            elif op == 25:  # SET_AUTO_ROTATE
                 self.auto_rotate = ai[0] & 0xFFFF
-            elif op == 26:                       # SET_SCROLL_POS_X
+            elif op == 26:  # SET_SCROLL_POS_X
                 self.uv_scroll[0] = (self.uv_scroll[0] + fv(0)) % 1.0
-            elif op == 27:                       # SET_SCROLL_POS_Y
+            elif op == 27:  # SET_SCROLL_POS_Y
                 self.uv_scroll[1] = (self.uv_scroll[1] + fv(0)) % 1.0
-            elif op == 80:                       # SET_SCROLLVEL_X
+            elif op == 80:  # SET_SCROLLVEL_X
                 self.uv_scroll_vel[0] = fv(0)
-            elif op == 81:                       # SET_SCROLLVEL_Y
+            elif op == 81:  # SET_SCROLLVEL_Y
                 self.uv_scroll_vel[1] = fv(0)
-            elif op == 30:                       # SET_ZWRITE_DISABLE
+            elif op == 30:  # SET_ZWRITE_DISABLE
                 self.zwrite_disable = ai[0]
-            elif op == 31:                       # SET_CAMERA_MODE
+            elif op == 31:  # SET_CAMERA_MODE
                 pass
-            elif op == 33:                       # INTERP_COLOR
+            elif op == 33:  # INTERP_COLOR
                 self.interp_start[1] = 0
                 self.interp_end[1] = iv(0)
                 self.ease[1] = ai[1] & 255
                 self.color_interp_initial[:3] = self.color[:3]
                 # C 端参数是 b[0],b[1],b[2] 连续 3 字节 = 0xBBGGRR 小端
-                self.color_interp_final[:3] = [ai[2] & 255, (ai[2] >> 8) & 255,
-                                               (ai[2] >> 16) & 255]
-            elif op == 34:                       # INTERP_ALPHA
+                self.color_interp_final[:3] = [
+                    ai[2] & 255,
+                    (ai[2] >> 8) & 255,
+                    (ai[2] >> 16) & 255,
+                ]
+            elif op == 34:  # INTERP_ALPHA
                 self.interp_start[2] = 0
                 self.interp_end[2] = iv(0)
                 self.ease[2] = ai[1] & 255
                 self.color_interp_initial[3] = self.color[3]
                 self.color_interp_final[3] = ai[2] & 255
-            elif op == 35:                       # INTERP_ROTATE
+            elif op == 35:  # INTERP_ROTATE
                 self.interp_start[3] = 0
                 self.interp_end[3] = iv(0)
                 self.ease[3] = ai[1] & 255
                 self.rot_interp_initial = list(self.rotation)
                 self.rot_interp_final = [fv(2), fv(3), fv(4)]
-            elif op == 36:                       # INTERP_SCALE_2
+            elif op == 36:  # INTERP_SCALE_2
                 self.interp_start[4] = 0
                 self.interp_end[4] = iv(0)
                 self.ease[4] = ai[1] & 255
                 self.scale_interp_initial = list(self.scale)
                 self.scale_interp_final = [fv(2), fv(3)]
-            elif op in (37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57, 59, 67, 69,
-                        71, 73, 75, 77):
+            elif op in (
+                37,
+                39,
+                41,
+                43,
+                45,
+                47,
+                49,
+                51,
+                53,
+                55,
+                57,
+                59,
+                67,
+                69,
+                71,
+                73,
+                75,
+                77,
+            ):
                 self._int_op(op, ai, fl, ref)
                 if op in (67, 69, 71, 73, 75, 77) and self._jumped:
                     continue
-            elif op in (38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 61, 62,
-                        63, 64, 65, 66, 68, 70, 72, 74, 76, 78):
+            elif op in (
+                38,
+                40,
+                42,
+                44,
+                46,
+                48,
+                50,
+                52,
+                54,
+                56,
+                58,
+                60,
+                61,
+                62,
+                63,
+                64,
+                65,
+                66,
+                68,
+                70,
+                72,
+                74,
+                76,
+                78,
+            ):
                 self._float_op(op, ai, af, fl, ref)
                 if op in (68, 70, 72, 74, 76, 78) and self._jumped:
                     continue
@@ -379,12 +424,14 @@ class AnmVm:
 
     _jumped = False
 
-    def _pos_interp_setup(self, fv, iv, _unused, arg_base: int = 0,
-                          dur_arg: int = 3) -> None:
+    def _pos_interp_setup(
+        self, fv, iv, _unused, arg_base: int = 0, dur_arg: int = 3
+    ) -> None:
         src = self.offset if self.use_offset else self.pos
         self.pos_interp_initial = np.array(src, dtype=float)
-        self.pos_interp_final = np.array([fv(arg_base), fv(arg_base + 1),
-                                          fv(arg_base + 2)])
+        self.pos_interp_final = np.array(
+            [fv(arg_base), fv(arg_base + 1), fv(arg_base + 2)]
+        )
         self.interp_end[0] = iv(dur_arg)
         self.interp_start[0] = 0
 
@@ -443,8 +490,14 @@ class AnmVm:
             self._int_store(dst_i, ind, a % b if b else 0)
         elif op in (67, 69, 71, 73, 75, 77):
             x, y = iv(0), iv(1)
-            cond = {67: x == y, 69: x != y, 71: x < y, 73: x <= y,
-                    75: x > y, 77: x >= y}[op]
+            cond = {
+                67: x == y,
+                69: x != y,
+                71: x < y,
+                73: x <= y,
+                75: x > y,
+                77: x >= y,
+            }[op]
             if cond:
                 self.time = ai[3]
                 self.pc = ref.offsets.get(ai[2], -1)
@@ -495,8 +548,14 @@ class AnmVm:
             self._float_store(dst, ind, math.fmod(a, b) if b else 0.0)
         elif op in (68, 70, 72, 74, 76, 78):
             x, y = fv(0), fv(1)
-            cond = {68: x == y, 70: x != y, 72: x < y, 74: x <= y,
-                    76: x > y, 78: x >= y}[op]
+            cond = {
+                68: x == y,
+                70: x != y,
+                72: x < y,
+                74: x <= y,
+                76: x > y,
+                78: x >= y,
+            }[op]
             if cond:
                 self.time = ai[3]
                 self.pc = ref.offsets.get(ai[2], -1)
@@ -506,8 +565,7 @@ class AnmVm:
         """ExecuteScript 的 stop: 段(角速度/插值/uv 滚动) + time++。"""
         for k in range(3):
             if self.angle_vel[k] != 0.0:
-                self.rotation[k] = _add_norm_angle(self.rotation[k],
-                                                   self.angle_vel[k])
+                self.rotation[k] = _add_norm_angle(self.rotation[k], self.angle_vel[k])
         for i in range(5):
             end = self.interp_end[i]
             if end > 0:
@@ -519,28 +577,32 @@ class AnmVm:
                     t = _anm_ease(self.interp_start[i] / end, self.ease[i])
                 if i == 0:
                     dst = self.offset if self.use_offset else self.pos
-                    dst[:] = (self.pos_interp_final - self.pos_interp_initial) * t \
-                        + self.pos_interp_initial
+                    dst[:] = (
+                        self.pos_interp_final - self.pos_interp_initial
+                    ) * t + self.pos_interp_initial
                 elif i == 1:
                     for c in range(3):
-                        self.color[c] = int((self.color_interp_final[c]
-                                             - self.color_interp_initial[c]) * t
-                                            + self.color_interp_initial[c])
+                        self.color[c] = int(
+                            (self.color_interp_final[c] - self.color_interp_initial[c])
+                            * t
+                            + self.color_interp_initial[c]
+                        )
                 elif i == 2:
-                    self.color[3] = int((self.color_interp_final[3]
-                                         - self.color_interp_initial[3]) * t
-                                        + self.color_interp_initial[3])
+                    self.color[3] = int(
+                        (self.color_interp_final[3] - self.color_interp_initial[3]) * t
+                        + self.color_interp_initial[3]
+                    )
                 elif i == 3:
                     for c in range(3):
                         self.rotation[c] = _add_norm_angle(
-                            (self.rot_interp_final[c]
-                             - self.rot_interp_initial[c]) * t,
-                            self.rot_interp_initial[c])
+                            (self.rot_interp_final[c] - self.rot_interp_initial[c]) * t,
+                            self.rot_interp_initial[c],
+                        )
                 elif i == 4:
                     for c in range(2):
-                        self.scale[c] = (self.scale_interp_final[c]
-                                         - self.scale_interp_initial[c]) * t \
-                            + self.scale_interp_initial[c]
+                        self.scale[c] = (
+                            self.scale_interp_final[c] - self.scale_interp_initial[c]
+                        ) * t + self.scale_interp_initial[c]
         if self.scale_growth[1] != 0.0:
             self.scale[1] += self.scale_growth[1]
         if self.scale_growth[0] != 0.0:

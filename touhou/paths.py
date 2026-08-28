@@ -3,6 +3,7 @@
 解析顺序: 显式参数 > 环境变量 ``TOUHOU_DAT`` > 内置默认路径。
 thbgm.dat(BGM)由播放层按 th07.dat 同目录推导, 不单独配置。
 """
+
 from __future__ import annotations
 
 import os
