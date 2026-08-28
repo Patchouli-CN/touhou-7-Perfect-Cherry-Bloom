@@ -9,12 +9,12 @@
 """
 from __future__ import annotations
 
-from touhou import Difficulty, Input, TouhouWorld
+from touhou import Input, TouhouWorld
 from touhou.apis.modding import ModApi
 
 
 def main() -> None:
-    tw = TouhouWorld(difficulty=Difficulty.LUNATIC, headless=True, seed=7)
+    tw = TouhouWorld(difficulty="lunatic", headless=True, seed=7)
     stream = tw.run()
     mods = ModApi(tw.game)  # 官方魔改口子: 包住对局门面, 叠加写操作面
 
@@ -34,7 +34,7 @@ def main() -> None:
 
     stream.policy = godmode_and_danmaku
     for ev in stream:
-        print(f"[f{ev.frame:6d}] {ev.kind.value} {ev.name or ''}")
+        print(f"[f{ev.frame:6d}] {ev.kind} {ev.name or ''}")
         if tw.game.frame >= 3000:
             break
     g = tw.game

@@ -25,8 +25,9 @@ import os
 
 import numpy as np
 
-from touhou import (Difficulty, Game, GameEventKind, GamePhase, Input,
-                    ShotType, TouhouWorld)
+from touhou import ( 
+        Game, GameEventKind, GamePhase, Input,
+        TouhouWorld)
 
 PREDICT_FRAMES = 16     # 线性外推帧数(视野)
 THREAT_RADIUS = 96.0    # 只规避此半径内的威胁(px)
@@ -80,8 +81,8 @@ def main() -> None:
     if os.environ.get("DODGE_AI_HEADLESS") != "1":
         # 窗口观战: 跳过标题菜单直接进游戏, 每帧输入来自 dodge_policy;
         # Esc 中止, 终局(通关/GameOver)自动退出。观战自动录像(replays/)。
-        tw = TouhouWorld(character=ShotType.REIMU_A,
-                         difficulty=Difficulty.NORMAL, seed=42,
+        tw = TouhouWorld(character="ReimuA",
+                         difficulty="Normal", seed=42,
                          headless=False, auto_input=dodge_policy)
         print("[dodge_ai] 窗口观战启动(Esc 中止)")
         tw.run()    # 阻塞至关窗/终局
@@ -89,7 +90,7 @@ def main() -> None:
         return
 
     frames = int(os.environ.get("DODGE_AI_FRAMES", "3600"))
-    game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL,
+    game = Game(character="ReimuA", difficulty="Normal",
                 seed=42)
     deaths = 0
     for _ in range(frames):

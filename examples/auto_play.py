@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import random
 
-from touhou import Difficulty, Input, TouhouWorld, Game
+from touhou import Input, TouhouWorld, Game
 
 def my_policy(game: Game) -> Input:
     """每帧输入策略(AI 的入口)。这里演示: 按住射击 + 蛇皮走位。"""
@@ -26,7 +26,7 @@ def my_policy(game: Game) -> Input:
 
 
 def main() -> None:
-    tw = TouhouWorld(difficulty=Difficulty.NORMAL,
+    tw = TouhouWorld(difficulty="Normal",
                      lives=3, headless=False, seed=42, auto_input=my_policy)
     tw.run()
 
