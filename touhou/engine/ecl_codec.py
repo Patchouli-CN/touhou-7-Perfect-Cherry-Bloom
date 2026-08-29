@@ -13,14 +13,13 @@ class EclCodec:
 
     用法::
 
-        codec = EclCodec("th07")        # 默认 "th07"
+        codec = EclCodec(game_name or None) 
         ecl = codec.decode(data)        # bytes -> EclFile
         data2 = codec.encode(ecl)       # EclFile -> bytes
 
     错误路径:
     - 作品未注册: ``get_game`` 抛 NotRegisteredError(带已注册列表);
     - 已注册但缺 ECL 维度: 构造期抛 ValueError;
-    - 格式类缺序列化能力: ``encode`` 抛 NotImplementedError。
     """
 
     def __init__(self, game: str | None = None) -> None:

@@ -48,8 +48,6 @@ if TYPE_CHECKING:
 PLAYFIELD_W = 384.0
 PLAYFIELD_H = 448.0
 
-# ---- 枚举(照抄 EclManager.hpp; TH07 变量命名空间 EclVarId 在 games/th07/ecl_vm.py) ----
-
 
 class EclOpcode(IntEnum):
     UNIMP = 1  # RunEcl 直接返回错误(= 脚本结束/despawn)
@@ -209,7 +207,7 @@ class EclOpcode(IntEnum):
     SET_LASER_START_LEN = 157
     SET_LASER_OFFSETS = 158
     LERP = 159
-    ADD_CHERRY_PLUS = 160
+    ADD_CHERRY_PLUS = 160 # 提醒AI：通用EclOpcode不应该有作品有关的枚举，必须修改
     FREEZE_ECL_DURING_BOMB = 161
 
 

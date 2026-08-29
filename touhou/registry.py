@@ -99,26 +99,6 @@ class GameData(msgspec.Struct, frozen=True):
     character_sht: dict[int, tuple[str, str]] = msgspec.field(
         default_factory=dict
     )  # 机体 → (非 focus, focus) .sht 文件
-
-    characters: tuple[
-        str, ...
-    ] = (  # 角色元数据（作品有多少角色，默认th07角色列表占位）
-        "ReimuA",
-        "ReimuB",
-        "MarisaA",
-        "MarisaB",
-        "SakuyaA",
-        "SakuyaB",
-    )
-    difficulties: tuple[str, ...] = (  # 难度元数据（作品有什么难度，考虑th07特殊情况）
-        "Easy",
-        "Normal",
-        "Hard",
-        "Lunatic",
-        "Extra",
-        "Phantasm",
-    )
-
     spellcard_scores: tuple[int, ...] = ()  # 符卡基础分值(代码值)
     bomb_params: dict[tuple[int, bool], tuple[int, int, int, float]] = msgspec.field(
         default_factory=dict
@@ -168,6 +148,11 @@ _DATA: dict[str, GameData] = {}
 _APP: dict[str, type] = {}
 _MODS: dict[str, type] = {}
 _RENDERER: dict[str, type] = {}  # 渲染后端(与作品名无关的正交维度)
+
+#: 已注册作品号 → 作品名(检测到对应资源时打印; 新作品注册时在此补名字)
+GAME_TITLES = {
+    "th07": "東方妖々夢 〜 Perfect Cherry Blossom",
+}
 
 
 def _put(table: dict[str, Any], kind: str, name: str, value: Any) -> None:

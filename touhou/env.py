@@ -10,13 +10,8 @@ import sys
 from pathlib import Path
 
 from .paths import resolve_data_path
-from .registry import registered_games, registered_renderers
+from .registry import registered_games, registered_renderers, GAME_TITLES
 from .schema.archive import GameArchive
-
-#: 已注册作品号 → 作品名(检测到对应资源时打印; 新作品注册时在此补名字)
-GAME_TITLES = {
-    "th07": "東方妖々夢 〜 Perfect Cherry Blossom",
-}
 
 
 def detect_environment(data_path: str | Path | None = None) -> dict[str, str]:
