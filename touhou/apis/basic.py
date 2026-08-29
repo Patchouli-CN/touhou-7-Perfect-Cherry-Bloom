@@ -181,21 +181,26 @@ def _resolve_ids(
     """角色/难度名 → 内部 int id(经 spec.data 名单映射; 返回 (character_id, difficulty_id))。
 
     合法名单来自注册表数值表(register_game_data 登记; th07 见
-    games/th07/data.py 的 CHARACTERS/DIFFICULTIES)。名单缺失(未登记
-    GameData 或名单为空)时回落: int 入参直接透传, str 入参无法映射,
-    报清晰中文 ValueError。str 入参不在名单中同样报 ValueError。
+    games/th07/data.py 的 CHARACTERS/DIFFICULTIES)。**名称匹配大小写
+    不敏感**("lunatic"="Lunatic"), 映射 id 以名单下标为准。名单缺失
+    (未登记 GameData 或名单为空)时回落: int 入参直接透传, str 入参
+    无法映射, 报清晰中文 ValueError。str 入参不在名单中同样报
+    ValueError。
     """
     data = spec.data
     if data is not None and data.characters and data.difficulties:
-        if not isinstance(character, str) or character not in data.characters:
+        # 大小写不敏感索引: 名单原名保持注册表原样, 匹配走 casefold
+        ci_characters = {c.casefold(): i for i, c in enumerate(data.characters)}
+        ci_difficulties = {d.casefold(): i for i, d in enumerate(data.difficulties)}
+        if not isinstance(character, str) or character.casefold() not in ci_characters:
             raise ValueError(
                 f"{spec.name} 不支持角色 {character!r}，可选: {list(data.characters)}"
             )
-        if not isinstance(difficulty, str) or difficulty not in data.difficulties:
+        if not isinstance(difficulty, str) or difficulty.casefold() not in ci_difficulties:
             raise ValueError(
                 f"{spec.name} 不支持难度 {difficulty!r}，可选: {list(data.difficulties)}"
             )
-        return data.characters.index(character), data.difficulties.index(difficulty)
+        return ci_characters[character.casefold()], ci_difficulties[difficulty.casefold()]
     if isinstance(character, int) and isinstance(difficulty, int):
         return character, difficulty
     raise ValueError(

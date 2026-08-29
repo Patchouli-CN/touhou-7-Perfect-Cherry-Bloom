@@ -35,11 +35,14 @@ def test_character_difficulty_names_map_to_internal_ids() -> None:
     assert game._impl.character == 0 and game._impl.difficulty == 1
     game = Game(character="SakuyaB", difficulty="Lunatic", seed=1)
     assert game._impl.character == 5 and game._impl.difficulty == 3
+    # 大小写不敏感: "lunatic"="Lunatic", "reimua"="ReimuA"
+    game = Game(character="reimua", difficulty="lunatic", seed=1)
+    assert game._impl.character == 0 and game._impl.difficulty == 3
     # 非法名 → 清晰中文 ValueError
     with pytest.raises(ValueError, match="不支持角色"):
         Game(character="Cirno")
     with pytest.raises(ValueError, match="不支持难度"):
-        Game(difficulty="lunatic")  # 大小写敏感, 合法值是 "Lunatic"
+        Game(difficulty="infinity")
 
 
 def test_input_none_and_keys() -> None:
