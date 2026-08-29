@@ -15,7 +15,7 @@ from touhou.apis.modding import ModApi
 
 
 def main() -> None:
-    tw = TouhouWorld(difficulty="lunatic", headless=True, seed=7)
+    tw = TouhouWorld(difficulty="Lunatic", headless=True, seed=7)
     stream = tw.run()
     mods = ModApi(tw.game)  # 官方魔改口子: 包住对局门面, 叠加写操作面
 

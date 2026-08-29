@@ -36,8 +36,6 @@ if TYPE_CHECKING:
     from .apis.basic import (
         BossSnapshot,
         BulletSnapshot,
-        Character,
-        Difficulty,
         Game,
         GameEvent,
         GameEventKind,
@@ -46,7 +44,6 @@ if TYPE_CHECKING:
         ItemSnapshot,
         LaserSnapshot,
         PlayerSnapshot,
-        ShotType,
         Snapshot,
         TouhouWorld,
         TouhouWorldEventStream,
@@ -146,7 +143,7 @@ BeginSpellcardHook: TypeAlias = Callable[["EclEnemyState", int, int, str], None]
 #: END_SPELLCARD / 符卡超时(捕获失败记账): (敌人状态,)。
 EndSpellcardHook: TypeAlias = Callable[["EclEnemyState"], None]
 
-#: 整数值回调(SET_POWER / ADD_CHERRY_PLUS)。
+#: 整数值回调(SET_POWER; th07 专属樱点加值指令 ADD_CHERRY_PLUS 同此形态)。
 IntHook: TypeAlias = Callable[[int], None]
 
 
@@ -173,9 +170,6 @@ class GameGlobalsFace(Protocol):
     def spell_cards_captured(self) -> int: ...
 
     @property
-    def cherry_max(self) -> int: ...
-
-    @property
     def graze_in_total(self) -> int: ...
 
 
@@ -196,13 +190,6 @@ class BossFace(Positioned, Protocol):
 
     @property
     def spellcard_idx(self) -> int: ...  # -1 = 非符卡阶段
-
-
-class BorderFace(Protocol):
-    """结界状态面(无结界系统的作品给一个 active 恒 False 的对象即可)。"""
-
-    @property
-    def active(self) -> bool: ...
 
 
 class PlayerStateFace(Protocol):
@@ -323,6 +310,9 @@ class GameEngine(Protocol):
     作品的专属探测逻辑不进协议, 走可选能力位(apis 门面用 getattr 回落 False):
     - ``spellcard_active() -> bool``: 符卡进行中(无符卡概念可不实现)
     - ``msg_active() -> bool``:       对话/剧情进行中(无对话概念可不实现)
+    - ``event_bus``:                  作品有专属事件(如 th07 结界)时提供
+                                      engine.events.EventBus 实例, apis 门面
+                                      自动订阅并把帧内事件并入 step() 事件流
     """
 
     # ---- 帧/关/终局状态 ----
@@ -360,12 +350,9 @@ class GameEngine(Protocol):
     @property
     def power(self) -> float: ...
 
-    # ---- boss / 结界 / 实体容器(只读形态) ----
+    # ---- boss / 实体容器(只读形态) ----
     @property
     def boss(self) -> BossFace | None: ...
-
-    @property
-    def border(self) -> BorderFace: ...
 
     @property
     def player(self) -> PlayerFace: ...

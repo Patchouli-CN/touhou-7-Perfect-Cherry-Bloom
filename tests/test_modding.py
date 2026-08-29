@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from touhou.apis.basic import Difficulty, Game, Input, ShotType
+from touhou.apis.basic import Game, Input
 from touhou.apis.modding import Aim, Burst, GuiMods, ModApi
 from touhou.engine.render import overlay
 from touhou.games.th07.bomb import BorderState
@@ -30,7 +30,7 @@ pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 
 
 
 def _mods(seed: int = 1) -> tuple[Game, ModApi]:
-    game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL, seed=seed)
+    game = Game(character="ReimuA", difficulty="Normal", seed=seed)
     return game, ModApi(game)
 
 
@@ -212,8 +212,7 @@ def test_capability_namespaces_and_readback() -> None:
     assert callable(mods.player.set_cherry)
     assert callable(mods.border.border_break)
     mods.player.set_cherry(50000)
-    assert game.cherry == 50000  # 写入落到引擎, 只读面读回一致
-    assert game._impl.globals.cherry == 50000
+    assert game._impl.globals.cherry == 50000  # 写入落到引擎(门面无 cherry 属性)
 
 
 def test_unknown_attribute_error() -> None:
@@ -356,7 +355,7 @@ def test_set_cherry_range_check() -> None:
     game, mods = _mods()
     cherry_max = game._impl.globals.cherry_max
     mods.player.set_cherry(cherry_max)
-    assert game.cherry == cherry_max
+    assert game._impl.globals.cherry == cherry_max
     with pytest.raises(ValueError, match="超出"):
         mods.player.set_cherry(cherry_max + 1)
     with pytest.raises(ValueError, match="超出"):

@@ -20,6 +20,7 @@ from ...registry import GameData, GameHooks, register_world_impl
 from .data import CHARACTER_SHT, TH07_DATA
 from ...engine.bullets import BulletWorld, SCREEN
 from ...engine.ecl import EclFile, EclTimelineRunner, EclWorld
+from ...engine.events import EventBus
 from .ecl_host import GameEclHost
 from .ecl_vm import EclMachineTh07
 from ...engine.ending import EndingData
@@ -179,6 +180,10 @@ class PerfectCherryBloom:
         self.items = ItemWorld()
         self.bomb = Bomb(character=character)
         self.border = Border()
+        # 作品专属事件总线(GameEngine 协议可选能力位; apis 的 Game 门面自动
+        # 订阅, 结界激活/破裂 border_start/border_break 经此透出, 见 _tick_border
+        # /_break_border/_apply_natural_border_break 的发布点)
+        self.event_bus = EventBus()
         self.boss: Boss | None = None
         # 回放确定性: seed=None 保持旧固定种子(0x5EED/0); 显式 seed 时
         # 主 rng 用 seed, ECL rng 用其派生值(录制/回放见 engine/replay.py)
@@ -669,9 +674,13 @@ class PerfectCherryBloom:
     def _apply_natural_border_break(self) -> None:
         """BreakBorderNaturally 入账(与 _tick_border 的 res 分支同账)。"""
         g = self.globals
+        was_active = self.border.active  # 事件语义: 仅 ACTIVE→破 才发 border_break
         res = self.border.break_border_naturally(
             cherry=g.cherry, cherry_start=g.cherry_start, cherry_max=g.cherry_max
         )
+        if was_active:
+            # 结界破(对话中自然破; BreakBorderNaturally, Player.cpp:2015)
+            self.event_bus.publish("border_break")
         log.debug("结界自然破(对话中) (frame={}, 得分={})", self.frame, res.score)
         g.cherry = res.cherry
         g.cherry_max = res.cherry_max
@@ -1463,6 +1472,8 @@ class PerfectCherryBloom:
             elif self.player.state == PlayerState.ALIVE:
                 if self.border.activate_border():
                     self.player.state = PlayerState.BORDER
+                    # 结界激活事件(ActivateBorder, Player.cpp:2137-2140)
+                    self.event_bus.publish("border_start")
                     log.debug(
                         "结界激活 (frame={}, pos=({:.1f},{:.1f}))",
                         self.frame,
@@ -1480,6 +1491,8 @@ class PerfectCherryBloom:
         if res is not None:
             # 自然破 (BreakBorderNaturally): +10000 上限/樱点, 得分 (cherry-cherryStart)*10
             log.debug("结界自然破 (frame={}, 得分={})", self.frame, res.score)
+            # 结界到时自然破事件(BreakBorderNaturally, Player.cpp:2013-2015)
+            self.event_bus.publish("border_break")
             g.cherry = res.cherry
             g.cherry_max = res.cherry_max
             g.cherry_plus = res.cherry_plus
@@ -1506,7 +1519,12 @@ class PerfectCherryBloom:
             self.player.pos.x,
             self.player.pos.y,
         )
+        # READY 未激活时的死亡保命破不算"结界破裂"事件(事件语义 = ACTIVE→破)
+        was_active = self.border.active
         box = self.border.break_border(self.player.pos)
+        if was_active:
+            # 结界破事件(BreakBorder, Player.cpp:2191-2192)
+            self.event_bus.publish("border_break")
         self._border_clear_boxes.append(box)
         self.globals.cherry_plus = self.globals.cherry_start
         self.player.state = PlayerState.INVULNERABLE

@@ -10,13 +10,11 @@ from pathlib import Path
 import pytest
 
 from touhou.apis.basic import (
-    Difficulty,
     Game,
     GameEvent,
     GameEventKind,
     GamePhase,
     Input,
-    ShotType,
 )
 from touhou.paths import DEFAULT_DATA, ENV_DATA, resolve_data_path
 
@@ -30,12 +28,18 @@ def _run(game: Game, frames: int, inp: Input = Input.none()) -> list[GameEvent]:
     return out
 
 
-# ---- 枚举 / 输入 ----
-def test_enums_map_internal_ints() -> None:
-    assert [int(s) for s in ShotType] == [0, 1, 2, 3, 4, 5]
-    assert [int(d) for d in Difficulty] == [0, 1, 2, 3, 4, 5]
-    assert ShotType.REIMU_A.name == "REIMU_A"
-    assert Difficulty.PHANTASM.value == 5
+# ---- 名单字符串映射 / 输入 ----
+def test_character_difficulty_names_map_to_internal_ids() -> None:
+    """character/difficulty 用作品数值表名单的字符串, 映射为内部 int id。"""
+    game = Game(character="ReimuA", difficulty="Normal", seed=1)
+    assert game._impl.character == 0 and game._impl.difficulty == 1
+    game = Game(character="SakuyaB", difficulty="Lunatic", seed=1)
+    assert game._impl.character == 5 and game._impl.difficulty == 3
+    # 非法名 → 清晰中文 ValueError
+    with pytest.raises(ValueError, match="不支持角色"):
+        Game(character="Cirno")
+    with pytest.raises(ValueError, match="不支持难度"):
+        Game(difficulty="lunatic")  # 大小写敏感, 合法值是 "Lunatic"
 
 
 def test_input_none_and_keys() -> None:
@@ -46,7 +50,7 @@ def test_input_none_and_keys() -> None:
 
 # ---- 开局 / step / 属性 ----
 def test_game_start_and_step() -> None:
-    game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL, seed=1)
+    game = Game(character="ReimuA", difficulty="Normal", seed=1)
     assert game.frame == 0
     assert game.phase == GamePhase.RUNNING
     assert game.lives == 3 and game.power == 0 and game.score == 0
@@ -62,7 +66,6 @@ def test_properties_are_readonly() -> None:
         "lives",
         "bombs",
         "power",
-        "cherry",
         "graze",
         "frame",
         "phase",
@@ -122,6 +125,32 @@ def test_death_and_game_over_events() -> None:
     assert GameEventKind.GAME_OVER in kinds
     # Extra/Phantasm 以外的难度无残机 → 续关可用(冻结), phase=GAME_OVER
     assert game.phase in (GamePhase.GAME_OVER, GamePhase.RESULT)
+
+
+# ---- 作品专属事件(th07 结界)经 EventBus 汇入 step 事件流 ----
+def test_border_events_via_event_bus() -> None:
+    from touhou.engine.player_base import PlayerState
+
+    game = Game(seed=1)
+    _run(game, 200, Input(shoot=True))  # 出生无敌结束, 玩家 ALIVE
+    game._impl.player.state = PlayerState.ALIVE  # 出生无敌态不参与结界激活择时
+    # 满樱信号 → 结界 READY(等价 mods 拉满 cherryPlus 的引擎入口)
+    game._impl.border.ready_border()
+    events = game.step(Input(shoot=True))  # 帧内自动激活 → border_start
+    kinds = [e.kind for e in events]
+    assert "border_start" in kinds
+    ev = next(e for e in events if e.kind == "border_start")
+    assert ev.frame == game.frame
+    # 主动破(bomb 键同入口) → 下一次 step 收到 border_break
+    game._impl._break_border(by_bomb_key=True)
+    events = game.step(Input(shoot=True))
+    kinds = [e.kind for e in events]
+    assert "border_break" in kinds
+    # READY 未激活时的破(死亡保命路径)不发事件(事件语义 = ACTIVE→破)
+    game._impl.border.ready_border()
+    game._impl._break_border()  # was_active=False → 不发布
+    events = game.step(Input(shoot=True))
+    assert "border_break" not in [e.kind for e in events]
 
 
 # ---- 快照 ----
@@ -188,7 +217,7 @@ def test_top_level_exports_complete() -> None:
     # `import touhou` 急切导出全部公共类型(无函数内 import/惰性层)
     code = (
         "import touhou; "
-        "names = ['Game', 'Input', 'ShotType', 'Character', 'Difficulty', "
+        "names = ['Game', 'Input', "
         "'GamePhase', 'GameEvent', 'GameEventKind', 'Snapshot', 'WorldData', "
         "'TouhouWorld', 'TouhouWorldEventStream']; "
         "missing = [n for n in names if not hasattr(touhou, n)]; "
@@ -301,20 +330,13 @@ def test_world_data_resolution(tmp_path) -> None:
     assert WorldData(res_dat="x.dat").resolve_res() == Path("x.dat")
 
 
-def test_character_is_shottype_alias() -> None:
-    from touhou.apis.basic import Character
-
-    assert Character is ShotType
-    assert Character.REIMU_A.value == 0
-
-
 def test_touhou_world_headless_stream() -> None:
     from touhou.apis.basic import TouhouWorld, WorldData
 
     tw = TouhouWorld(
         wd=WorldData(res_dat=DEFAULT_DATA),
-        character=ShotType.REIMU_A,
-        difficulty=Difficulty.NORMAL,
+        character="ReimuA",
+        difficulty="Normal",
         lives=3,
         headless=True,
         seed=7,
@@ -334,7 +356,7 @@ def test_touhou_world_headless_stream() -> None:
 def test_touhou_world_custom_policy() -> None:
     from touhou.apis.basic import TouhouWorld
 
-    tw = TouhouWorld(headless=True, difficulty=Difficulty.NORMAL, seed=1)
+    tw = TouhouWorld(headless=True, difficulty="Normal", seed=1)
     seen = []
     for i, ev in enumerate(tw.stream(policy=lambda g: Input.none())):
         seen.append(ev)
@@ -355,7 +377,7 @@ def test_touhou_world_lazy_game() -> None:
 def test_touhou_world_run_returns_event_stream() -> None:
     from touhou.apis.basic import TouhouWorld, TouhouWorldEventStream
 
-    tw = TouhouWorld(headless=True, difficulty=Difficulty.NORMAL, seed=3)
+    tw = TouhouWorld(headless=True, difficulty="Normal", seed=3)
     stream = tw.run()
     assert isinstance(stream, TouhouWorldEventStream)
     assert stream.game is tw.game  # 流驱动的就是这局
@@ -371,7 +393,7 @@ def test_touhou_world_run_returns_event_stream() -> None:
 def test_event_stream_policy_takeover() -> None:
     from touhou.apis.basic import TouhouWorld
 
-    tw = TouhouWorld(headless=True, difficulty=Difficulty.NORMAL, seed=5)
+    tw = TouhouWorld(headless=True, difficulty="Normal", seed=5)
     stream = tw.run()
     stream.policy = lambda g: Input.none()  # 中途接管输入
     frames0 = tw.game.frame

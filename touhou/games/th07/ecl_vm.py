@@ -29,7 +29,10 @@ from __future__ import annotations
 import math
 import struct
 from enum import IntEnum
-from typing import Callable
+from typing import TYPE_CHECKING, Callable, cast
+
+if TYPE_CHECKING:
+    from .ecl_host import GameEclHost  # 仅类型检查期(cast 收窄宿主用)
 
 from ...engine.ecl import (
     EclEnemyState,
@@ -51,6 +54,16 @@ from ...utils import (
     i16,
     i32,
 )
+
+# ---- TH07 专属 opcode(作品机制, 不进通用 EclOpcode —— 见 engine/ecl.py) ----
+# Python 不能继承已有成员的 Enum, 故 th07 专属号单立 IntEnum;
+# EclMachineBase.register 接受裸 int, 注册语义与通用号一致
+
+
+class Th07EclOpcode(IntEnum):
+    ADD_CHERRY_PLUS = 160  # cherryPlus 入账(樱点/结界机制; host.add_cherry_plus)
+    FREEZE_ECL_DURING_BOMB = 161  # Bomb 中冻结本 VM 的 ECL 推进
+
 
 # ---- TH07 变量命名空间(照抄 EclManager.hpp; 10000~10073) ----
 
@@ -1498,11 +1511,12 @@ def _op_rand_exit_angle(m: EclMachineTh07, instr: EclInstr):
     m._store_float(instr, 0, m._exit_angle(randomize=True, simple=True))
 
 
-@EclMachineTh07.register(EclOpcode.ADD_CHERRY_PLUS)
+@EclMachineTh07.register(Th07EclOpcode.ADD_CHERRY_PLUS)
 def _op_add_cherry_plus(m: EclMachineTh07, instr: EclInstr):
-    m.host.add_cherry_plus(m._int_arg(instr, 0))
+    # 本作专属指令: 宿主即 GameEclHost(通用 EclHost 基座无樱点概念)
+    cast("GameEclHost", m.host).add_cherry_plus(m._int_arg(instr, 0))
 
 
-@EclMachineTh07.register(EclOpcode.FREEZE_ECL_DURING_BOMB)
+@EclMachineTh07.register(Th07EclOpcode.FREEZE_ECL_DURING_BOMB)
 def _op_freeze_ecl_during_bomb(m: EclMachineTh07, instr: EclInstr):
     m.enemy.freeze_ecl_during_bombs = m._int_arg(instr, 0)

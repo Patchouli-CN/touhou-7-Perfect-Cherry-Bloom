@@ -21,7 +21,7 @@ from touhou.engine.ecl import (  # noqa: E402
     Vec3,
 )
 from touhou.games.th07.ecl_vm import EclMachineTh07 as EclMachine  # noqa: E402
-from touhou.games.th07.ecl_vm import EclVarId  # noqa: E402
+from touhou.games.th07.ecl_vm import EclVarId, Th07EclOpcode  # noqa: E402
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
@@ -163,8 +163,9 @@ def test_parse_ecldata1_layout() -> None:
     # timeline0 第一条: t=600 arg0=3 op=2(spawn+mirror) size=32
     t0 = f.timelines[0][0]
     assert (t0.time, t0.arg0, t0.opcode, t0.size) == (600, 3, 2, 32)
-    # 指令 id 分布: 与反编译 EclOpcode 对得上(只有 0 和 141 不在枚举里)
-    known = {o.value for o in EclOpcode}
+    # 指令 id 分布: 与 EclOpcode(通用) + Th07EclOpcode(作品专属 160/161)
+    # 对得上(只有 0 和 141 不在枚举里)
+    known = {o.value for o in EclOpcode} | {o.value for o in Th07EclOpcode}
     unknown = {i for i in f.opcode_histogram() if i not in known}
     assert unknown <= {0, 141}
 

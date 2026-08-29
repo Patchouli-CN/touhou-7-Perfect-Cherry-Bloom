@@ -6,10 +6,12 @@
 作品实现(games/thXX/ 的对局主逻辑及各 engine 模块)保持 C 移植风格并经
 全量测试验证, 本模块只做封装, 不改引擎行为:
 
-- 枚举: ShotType / Difficulty / GamePhase —— 替代内部 shotType/difficulty 整数
+- 名单字符串: character/difficulty 用作品数值表的机体/难度名(如 "ReimuA"/
+  "Normal"), 经 registry 的 GameData 名单映射内部 id; GamePhase 为阶段枚举
 - Input: 命名布尔字段的一帧输入, 替代 tick 的 keys 元组
 - Game: 开局/逐帧 step/只读状态属性/按需实体快照 + numpy 快路径(bullets_array)
-- GameEvent: 每帧事件流(符卡/死亡/Bomb/奖残/过关…), 由帧前后状态差映射
+- GameEvent: 每帧事件流(符卡/死亡/Bomb/奖残/过关… + 作品经 event_bus
+  发布的专属事件), 由帧前后状态差 + 总线订阅映射
 
 架构铁律: 本层(apis)与 engine 一样不 import games.* —— 窗口 App 等作品
 组件一律经 registry 按作品名解析(register_app; AST 守护测试钉死)。
@@ -25,7 +27,7 @@ from typing import Callable, Generic, Iterator, Literal, TypeVar, overload
 
 from ..engine.lasers import LaserState
 from ..engine.replay import ReplayRecorder, make_meta, new_replay_name
-from ..registry import GameSpec, get_game, GameHooks
+from ..registry import GameSpec, get_game
 from ..types import GameEngine, InputSource, KeysTuple, PathLike
 
 
@@ -41,7 +43,12 @@ class GamePhase(Enum):
 
 
 class GameEventKind:
-    """通用事件类别。"""
+    """通用事件类别(纯字符串常量)。
+
+    作品专属事件不进本类: 由作品经 event_bus(engine/events.py)发布,
+    门面订阅后汇入同一 GameEvent 流(如 th07 的 border_start/border_break,
+    见 Game.step 与 games/th07/world.py 的发布点)。
+    """
 
     SPELLCARD_BEGIN = "spellcard_begin"  # name=符卡名
     SPELLCARD_CAPTURED = "spellcard_captured"  # name=符卡名
@@ -168,10 +175,39 @@ def _require_world(game: str) -> GameSpec:
     return spec
 
 
+def _resolve_ids(
+    spec: GameSpec, character: str | int, difficulty: str | int
+) -> tuple[int, int]:
+    """角色/难度名 → 内部 int id(经 spec.data 名单映射; 返回 (character_id, difficulty_id))。
+
+    合法名单来自注册表数值表(register_game_data 登记; th07 见
+    games/th07/data.py 的 CHARACTERS/DIFFICULTIES)。名单缺失(未登记
+    GameData 或名单为空)时回落: int 入参直接透传, str 入参无法映射,
+    报清晰中文 ValueError。str 入参不在名单中同样报 ValueError。
+    """
+    data = spec.data
+    if data is not None and data.characters and data.difficulties:
+        if not isinstance(character, str) or character not in data.characters:
+            raise ValueError(
+                f"{spec.name} 不支持角色 {character!r}，可选: {list(data.characters)}"
+            )
+        if not isinstance(difficulty, str) or difficulty not in data.difficulties:
+            raise ValueError(
+                f"{spec.name} 不支持难度 {difficulty!r}，可选: {list(data.difficulties)}"
+            )
+        return data.characters.index(character), data.difficulties.index(difficulty)
+    if isinstance(character, int) and isinstance(difficulty, int):
+        return character, difficulty
+    raise ValueError(
+        f"{spec.name} 未登记数值表(register_game_data)，无法用名称 "
+        f"{character!r}/{difficulty!r} 映射内部 id；请改传 int 或先登记 GameData"
+    )
+
+
 class Game:
     """一局作品对局(默认 th07, ``game=`` 指定其他已注册作品)。典型用法::
 
-    game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL)
+    game = Game(character="ReimuA", difficulty="Normal")
     while game.phase == GamePhase.RUNNING:
         events = game.step(Input(shoot=True))
         if game.frame % 60 == 0:
@@ -194,7 +230,8 @@ class Game:
         # 对局实现(register_world_impl 登记)必须有, 否则无法构造对局
         self.game_name = game
         self.spec = _require_world(game)
-        self._validate_data(character, difficulty)
+        # 角色/难度名经数值表名单映射内部 id(非法名在此报 ValueError)
+        character_id, difficulty_id = _resolve_ids(self.spec, character, difficulty)
 
         # difficulty>=4(Extra/Phantasm) 固定 2 残, lives 仅 <4 生效
         kwargs: dict = {}
@@ -203,13 +240,6 @@ class Game:
         if self.spec.data is not None:
             kwargs["data"] = self.spec.data  # 数值表(register_game_data 登记)
         world = self.spec.world
-
-        character_id = 0
-        difficulty_id = 0
-
-        if self.spec.data:
-            character_id = self.spec.data.characters.index(character)
-            difficulty_id = self.spec.data.difficulties.index(difficulty)
 
         self._impl: GameEngine = world(
             data_path=data_path,
@@ -223,19 +253,23 @@ class Game:
 
         if stage != 1:
             self._impl.enter_stage(stage)
+        self._bus_events: list[tuple[str, dict]] = []  # 本帧收集的总线事件
+        self._attach_event_bus()
         self._prev = self._probe()  # 事件差的基准帧状态(每帧 step 后更新)
 
-    def _validate_data(self, character: str, difficulty: str) -> None:
-        """验证数据"""
-        if self.spec and self.spec.data:
-            if character not in self.spec.data.characters:
-                raise ValueError(
-                    f"{self.game_name} 不支持角色 {character}，可选: {self.spec.data.characters}"
-                )
-            if difficulty not in self.spec.data.difficulties:
-                raise ValueError(
-                    f"{self.game_name} 不支持难度 {difficulty}，选择: {self.spec.data.difficulties}"
-                )
+    def _attach_event_bus(self) -> None:
+        """作品 impl 提供 event_bus(GameEngine 协议可选能力位)时订阅之。
+
+        帧内发布的作品专属事件(如 th07 的 border_start/border_break)被
+        收集进 ``_bus_events``, ``step()`` 时包成 GameEvent 并入返回
+        (排通用 diff 事件前, 保持时序语义); 无总线的作品行为不变。
+        """
+        bus = getattr(self._impl, "event_bus", None)
+        if bus is not None:
+            bus.subscribe(self._collect_bus_event)
+
+    def _collect_bus_event(self, kind: str, **fields) -> None:
+        self._bus_events.append((kind, fields))
 
     @classmethod
     def _from_impl(cls, impl: GameEngine, spec: GameSpec, game_name: str) -> "Game":
@@ -249,19 +283,36 @@ class Game:
         obj.spec = spec
         obj.game_name = game_name
         obj._impl = impl
+        obj._bus_events = []
+        obj._attach_event_bus()
         obj._prev = obj._probe()
         return obj
 
     # ---- 逐帧推进 ----
     def step(self, input: Input = Input.none()) -> list[GameEvent]:
-        """推进一帧, 返回自上次 step 以来发生的事件列表。"""
+        """推进一帧, 返回自上次 step 以来发生的事件列表。
+
+        作品经 event_bus 帧内发布的事件(如 th07 border_start/border_break)
+        排在通用状态差事件之前(帧内即时发生, 时序上先于帧末状态差)。
+        """
         prev = self._prev
         self._impl.tick(
             keys=input._keys(), bomb=input.bomb, advance=input.advance, skip=input.skip
         )
         now = self._probe()
         self._prev = now
-        return self._diff_events(prev, now)
+        out = [
+            GameEvent(
+                kind,
+                frame=self._impl.frame,
+                name=fields.get("name"),
+                stage=fields.get("stage"),
+            )
+            for kind, fields in self._bus_events
+        ]
+        self._bus_events.clear()
+        out += self._diff_events(prev, now)
+        return out
 
     # ---- 可选能力位(GameEngine 协议外的作品专属探测, getattr 回落) ----
     def _spellcard_active(self) -> bool:
@@ -282,8 +333,6 @@ class Game:
         if boss is not None and self._spellcard_active():
             spell_key = (boss.spellcard_idx, boss.name)
 
-        border = getattr(g, "border", None)
-
         return {
             "lives": g.lives,
             "deaths": g.globals.deaths,
@@ -294,7 +343,6 @@ class Game:
             "cleared": g.cleared,
             "ending": g.ending is not None,
             "stage": g.stage_no,
-            "border_active": bool(getattr(border, "active", False)),
         }
 
     def _diff_events(self, prev: dict, now: dict) -> list[GameEvent]:
@@ -319,13 +367,6 @@ class Game:
         if now["lives"] > prev["lives"]:
             emit(GameEventKind.EXTEND)
 
-        # TODO: 这里耦合了TH07，后续解耦合
-        # TODO: 记得采用EventBus架构（事件发布/订阅机制）
-        if now["border_active"] and not prev["border_active"]:
-            emit("border_start")
-        elif prev["border_active"] and not now["border_active"]:
-            emit("border_break")
-        # ================================
         if now["stage"] != prev["stage"]:
             emit(GameEventKind.STAGE_CLEAR, stage=prev["stage"])
         if now["ending"] and not prev["ending"]:
@@ -599,10 +640,12 @@ class TouhouWorldEventStream:
         seed = getattr(g._impl, "seed", None)
         if not isinstance(seed, int):
             seed = 0x5EED if w.seed is None else (w.seed & 0xFFFF)
+        # 角色/难度名 → 内部 id(与 Game.__init__ 同一套名单映射)
+        character_id, difficulty_id = _resolve_ids(w.spec, w.character, w.difficulty)
         return ReplayRecorder(
             make_meta(
-                difficulty=int(w.difficulty),
-                character=int(w.character),
+                difficulty=difficulty_id,
+                character=character_id,
                 stage=w.stage,
                 seed=seed,
                 initial_lives=w.lives,
@@ -627,7 +670,7 @@ class TouhouWorldEventStream:
             self._recorder = self._new_recorder()
         while not self._done:
             if self.policy is not None:
-                inp = self.policy(g)  # type: ignore
+                inp = self.policy(g)
             else:
                 default = self._world.auto_input
                 inp = default(g) if callable(default) else default
@@ -649,11 +692,11 @@ class TouhouWorldEventStream:
 class TouhouWorld(Generic[_H]):
     """一部作品对局世界的统一入口(默认 th07)。典型用法::
 
-        from touhou import TouhouWorld, WorldData, Character, Difficulty
+        from touhou import TouhouWorld, WorldData
 
         wd = WorldData(res_dat=".../th07.dat", bgm_dat=".../thbgm.dat")
-        tw = TouhouWorld(wd=wd, character=Character.REIMU_A,
-                         difficulty=Difficulty.NORMAL, lives=3, headless=True)
+        tw = TouhouWorld(wd=wd, character="ReimuA",
+                         difficulty="Normal", lives=3, headless=True)
         stream = tw.run()                # headless: 返回 TouhouWorldEventStream
         for event in stream:
             ...
@@ -672,7 +715,7 @@ class TouhouWorld(Generic[_H]):
     **观战模式** —— 窗口照开但跳过标题菜单直接进游戏, 每帧输入来自策略
     (角色/难度/残机/种子以 TouhouWorld 自身属性为准), Esc 随时中止观战::
 
-        tw = TouhouWorld(character=Character.MARISA_A, headless=False,
+        tw = TouhouWorld(character="MarisaA", headless=False,
                          auto_input=my_policy)
         tw.run()   # 看 AI 打游戏
     """
@@ -812,9 +855,10 @@ class TouhouWorld(Generic[_H]):
         def make_game(*, difficulty: int, character: int) -> GameEngine:
             if spectate is not None:
                 # 观战: 标题菜单被跳过(没人会选), 角色/难度以 TouhouWorld
-                # 自身的属性为准, 忽略 App 传入的实参
-                difficulty = int(self.difficulty)
-                character = int(self.character)
+                # 自身的属性为准(字符串名经数值表名单映射), 忽略 App 传入的实参
+                character, difficulty = _resolve_ids(
+                    self.spec, self.character, self.difficulty
+                )
             kwargs: dict = {}
             if self.spec.data is not None:
                 kwargs["data"] = self.spec.data  # 数值表(注册表注入)

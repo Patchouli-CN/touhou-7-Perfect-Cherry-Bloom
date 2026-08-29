@@ -16,7 +16,7 @@ sys.path.insert(0, r"D:\python_play\Touhou08")
 from touhou.engine.ecl import EclFile, EclHost, EclOpcode  # noqa: E402
 from touhou.engine.ecl_base import EclMachineBase  # noqa: E402
 from touhou.exceptions import NotImplementedEclError  # noqa: E402
-from touhou.games.th07.ecl_vm import EclMachineTh07  # noqa: E402
+from touhou.games.th07.ecl_vm import EclMachineTh07, Th07EclOpcode  # noqa: E402
 from tests.test_ecl import _instr, build_ecl  # noqa: E402
 
 OP = EclOpcode
@@ -177,8 +177,13 @@ def test_handler_table_isolation() -> None:
 
 
 def test_th07_all_opcodes_registered() -> None:
-    """EclOpcode 全 161 条在 EclMachineTh07 都有 handler(迁移完整性守卫)。"""
-    missing = [op.name for op in EclOpcode if int(op) not in EclMachineTh07._handlers]
+    """EclOpcode(通用) + Th07EclOpcode(作品专属) 全部在 EclMachineTh07
+    都有 handler(迁移完整性守卫)。"""
+    missing = [
+        op.name
+        for op in (*EclOpcode, *Th07EclOpcode)
+        if int(op) not in EclMachineTh07._handlers
+    ]
     assert not missing, missing
     # 编译器生成的无操作标记也在(0 = 时间同步点, 141 = C 枚举跳号)
     assert 0 in EclMachineTh07._handlers and 141 in EclMachineTh07._handlers

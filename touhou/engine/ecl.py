@@ -207,8 +207,9 @@ class EclOpcode(IntEnum):
     SET_LASER_START_LEN = 157
     SET_LASER_OFFSETS = 158
     LERP = 159
-    ADD_CHERRY_PLUS = 160 # 提醒AI：通用EclOpcode不应该有作品有关的枚举，必须修改
-    FREEZE_ECL_DURING_BOMB = 161
+    # 注意: 本枚举只收作品无关的通用 opcode; 作品机制专属的 opcode 定义在
+    # 各作品侧(如 th07 的 ADD_CHERRY_PLUS=160/FREEZE_ECL_DURING_BOMB=161,
+    # 见 games/th07/ecl_vm.py 的 Th07EclOpcode)
 
 
 # ---- 文件结构(解析) ----
