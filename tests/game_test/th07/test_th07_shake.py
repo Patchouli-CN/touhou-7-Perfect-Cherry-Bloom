@@ -26,7 +26,7 @@ from touhou.games.th07.bomb import (  # noqa: E402
 )
 from touhou.utils import Vec2  # noqa: E402
 from touhou.engine.view.shake_view import ScreenShake  # noqa: E402
-from tests.test_exins import _ex_machine, _fire  # noqa: E402
+from tests.game_test.th07.test_th07_exins import _ex_machine, _fire  # noqa: E402
 
 CTX = BombContext(
     player_pos=Vec2(100.0, 300.0),

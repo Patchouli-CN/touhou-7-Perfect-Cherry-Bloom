@@ -240,7 +240,7 @@ def test_stage1_to_2_continuous_run() -> None:
     """从 1 面真打到 3 面开场: msg STAGERESULTS/NEXT_LEVEL 驱动换关,
     timeline 重新驱动, score 全程只增(换关不丢分), 本关计数换关即重置。"""
     from touhou.utils import Vec2
-    from tests.test_stage_smoke import _bosses, _crush, _move_keys, _signature
+    from tests.game_test.th07.test_th07_stage_smoke import _bosses, _crush, _move_keys, _signature
 
     g = PerfectCherryBloom(
         data_path=DAT,

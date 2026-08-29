@@ -1,7 +1,9 @@
 """公共魔改 API(touhou/apis/modding.py)门面行为测试 —— 分层命名空间结构。
 
-夹具模式照 test_api.py: 真实 th07.dat headless 开局; 引擎内部状态读回验证
-时允许摸 game._impl(测试本就需要校验 ModApi 的写入落到了引擎里)。
+通用层: 只用假作品 "test00"(tests/conftest.py 注册的桩对局 + 最小 mod
+提供者)验证 ModApi 契约, 不 import games.*; th07 樱点/结界能力实效见
+game_test/th07/test_th07_modding.py。引擎内部状态读回验证时允许摸
+game._impl(测试本就需要校验 ModApi 的写入落到了引擎里)。
 """
 
 from __future__ import annotations
@@ -14,9 +16,6 @@ import pytest
 from touhou.apis.basic import Game, Input
 from touhou.apis.modding import Aim, Burst, GuiMods, ModApi
 from touhou.engine.render import overlay
-from touhou.games.th07.bomb import BorderState
-from touhou.games.th07.boss import Boss
-from touhou.paths import DEFAULT_DATA
 from touhou.registry import (
     GameHooks,
     GameSpec,
@@ -26,11 +25,11 @@ from touhou.registry import (
 )
 from touhou.utils import Vec2
 
-pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
+from tests.conftest import FAKE_GAME
 
 
 def _mods(seed: int = 1) -> tuple[Game, ModApi]:
-    game = Game(character="ReimuA", difficulty="Normal", seed=seed)
+    game = Game(game=FAKE_GAME, character="TestA", difficulty="Normal", seed=seed)
     return game, ModApi(game)
 
 
@@ -45,7 +44,7 @@ def test_resource_setters() -> None:
     assert game.bombs == 8
     assert game.lives == 5
     assert game.score == 10000
-    # 满火力上限来自注册表数值表(th07 = 128), 不是 modding 写死的常量
+    # 满火力上限来自注册表数值表(GameData.full_power 默认 128), 不是写死的常量
     assert mods.player.full_power == 128
     # 自机坐标观测与 Game 只读面一致
     assert mods.player.pos == game.player_pos
@@ -127,14 +126,16 @@ def test_boss_absent_at_stage_start() -> None:
         mods.boss.set_pos(192.0, 100.0)
 
 
-def test_boss_setters_on_real_boss() -> None:
-    """真实 Boss 对象(th07 Boss 是 msgspec.Struct): 生命/位置直改读回一致。"""
+def test_boss_setters_on_boss_object() -> None:
+    """场上有 Boss 对象: 生命/位置直改读回一致(不改上限 max_life)。"""
     game, mods = _mods()
-    game._impl.boss = Boss(name="test")  # 测试摸内部塞一个 Boss
+    game._impl.boss = SimpleNamespace(  # 测试摸内部塞一个 Boss
+        name="test", life=600.0, max_life=600.0, pos=Vec2(192.0, 100.0)
+    )
     assert mods.boss.exists
     mods.boss.set_life(30)
     assert game._impl.boss.life == 30.0
-    assert game._impl.boss.max_life == 0.0  # 不改上限
+    assert game._impl.boss.max_life == 600.0  # 不改上限
     mods.boss.set_pos(192.0, 96.0)
     assert game._impl.boss.pos == Vec2(192.0, 96.0)
 
@@ -142,7 +143,7 @@ def test_boss_setters_on_real_boss() -> None:
 # ---- 能力位探测: 不满足可变协议的鸭子引擎报清晰中文错误, 不静默失败 ----
 def _duck_game() -> Game:
     """只 read 得出只读面、缺全部可写成员的鸭子引擎。"""
-    game = Game(seed=1)
+    game, _ = _mods()
     game._impl = SimpleNamespace(
         player=SimpleNamespace(pos=SimpleNamespace(x=0.0, y=0.0)),
         globals=SimpleNamespace(),
@@ -199,32 +200,33 @@ def test_readonly_property_reported() -> None:
 
 # ---- 作品能力的命名空间归属(@mod_namespace 声明, 收割进分层结构) ----
 def test_capability_namespaces_and_readback() -> None:
-    """注册链验证: set_cherry/set_cherry_max → api.player; border_break →
-    api.border(作品注册的整棵新命名空间)。"""
+    """注册链验证(假作品 test00 能力): set_luck → api.player(并入核心命名
+    空间); wish_clear → api.wish(作品注册的整棵新命名空间)。"""
     game, mods = _mods()
-    assert mods.is_capabilities_exist("player.set_cherry")
-    assert mods.is_capabilities_exist("player.set_cherry_max")
-    assert mods.is_capabilities_exist("border.border_break")
+    assert mods.is_capabilities_exist("player.set_luck")
+    assert mods.is_capabilities_exist("wish.wish_clear")
     assert mods.is_capabilities_exist("player.set_power")  # 通用核同口径
     assert not mods.is_capabilities_exist("player.nope")
-    assert not mods.is_capabilities_exist("set_cherry")  # 裸名(无点号)恒 False
+    assert not mods.is_capabilities_exist("set_luck")  # 裸名(无点号)恒 False
     assert not mods.is_capabilities_exist("nope.nope")
-    assert callable(mods.player.set_cherry)
-    assert callable(mods.border.border_break)
-    mods.player.set_cherry(50000)
-    assert game._impl.globals.cherry == 50000  # 写入落到引擎(门面无 cherry 属性)
+    assert callable(mods.player.set_luck)
+    assert callable(mods.wish.wish_clear)
+    mods.player.set_luck(50)
+    assert game._impl.globals.luck == 50  # 写入落到引擎(门面无 luck 属性)
+    mods.wish.wish_clear()
+    assert game._impl.cleared  # 作品能力直接改写对局状态
 
 
 def test_unknown_attribute_error() -> None:
     """未知名抛 AttributeError(hasattr/getattr 语义正确), 信息列命名空间清单。"""
     _, mods = _mods()
-    assert hasattr(mods, "player") and hasattr(mods, "border")
-    assert not hasattr(mods, "set_cherry")  # 平铺入口已删, 走命名空间
+    assert hasattr(mods, "player") and hasattr(mods, "wish")
+    assert not hasattr(mods, "set_luck")  # 平铺入口已删, 走命名空间
     assert not hasattr(mods, "nope")
     with pytest.raises(AttributeError, match="没有成员 'nope'.*命名空间"):
         mods.nope()
-    with pytest.raises(AttributeError, match="没有成员 'set_cherry'"):
-        mods.set_cherry(1)
+    with pytest.raises(AttributeError, match="没有成员 'set_luck'"):
+        mods.set_luck(1)
 
 
 def test_available_layered_listing() -> None:
@@ -238,10 +240,9 @@ def test_available_layered_listing() -> None:
     assert "god_mode" in avail["player"] and "set_power" in avail["player"]
     assert "clear" in avail["bullets"] and "add" in avail["score"]
     assert "line" in avail["gui"]
-    # 作品能力按归属并入: 樱点系进 player, 结界系自成 border
-    assert avail["player"]["set_cherry"].startswith("樱点直改")
-    assert "set_cherry_max" in avail["player"]
-    assert avail["border"]["border_break"].startswith("强制破裂")
+    # 作品能力按归属并入: set_luck 进 player, wish_clear 自成 wish
+    assert avail["player"]["set_luck"].startswith("运直改")
+    assert avail["wish"]["wish_clear"].startswith("祈愿")
 
 
 def test_capability_name_conflict_fails_fast() -> None:
@@ -255,9 +256,9 @@ def test_capability_name_conflict_fails_fast() -> None:
         def set_power(self, power: int) -> None:
             pass
 
-    register_mods("th91")(BadProvider)
+    register_mods("tm91")(BadProvider)
     game, _ = _mods()
-    game.spec = get_game("th91")
+    game.spec = get_game("tm91")
     with pytest.raises(ValueError, match="重名"):
         ModApi(game)
 
@@ -273,15 +274,15 @@ def test_namespace_name_conflict_fails_fast() -> None:
         def whatever(self) -> None:
             pass
 
-    register_mods("th92")(BadProvider)
+    register_mods("tm92")(BadProvider)
     game, _ = _mods()
-    game.spec = get_game("th92")
+    game.spec = get_game("tm92")
     with pytest.raises(ValueError, match="命名空间.*重名"):
         ModApi(game)
 
 
 def test_undeclared_capability_lands_in_game_namespace() -> None:
-    """未声明归属的作品能力: 默认挂到以作品名命名的命名空间(api.th93)。"""
+    """未声明归属的作品能力: 默认挂到以作品名命名的命名空间(api.tm93)。"""
 
     class PlainProvider:
         def __init__(self, game: Game) -> None:
@@ -291,13 +292,13 @@ def test_undeclared_capability_lands_in_game_namespace() -> None:
             """作品小工具。"""
             return 42
 
-    register_mods("th93")(PlainProvider)
+    register_mods("tm93")(PlainProvider)
     game, _ = _mods()
-    game.spec = get_game("th93")
+    game.spec = get_game("tm93")
     mods = ModApi(game)
-    assert mods.th93.frobnicate() == 42
-    assert mods.is_capabilities_exist("th93.frobnicate")
-    assert mods.available()["th93"]["frobnicate"].startswith("作品小工具")
+    assert mods.tm93.frobnicate() == 42
+    assert mods.is_capabilities_exist("tm93.frobnicate")
+    assert mods.available()["tm93"]["frobnicate"].startswith("作品小工具")
 
 
 def test_game_without_mods_dimension() -> None:
@@ -307,14 +308,14 @@ def test_game_without_mods_dimension() -> None:
         name="thXX", ecl=None, anm=None, hooks=GameHooks(), world=None
     )  # mods 缺省 None
     mods = ModApi(game)
-    assert not hasattr(mods, "border")
-    assert not mods.is_capabilities_exist("player.set_cherry")
+    assert not hasattr(mods, "wish")
+    assert not mods.is_capabilities_exist("player.set_luck")
     assert mods.is_capabilities_exist("player.set_power")  # 通用核不受影响
     with pytest.raises(AttributeError, match="未注册 mod 能力.*register_mods"):
-        mods.set_cherry(1)
+        mods.set_luck(1)
     mods.player.set_power(128)
     assert game.power == 128
-    assert "set_cherry" not in mods.available().get("player", {})
+    assert "set_luck" not in mods.available().get("player", {})
 
 
 # ---- gui 覆盖层(立即模式; 产消语义见 engine/render/overlay.py) ----
@@ -347,36 +348,3 @@ def test_gui_headless_is_silent_noop() -> None:
     assert len(sink) == 3  # 上限兜底, 丢弃最旧
     cmds = sink.drain()
     assert [c.x2 for c in cmds] == [7.0, 8.0, 9.0]
-
-
-# ---- th07 首批能力实效(樱点系/结界系, 新命名空间路径) ----
-def test_set_cherry_range_check() -> None:
-    """set_cherry 域校验: 上限读引擎实况 cherryMax, 不写死魔法数。"""
-    game, mods = _mods()
-    cherry_max = game._impl.globals.cherry_max
-    mods.player.set_cherry(cherry_max)
-    assert game._impl.globals.cherry == cherry_max
-    with pytest.raises(ValueError, match="超出"):
-        mods.player.set_cherry(cherry_max + 1)
-    with pytest.raises(ValueError, match="超出"):
-        mods.player.set_cherry(-1)
-
-
-def test_set_cherry_max() -> None:
-    game, mods = _mods()
-    g = game._impl.globals
-    mods.player.set_cherry_max(g.cherry_start + 123456)
-    assert g.cherry_max == g.cherry_start + 123456
-    with pytest.raises(ValueError, match="超出"):
-        mods.player.set_cherry_max(g.cherry_start - 1)
-
-
-def test_border_break() -> None:
-    """border_break: 有结界强制破裂(has_border→NONE), 无结界中文报错。"""
-    game, mods = _mods()
-    with pytest.raises(ValueError, match="没有结界可破"):
-        mods.border.border_break()
-    game._impl.border.ready_border()  # 满樱信号 → READY
-    assert game._impl.border.has_border == BorderState.READY
-    mods.border.border_break()
-    assert game._impl.border.has_border == BorderState.NONE

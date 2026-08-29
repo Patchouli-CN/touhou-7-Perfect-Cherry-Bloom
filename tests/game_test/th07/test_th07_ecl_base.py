@@ -17,7 +17,7 @@ from touhou.engine.ecl import EclFile, EclHost, EclOpcode  # noqa: E402
 from touhou.engine.ecl_base import EclMachineBase  # noqa: E402
 from touhou.exceptions import NotImplementedEclError  # noqa: E402
 from touhou.games.th07.ecl_vm import EclMachineTh07, Th07EclOpcode  # noqa: E402
-from tests.test_ecl import _instr, build_ecl  # noqa: E402
+from tests.game_test.th07.test_th07_ecl import _instr, build_ecl  # noqa: E402
 
 OP = EclOpcode
 

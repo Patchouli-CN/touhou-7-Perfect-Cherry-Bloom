@@ -1,4 +1,10 @@
-"""公共 API(touhou/apis/basic.py)门面行为 + 打包/import 隔离测试。"""
+"""公共 API(touhou/apis/basic.py)门面行为 + 打包/import 隔离测试。
+
+通用层: 只用假作品 "test00"(tests/conftest.py 注册的最小桩对局)验证
+门面契约, 不 import games.*(本文件尾部的 AST 守护钉死); th07 真实引擎
+行为(对话相位/符卡事件/结界总线/demo 弹幕)见
+game_test/th07/test_th07_api.py。
+"""
 
 from __future__ import annotations
 
@@ -18,7 +24,15 @@ from touhou.apis.basic import (
 )
 from touhou.paths import DEFAULT_DATA, ENV_DATA, resolve_data_path
 
-pytestmark = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
+from tests.conftest import FAKE_GAME
+
+
+def _fake(**kw) -> Game:
+    """假作品对局门面(默认 TestA/Normal; 无需任何游戏资源)。"""
+    kw.setdefault("game", FAKE_GAME)
+    kw.setdefault("character", "TestA")
+    kw.setdefault("difficulty", "Normal")
+    return Game(**kw)
 
 
 def _run(game: Game, frames: int, inp: Input = Input.none()) -> list[GameEvent]:
@@ -31,18 +45,18 @@ def _run(game: Game, frames: int, inp: Input = Input.none()) -> list[GameEvent]:
 # ---- 名单字符串映射 / 输入 ----
 def test_character_difficulty_names_map_to_internal_ids() -> None:
     """character/difficulty 用作品数值表名单的字符串, 映射为内部 int id。"""
-    game = Game(character="ReimuA", difficulty="Normal", seed=1)
+    game = _fake(character="TestA", difficulty="Normal", seed=1)
     assert game._impl.character == 0 and game._impl.difficulty == 1
-    game = Game(character="SakuyaB", difficulty="Lunatic", seed=1)
-    assert game._impl.character == 5 and game._impl.difficulty == 3
-    # 大小写不敏感: "lunatic"="Lunatic", "reimua"="ReimuA"
-    game = Game(character="reimua", difficulty="lunatic", seed=1)
-    assert game._impl.character == 0 and game._impl.difficulty == 3
+    game = _fake(character="TestB", difficulty="Hard", seed=1)
+    assert game._impl.character == 1 and game._impl.difficulty == 2
+    # 大小写不敏感: "hard"="Hard", "testa"="TestA"
+    game = _fake(character="testa", difficulty="hard", seed=1)
+    assert game._impl.character == 0 and game._impl.difficulty == 2
     # 非法名 → 清晰中文 ValueError
     with pytest.raises(ValueError, match="不支持角色"):
-        Game(character="Cirno")
+        _fake(character="Cirno")
     with pytest.raises(ValueError, match="不支持难度"):
-        Game(difficulty="infinity")
+        _fake(difficulty="infinity")
 
 
 def test_input_none_and_keys() -> None:
@@ -53,7 +67,7 @@ def test_input_none_and_keys() -> None:
 
 # ---- 开局 / step / 属性 ----
 def test_game_start_and_step() -> None:
-    game = Game(character="ReimuA", difficulty="Normal", seed=1)
+    game = _fake(seed=1)
     assert game.frame == 0
     assert game.phase == GamePhase.RUNNING
     assert game.lives == 3 and game.power == 0 and game.score == 0
@@ -63,7 +77,7 @@ def test_game_start_and_step() -> None:
 
 
 def test_properties_are_readonly() -> None:
-    game = Game()
+    game = _fake()
     for prop in (
         "score",
         "lives",
@@ -79,110 +93,53 @@ def test_properties_are_readonly() -> None:
             setattr(game, prop, 0)
 
 
-def test_dialog_phase_detected() -> None:
-    # stage1 对话(msg)在关卡时间轴上出现; 推进期间保持 DIALOG 相位
-    game = Game(seed=1)
-    game._impl.globals.lives_remaining = 99  # 站桩防 GameOver 干扰
-    for _ in range(6500):
-        game.step(Input(shoot=True))
-        if game.phase == GamePhase.DIALOG:
-            return
-    pytest.fail("6500 帧内未检测到 DIALOG 相位")
-
-
-# ---- 事件映射(演示 Boss 路径, 同引擎测试的用法) ----
-def test_spellcard_events() -> None:
-    game = Game(seed=1)
-    _run(game, 200, Input(shoot=True))
-    game._impl._spawn_demo_boss()
-    events = game.step(Input(shoot=True))
-    kinds = [e.kind for e in events]
-    assert GameEventKind.SPELLCARD_BEGIN in kinds
-    name = next(e.name for e in events if e.kind == GameEventKind.SPELLCARD_BEGIN)
-    # 击破(未用 Bomb/未死亡 → 捕获)
-    game._impl.boss.life = 0
-    events = game.step(Input(shoot=True))
-    captured = [e for e in events if e.kind == GameEventKind.SPELLCARD_CAPTURED]
-    assert captured and captured[0].name == name
-
-
+# ---- 通用状态差事件(diff 契约, 与作品机制无关) ----
 def test_bomb_and_extend_events() -> None:
-    game = Game(seed=1)
-    _run(game, 200, Input(shoot=True))  # 等出生无敌结束
-    events = game.step(Input(bomb=True))
+    game = _fake(seed=1)
+    events = game.step(Input(bomb=True))  # bomb 键 → 桩对局记账 bombs_used
     assert GameEventKind.BOMB_START in [e.kind for e in events]
-    # 残机增加 → EXTEND(引擎侧只有奖残会让残机变多)
-    game._impl.globals.lives_remaining += 1
+    # 残机增加 → EXTEND(差分语义: 残机变多即奖残)
+    game._impl.lives += 1
     events = game.step()
     assert GameEventKind.EXTEND in [e.kind for e in events]
 
 
 def test_death_and_game_over_events() -> None:
-    game = Game(seed=1)
-    _run(game, 200, Input(shoot=True))
-    game._impl.globals.lives_remaining = 0
-    game._impl.player.die()
-    events = _run(game, 600)
-    kinds = [e.kind for e in events]
-    assert GameEventKind.PLAYER_DEATH in kinds
-    assert GameEventKind.GAME_OVER in kinds
-    # Extra/Phantasm 以外的难度无残机 → 续关可用(冻结), phase=GAME_OVER
-    assert game.phase in (GamePhase.GAME_OVER, GamePhase.RESULT)
+    game = _fake(seed=1)
+    game._impl.globals.deaths = 1  # 帧间状态差(测试直改 impl 制造)
+    events = game.step()
+    assert GameEventKind.PLAYER_DEATH in [e.kind for e in events]
+    game._impl.game_over = True
+    events = game.step()
+    assert GameEventKind.GAME_OVER in [e.kind for e in events]
+    assert game.phase == GamePhase.GAME_OVER
+    game.finalize_game_over()  # 不续关 → 总结算
+    assert game.phase == GamePhase.RESULT and game.result is not None
 
 
-# ---- 作品专属事件(th07 结界)经 EventBus 汇入 step 事件流 ----
-def test_border_events_via_event_bus() -> None:
-    from touhou.engine.player_base import PlayerState
-
-    game = Game(seed=1)
-    _run(game, 200, Input(shoot=True))  # 出生无敌结束, 玩家 ALIVE
-    game._impl.player.state = PlayerState.ALIVE  # 出生无敌态不参与结界激活择时
-    # 满樱信号 → 结界 READY(等价 mods 拉满 cherryPlus 的引擎入口)
-    game._impl.border.ready_border()
-    events = game.step(Input(shoot=True))  # 帧内自动激活 → border_start
-    kinds = [e.kind for e in events]
-    assert "border_start" in kinds
-    ev = next(e for e in events if e.kind == "border_start")
-    assert ev.frame == game.frame
-    # 主动破(bomb 键同入口) → 下一次 step 收到 border_break
-    game._impl._break_border(by_bomb_key=True)
-    events = game.step(Input(shoot=True))
-    kinds = [e.kind for e in events]
-    assert "border_break" in kinds
-    # READY 未激活时的破(死亡保命路径)不发事件(事件语义 = ACTIVE→破)
-    game._impl.border.ready_border()
-    game._impl._break_border()  # was_active=False → 不发布
-    events = game.step(Input(shoot=True))
-    assert "border_break" not in [e.kind for e in events]
+def test_ending_events() -> None:
+    game = _fake(seed=1)
+    game._impl.ending = object()  # 结局开始(桩对象占位)
+    events = game.step()
+    assert GameEventKind.ENDING_START in [e.kind for e in events]
+    assert game.phase == GamePhase.ENDING
+    game.finish_ending()  # 结局看完 → 总结算
+    assert game.phase == GamePhase.RESULT
 
 
 # ---- 快照 ----
 def test_snapshot_contents() -> None:
-    game = Game(seed=1)
-    _run(game, 300, Input(shoot=True))
+    game = _fake(seed=1)
+    _run(game, 10, Input(shoot=True))
     snap = game.snapshot()
     assert snap.frame == game.frame
     assert snap.player.state == "alive"
     assert 0 <= snap.player.x <= 384 and 0 <= snap.player.y <= 448
-    for b in snap.bullets:
-        assert isinstance(b.sprite, int)
-    for e in snap.enemies:
-        assert e.life >= 0 and e.radius >= 0
-    for i in snap.items:
-        assert i.type.isupper()
+    assert snap.boss is None  # 桩对局无 Boss
+    assert snap.bullets == () and snap.enemies == () and snap.items == ()
     # 快照不可变
     with pytest.raises(AttributeError):
         snap.player.x = 0  # type: ignore[misc]
-
-
-def test_snapshot_after_boss() -> None:
-    game = Game(seed=1)
-    _run(game, 200, Input(shoot=True))
-    game._impl._spawn_demo_boss()
-    game.step()
-    snap = game.snapshot()
-    assert snap.boss is not None and snap.boss.spellcard_active
-    assert snap.boss.max_life == 600
 
 
 # ---- 资源路径解析 ----
@@ -195,14 +152,6 @@ def test_resolve_data_path_priority(tmp_path, monkeypatch) -> None:
     assert resolve_data_path() == env
     monkeypatch.delenv(ENV_DATA)
     assert resolve_data_path() == DEFAULT_DATA
-
-
-def test_env_var_drives_game(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv(ENV_DATA, str(tmp_path / "nonexistent.dat"))
-    with pytest.raises(OSError):
-        Game()  # 环境变量指向不存在路径 → 开包失败
-    monkeypatch.setenv(ENV_DATA, str(DEFAULT_DATA))
-    assert Game().frame == 0  # 指回真实数据则正常
 
 
 # ---- 打包形态(急切导出; 函数内 import 已禁止) ----
@@ -321,6 +270,32 @@ def test_apis_and_engine_do_not_import_games() -> None:
     assert not offenders, offenders
 
 
+def test_root_tests_do_not_import_games() -> None:
+    # 测试目录分层铁律: tests/ 根下的 test_*.py 是通用层测试(只用假作品
+    # "test00"), 禁止 import games.*; 作品专属测试住 tests/game_test/
+    # 子树(该子树整体豁免, 不在本检查范围)
+    root = Path(__file__).resolve().parent
+    offenders = []
+    for f in sorted(root.glob("test_*.py")):
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                hit = any(
+                    a.name == "touhou.games" or a.name.startswith("touhou.games.")
+                    for a in node.names
+                )
+            elif isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                hit = node.level == 0 and (
+                    mod == "touhou.games" or mod.startswith("touhou.games.")
+                )
+            else:
+                continue
+            if hit:
+                offenders.append(f"{f.name}:{node.lineno}")
+    assert not offenders, offenders
+
+
 # ---- TouhouWorld / WorldData 入口 ----
 def test_world_data_resolution(tmp_path) -> None:
     from touhou.apis.basic import WorldData
@@ -333,17 +308,16 @@ def test_world_data_resolution(tmp_path) -> None:
     assert WorldData(res_dat="x.dat").resolve_res() == Path("x.dat")
 
 
-def test_touhou_world_headless_stream() -> None:
-    from touhou.apis.basic import TouhouWorld, WorldData
+def _fake_world(**kw):
+    from touhou.apis.basic import TouhouWorld
 
-    tw = TouhouWorld(
-        wd=WorldData(res_dat=DEFAULT_DATA),
-        character="ReimuA",
-        difficulty="Normal",
-        lives=3,
-        headless=True,
-        seed=7,
-    )
+    kw.setdefault("game", FAKE_GAME)
+    kw.setdefault("character", "TestA")
+    return TouhouWorld(**kw)
+
+
+def test_touhou_world_headless_stream() -> None:
+    tw = _fake_world(difficulty="Normal", lives=3, headless=True, seed=7)
     assert tw.game.lives == 3
     events = []
     for ev in tw.events:  # 流式事件(终局自动收尾: GameOver→结算)
@@ -357,9 +331,7 @@ def test_touhou_world_headless_stream() -> None:
 
 
 def test_touhou_world_custom_policy() -> None:
-    from touhou.apis.basic import TouhouWorld
-
-    tw = TouhouWorld(headless=True, difficulty="Normal", seed=1)
+    tw = _fake_world(headless=True, difficulty="Normal", seed=1)
     seen = []
     for i, ev in enumerate(tw.stream(policy=lambda g: Input.none())):
         seen.append(ev)
@@ -369,18 +341,16 @@ def test_touhou_world_custom_policy() -> None:
 
 
 def test_touhou_world_lazy_game() -> None:
-    from touhou.apis.basic import TouhouWorld
-
-    tw = TouhouWorld(headless=False)  # 非 headless 不预建对局
+    tw = _fake_world(headless=False)  # 非 headless 不预建对局
     assert tw._game is None
     g = tw.game  # 首次访问才建
     assert g is tw.game
 
 
 def test_touhou_world_run_returns_event_stream() -> None:
-    from touhou.apis.basic import TouhouWorld, TouhouWorldEventStream
+    from touhou.apis.basic import TouhouWorldEventStream
 
-    tw = TouhouWorld(headless=True, difficulty="Normal", seed=3)
+    tw = _fake_world(headless=True, difficulty="Normal", seed=3)
     stream = tw.run()
     assert isinstance(stream, TouhouWorldEventStream)
     assert stream.game is tw.game  # 流驱动的就是这局
@@ -394,9 +364,7 @@ def test_touhou_world_run_returns_event_stream() -> None:
 
 
 def test_event_stream_policy_takeover() -> None:
-    from touhou.apis.basic import TouhouWorld
-
-    tw = TouhouWorld(headless=True, difficulty="Normal", seed=5)
+    tw = _fake_world(headless=True, difficulty="Normal", seed=5)
     stream = tw.run()
     stream.policy = lambda g: Input.none()  # 中途接管输入
     frames0 = tw.game.frame
@@ -450,6 +418,7 @@ def test_touhou_world_run_typing_narrows_on_headless(tmp_path) -> None:
 def test_environment_detection() -> None:
     """启动环境探测: 返回字段齐全, 探测失败不炸。"""
     from touhou.env import detect_environment
+    from touhou.registry import GAME_TITLES, registered_games
 
     info = detect_environment()
     for key in (
@@ -464,42 +433,25 @@ def test_environment_detection() -> None:
         "title",
     ):
         assert key in info and isinstance(info[key], str)
-    assert info["title"] == "東方妖々夢 〜 Perfect Cherry Blossom"
+    # title 取已注册列表首部作品经 GAME_TITLES 的映射(测试进程里注册了
+    # 假作品 test00, 故不写死 th07 标题; th07 标题事实见 game_test/th07)
+    first = registered_games()[0]
+    assert info["title"] == GAME_TITLES.get(first, first)
     assert "th07" in info["games"]
     # 坏路径不炸
     bad = detect_environment(data_path="/nonexistent/th07.dat")
     assert bad["res_entries"] == "未找到"
 
 
-# ---- 判定半径观测面 + numpy 快路径 ----
-def test_snapshot_hitbox_matches_engine() -> None:
-    from touhou.utils import Vec2
-
-    game = Game(seed=1)
-    _run(game, 200, Input(shoot=True))
-    game._impl.bullets.spawn_demo_wave(Vec2(192, 100))  # 确定性造弹(环+扇)
-    game.step(Input(shoot=True))
-    snap = game.snapshot()
-    assert snap.bullets
-    r = game._impl.bullets.bullet_radius
-    for b in snap.bullets:
-        # 快照判定半径与引擎实际判定半宽(均匀 AABB 盒)同源
-        assert b.hitbox == r
-    # 已知弹型样本: demo wave 用 sprite=0(小弹), 判定半径同为世界半宽
-    assert any(b.sprite == 0 and b.hitbox == r for b in snap.bullets)
-    # 自机判定半宽: 作品常量(th07 约 1~2px), 与引擎玩家实例一致
-    assert snap.player.hitbox == game._impl.player.hitbox_radius
-    assert 0.0 < snap.player.hitbox <= 4.0
-
-
+# ---- 实体 numpy 快路径(假作品桩对局; th07 实弹对照见 game_test/th07) ----
 def test_bullets_array_matches_snapshot() -> None:
     import math
 
-    from touhou.utils import Vec2
+    from touhou.apis.modding import ModApi
 
-    game = Game(seed=1)
-    _run(game, 200, Input(shoot=True))
-    game._impl.bullets.spawn_demo_wave(Vec2(192, 100))
+    game = _fake(seed=1)
+    mods = ModApi(game)
+    mods.bullets.fire_ring(192.0, 100.0, arms=8)  # 桩容器按 arms 造弹
     arr = game.bullets_array()
     snap = game.snapshot()
     assert arr.shape == (len(snap.bullets), 6)
@@ -515,7 +467,7 @@ def test_bullets_array_matches_snapshot() -> None:
 
 
 def test_bullets_array_empty_and_lasers_array() -> None:
-    game = Game(seed=1)
+    game = _fake(seed=1)
     game._impl.bullets.clear()
     assert game.bullets_array().shape == (0, 6)  # 空场形状正确
     la = game.lasers_array()
@@ -553,7 +505,7 @@ def test_player_hitbox_capability_fallback() -> None:
         items=SimpleNamespace(alive=list),
         lasers=SimpleNamespace(lasers=[]),
     )
-    game = Game._from_impl(impl, get_game("th07"), "stub")
+    game = Game._from_impl(impl, get_game(FAKE_GAME), "stub")
     snap = game.snapshot()
     assert snap.player.hitbox is None
     assert game.bullets_array().shape == (0, 6)

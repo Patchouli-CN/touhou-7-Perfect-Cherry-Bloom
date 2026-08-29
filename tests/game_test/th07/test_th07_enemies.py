@@ -26,9 +26,9 @@ from touhou.engine.enemies import (  # noqa: E402
 from touhou.engine.player_base import PlayerState  # noqa: E402
 from touhou.games.th07.player import PlayerEventKind  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
-from tests.test_ecl import _instr, build_ecl  # noqa: E402
-from tests.test_ecl import EclOpcode as OP  # noqa: E402
-from tests.test_player import make_player  # noqa: E402
+from tests.game_test.th07.test_th07_ecl import _instr, build_ecl  # noqa: E402
+from tests.game_test.th07.test_th07_ecl import EclOpcode as OP  # noqa: E402
+from tests.game_test.th07.test_th07_player import make_player  # noqa: E402
 
 # make_player 的 SD: hitbox_radius=4 → 判定半宽 2; grab 48 → 擦弹半宽 24
 

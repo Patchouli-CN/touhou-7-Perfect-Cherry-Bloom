@@ -22,7 +22,7 @@ from touhou.engine.enemies import EnemyHost  # noqa: E402
 from touhou.games.th07.items import ItemWorld  # noqa: E402
 from touhou.engine.lasers import Laser, LaserState, LaserWorld  # noqa: E402
 from touhou.utils import Vec2  # noqa: E402
-from tests.test_ecl import _f, _instr, build_ecl  # noqa: E402
+from tests.game_test.th07.test_th07_ecl import _f, _instr, build_ecl  # noqa: E402
 
 OP = EclOpcode
 

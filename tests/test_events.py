@@ -4,7 +4,7 @@ EventBus 本体是纯引擎层(作品无关, 不需要 th07.dat);
 门面行为用 stub impl(Game._from_impl)验证: 有 event_bus 的作品, 帧内
 发布的专属事件包成 GameEvent 排在通用 diff 事件前; 无 event_bus 的
 作品(协议可选能力位缺失)行为不变。th07 真实结界事件流见
-tests/test_api.py 的 test_border_events_via_event_bus。
+tests/game_test/th07/test_th07_api.py 的 test_border_events_via_event_bus。
 """
 
 from __future__ import annotations

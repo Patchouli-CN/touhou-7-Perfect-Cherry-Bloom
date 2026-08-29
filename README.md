@@ -223,8 +223,8 @@ tw = TouhouWorld(game="th99", headless=True)   # 从注册表解析
 ```
 
 最小路径（只换数据/资源，不改引擎）：复用 `PerfectCherryBloom` 作对局实现，
-只注册自己的 `GameData` —— 示例见 `tests/test_registry.py` 的
-`test_stub_game_with_custom_data_reuses_th07_engine`。
+只注册自己的 `GameData` —— 示例见 `tests/game_test/th07/test_th07_registry.py`
+的 `test_stub_game_with_custom_data_reuses_th07_engine`。
 
 ## 「Package」包结构
 
@@ -255,7 +255,10 @@ tw = TouhouWorld(game="th99", headless=True)   # 从注册表解析
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy uv run python -m pytest -q
 ```
 
-测试用真实 th07.dat 数据（默认路径或 `TOUHOU_DAT` 指向）。
+测试分两层：`tests/` 根下是通用层测试（只用 `tests/conftest.py` 注册的
+假作品 `test00`，禁止 import `games.*`，AST 守护钉死）；`tests/game_test/th07/`
+是 th07 专属测试（文件名统一 `test_th07_` 前缀，用真实 th07.dat 数据，
+默认路径或 `TOUHOU_DAT` 指向）。未来作品即 `game_test/th08/test_th08_*.py`。
 
 ---
 
