@@ -7,12 +7,17 @@ stub(EclSpec.machine/file_format 鸭子类型)钉 record/translate 模板方法�
 CONTROL 模式(静态控制流)测试用假作品 test02(file_format=真 EclFile):
 ECL 字节流手工构造(_instr/_build_ecl 写法参考 tests/test_ecl_codec.py),
 不走 VM, 机器类只是注册占位。
+
+AUTO 模式测试用假作品 test03(真 EclFile + StubAutoMachine): stub VM 按
+字节流里 fire 指令的下标打 executing_instr 溯源标记, 模拟"静态已覆盖 /
+静态跳过 / 运行时内部触发(自动射击)"三种事件来源。
 """
 
 from __future__ import annotations
 
 import math
 import struct
+from types import SimpleNamespace
 
 import pytest
 
@@ -31,6 +36,7 @@ from touhou.registry import register_ecl, registered_games
 
 FAKE_ECL_GAME = "test01"
 FAKE_IR_GAME = "test02"  # CONTROL 模式用: 真 EclFile 格式 + 占位机器
+FAKE_AUTO_GAME = "test03"  # AUTO 模式用: 真 EclFile + 打溯源标记的 stub VM
 
 
 class StubEclFile:
@@ -107,6 +113,62 @@ if FAKE_ECL_GAME not in registered_games():
 
 if FAKE_IR_GAME not in registered_games():
     register_ecl(FAKE_IR_GAME, file_format=EclFile)(StubMachine)
+
+
+class StubAutoMachine:
+    """AUTO 模式 stub VM: 模拟三种事件来源(对应真 VM 的 executing_instr 语义)。
+
+    - fires[0](静态可翻的 fire 指令): 回调期间挂 executing_instr → 事件
+      origin = (sub_id, offset), AUTO 应去重;
+    - fires[1](静态跳过的 fire 指令, 变量依赖): 同样挂 executing_instr,
+      origin 指向被跳过指令 → AUTO 应补回;
+    - 无 executing_instr 的发射: 模拟 SET_SHOOT_INTERVAL 自动射击
+      (_frame_update 帧收尾, 不归属任何指令) → origin=None, AUTO 应补回。
+    """
+
+    def __init__(self, ecl_file, enemy=None, world=None, host=None) -> None:
+        self.host = host
+        self.file = ecl_file
+        self.current = SimpleNamespace(sub_id=-1)
+        self.executing_instr = None
+        self.finished = False
+        self._t = 0
+        self._fires: list = []
+
+    def start(self, sub_id: int) -> None:
+        self.current.sub_id = sub_id
+        self._fires = [
+            i for i in self.file.subs[sub_id] if 64 <= i.id <= 72 and not i.is_terminator
+        ]
+
+    def _shoot(self, count1: int, speed1: float) -> None:
+        self.host.spawn_bullet_pattern(
+            EnemyBulletShooter(sprite=0, count1=count1, count2=1, speed1=speed1, aim_mode=2)
+        )
+
+    def step(self) -> bool:
+        t = self._t
+        self._t += 1
+        if t == 0:
+            self.host.begin_spellcard(None, 5, 0, "氷符「テスト」")
+        if t in (0, 3, 6):  # 静态已覆盖(fires[0]) → 去重靶子(count 8)
+            self.executing_instr = self._fires[0]
+            self._shoot(8, 2.0)
+            self.executing_instr = None
+        if t in (1, 4, 7):  # 运行时内部(自动射击) → origin None(count 4)
+            self._shoot(4, 1.0)
+        if t in (2, 5, 8):  # 静态跳过的指令(fires[1]) → 补回靶子(count 2)
+            self.executing_instr = self._fires[1]
+            self._shoot(2, 3.0)
+            self.executing_instr = None
+        if t >= 10:
+            self.finished = True
+            return False
+        return True
+
+
+if FAKE_AUTO_GAME not in registered_games():
+    register_ecl(FAKE_AUTO_GAME, file_format=EclFile)(StubAutoMachine)
 
 
 # ---- CONTROL 模式: 手工构造 ECL 字节流 ----
@@ -512,3 +574,73 @@ def test_youkai_control_unmappable_var_operand_skipped() -> None:
         data, 0, mode=TranslateMode.CONTROL
     )
     assert out["phases"][out["entry_phase"]]["on_tick"] == []
+
+
+# ==================== AUTO 模式 ====================
+
+
+def _auto_data() -> bytes:
+    """fires[0] 静态可翻; fires[1] 的 count 依赖不可映射变量 → 静态跳过。"""
+    return _mk(
+        _spellcard_instr(5, "氷符「テスト」"),
+        _fire_ring(0),  # fires[0]: 静态可翻
+        (0, EclOpcode.SET_INT, (10000, 10001), 3),  # count 变量值来自变量 → unknown
+        _fire_ring(10, count_var=True),  # fires[1]: 静态跳过
+    )
+
+
+def _auto_fire_offsets() -> list[int]:
+    ecl_file = EclFile.parse(_auto_data())
+    return [
+        i.offset for i in ecl_file.subs[0] if 64 <= i.id <= 72 and not i.is_terminator
+    ]
+
+
+def test_record_provenance() -> None:
+    """provenance: 指令触发的回调带 (sub_id, offset); 运行时内部触发 → None。"""
+    tr = YoukaiDanmakuTranslator(FAKE_AUTO_GAME)
+    trace = tr.record(_auto_data(), 0)
+    covered, auto_shoot, skipped = _auto_fire_offsets()[0], None, _auto_fire_offsets()[1]
+    by_frame = {ev.frame: ev for ev in trace if ev.kind == "bullets"}
+    assert len(by_frame) == 9
+    for f in (0, 3, 6):  # fires[0] 触发(静态已覆盖)
+        assert by_frame[f].origin == (0, covered)
+    for f in (1, 4, 7):  # 运行时内部触发(模拟自动射击)
+        assert by_frame[f].origin is auto_shoot
+    for f in (2, 5, 8):  # fires[1] 触发(静态跳过)
+        assert by_frame[f].origin == (0, skipped)
+
+
+def test_auto_mode_dedup_and_blind_spot_fill() -> None:
+    """AUTO: 静态已覆盖的事件不进补充段; origin None / 静态跳过的事件补回。"""
+    tr = YoukaiDanmakuTranslator(FAKE_AUTO_GAME)
+    out = tr.translate(_auto_data(), 0, mode=TranslateMode.AUTO)
+    assert out["display"]["name"] == "氷符「テスト」"
+    actions = out["phases"][out["entry_phase"]]["on_tick"]
+    assert len(actions) == 3
+    # 静态骨架: fires[0] → time 0 的裸 fire(count 8)
+    static_fires = [a for a in actions if a["type"] == "fire_danmaku"]
+    assert len(static_fires) == 1 and static_fires[0]["count"] == 8
+    # 动态补充段: 两组折叠(tick_interval) —— 自动射击(count 4) + 静态跳过补回(count 2)
+    folded = [a for a in actions if a.get("condition", {}).get("type") == "tick_interval"]
+    assert len(folded) == 2
+    assert sorted(f["if_true"][0]["count"] for f in folded) == [2, 4]
+    # 去重: 静态已覆盖的 count-8 周期组(t 0/3/6)不进补充段
+    assert all(f["if_true"][0]["count"] != 8 for f in folded)
+
+
+class StubIrOnlyTranslator(EclTranslatorBase):
+    """compile_ir 有、merge 无: AUTO 合并报错靶子。"""
+
+    def compile(self, trace) -> dict:
+        return {"events": len(trace)}
+
+    def compile_ir(self, ir) -> dict:
+        return {"static": True}
+
+
+def test_auto_merge_not_implemented() -> None:
+    """未实现 merge 的翻译器跑 AUTO: 中文 NotImplementedError。"""
+    tr = StubIrOnlyTranslator(FAKE_IR_GAME)
+    with pytest.raises(NotImplementedError, match="不支持 AUTO 模式"):
+        tr.translate(_mk(_fire_ring(0)), 0, mode=TranslateMode.AUTO)

@@ -9,26 +9,27 @@
 
 - `EclTranslatorBase`(base.py): `EclHost` 的**录制**实现。`record()` 用
   注册表里的作品 VM(`EclMachineTh07`)逐帧回放 sub, 把每次弹幕回调记成
-  带帧戳的 `TraceEvent`; `translate()` 按 `TranslateMode` 双模式分发
+  带帧戳的 `TraceEvent`; `translate()` 按 `TranslateMode` 三模式分发
   (DIRECT = record → `compile(trace)`; CONTROL = `parse_ir()` →
-  `compile_ir(ir)`, 见下节)。
+  `compile_ir(ir)`; AUTO = 静态骨架 + 动态补盲, 见下节)。
 - `ir.py`: CONTROL 模式的控制流 IR(`IrSeq`/`IrLoop`/`IrIf`/`IrOp`)与
   静态重建算法(作品无关)。
 - `YoukaiDanmakuTranslator`(youkai.py): `compile(trace)` 把逐帧命令式
   trace **折叠**成妖归的声明式动作 JSON; `compile_ir(ir)` 把控制流 IR
-  **直接映射**成妖归动作(循环/条件结构保留)。
+  **直接映射**成妖归动作(循环/条件结构保留); `merge()` 把 AUTO 的
+  静态骨架与动态补充段合并进同一 SpellDefinition。
 
-## 翻译模式(DIRECT vs CONTROL)
+## 翻译模式(DIRECT vs CONTROL vs AUTO)
 
-`translate(ecl_data, sub_id, *, mode=...)` 两模式是两种不同的翻译哲学:
+`translate(ecl_data, sub_id, *, mode=...)` 三模式是三种不同的翻译哲学:
 
-| | DIRECT(默认) | CONTROL |
-|---|---|---|
-| 路线 | 回放作品 VM 录逐帧 trace → 折叠 | 静态控制流重建 IR → 直接映射(不走 VM) |
-| 保真度 | **忠实的运行时快照**(变量演进、rank 插值、自动射击都算出来了) | **静态近似**(只认指令字面值 + 简单仿射变量) |
-| 结构 | 循环/条件被展开压扁成 tick_interval 平铺 | **保留循环/条件**(repeat/conditional/delay) |
-| 变量依赖 | 不存在(回放时已是具体值) | 映射不了的跳过(log.warning) |
-| 适用 | 要"这张卡实际长什么样"的权威快照 | 要可读的波次结构/想手调循环参数/给 LuaSTG 类目标供结构化 IR |
+| | DIRECT(默认) | CONTROL | AUTO |
+|---|---|---|---|
+| 路线 | 回放作品 VM 录逐帧 trace → 折叠 | 静态控制流重建 IR → 直接映射(不走 VM) | 静态骨架 + 动态补盲(两路都跑) |
+| 保真度 | **忠实的运行时快照**(变量演进、rank 插值、自动射击都算出来了) | **静态近似**(只认指令字面值 + 简单仿射变量) | 静态同 CONTROL, 盲区由运行时快照补齐 |
+| 结构 | 循环/条件被展开压扁成 tick_interval 平铺 | **保留循环/条件**(repeat/conditional/delay) | 静态段保留结构, 动态段是 tick_interval 平铺 |
+| 变量依赖 | 不存在(回放时已是具体值) | 映射不了的跳过(log.warning) | 静态跳过的由动态段补回 |
+| 适用 | 要"这张卡实际长什么样"的权威快照 | 要可读的波次结构/想手调循环参数/给 LuaSTG 类目标供结构化 IR | **默认推荐**: 结构与覆盖两全 |
 
 CONTROL 的 IR 重建规则(ir.py, 作品无关):
 
@@ -72,6 +73,47 @@ CONTROL 的妖归映射(youkai.py compile_ir):
   旋转(-1.125°/帧 × 20 帧 = -22.5°/波)被压扁成帧级表达式; count 差 1
   (DIRECT 是回放运行时值, 含 rank/ spellcard 状态影响)。
 - 输出均过官方校验器 OK。
+
+### AUTO(静态骨架 + 动态补盲, 默认推荐)
+
+AUTO 把两路都跑一遍, 语义是**静态出骨架, 动态补盲区, 已覆盖的不重复**:
+
+1. **静态**: `compile_ir(ir)` 出骨架(同 CONTROL); 期间静态未覆盖的指令
+   offset 被登记下来(变量求值失败的弹幕/激光指令 + 不可静态翻译的指令)。
+2. **动态去重(provenance 溯源)**: `record()` 回放时 translator 持有 VM
+   实例, VM 在 `_execute` 里把当前指令挂上 `executing_instr`, 宿主回调把
+   `(sub_id, offset)` 记进 `TraceEvent.origin`; 帧收尾(`_frame_update`)
+   期间该引用为 None —— **运行时内部触发的发射**(SET_SHOOT_INTERVAL
+   自动射击这类, 不是某条发射指令产生的)`origin=None`, 这正是静态盲区
+   标记。过滤规则: origin 指向"本 sub 且已被静态翻译的指令"的事件丢弃;
+   origin=None、指向被跳过指令、或来自其他 sub(中断/周期回调, parse_ir
+   看不到)的事件保留, 交给 `compile()`(DIRECT 的折叠逻辑)编成补充段。
+3. **合并**: 动态补充段(天然带 tick_interval/compare 门控)追加进静态
+   骨架同一 SpellDefinition 的 phase `on_tick`, 与 repeat/delay 结构并存
+   不冲突。静态骨架全空的边界(如寒符)由动态段兜底, phases 不会输出空。
+
+实测对照:
+
+- 寒符「リンガリングコールド」(ecldata1 sub 42): CONTROL 全空(自动射击
+  是静态盲区) → AUTO 动态段补回 108 条 action(与 DIRECT 同内容), 骨架
+  为空也产出合法 SpellDefinition。
+- 天符「天仙鳴動」(ecldata2 sub 64): 90 条弹幕事件里 41 条来自静态已
+  翻译指令(去重丢弃, 不重复), 50 条来自 4 条变量依赖、静态求值失败的
+  fire 指令 → 动态补回折叠为 10 条 fire; AUTO = 静态骨架(repeat 结构
+  保留, 4 条 fire) + 补盲 10 条, 两模式的盲区各自被补上。
+
+已知限制:
+
+- **provenance=None 的事件只按签名折叠**: 极端情况下, 静态已覆盖的
+  pattern 若参数被运行时改写(如 INIT_INTERP 插值改了角度), 静态段用的是
+  静态值、运行时真值对应的事件又因为 origin 指向已翻译指令而被丢弃 ——
+  两处的值可能都对不上实际, 需要人工复核。
+- **激光跨指令角度更新不补回**: 静态已翻的激光 spawn, 其后续的
+  ADD_LASER_ANGLE 等更新以 spawn 指令为 origin 整条被去重(与 CONTROL
+  同盲区); 只有 spawn 本身被静态跳过时, 带 updates 的完整激光事件才会
+  进动态段。
+- 结束时 log.info 一行覆盖摘要(静态翻译 N 条指令 / 动态补 M 条事件 /
+  静态未覆盖 K 条), 跑完看一眼能立刻判断盲区比例。
 
 ## 用法
 
@@ -264,8 +306,11 @@ uv run python scratch_dbg/youkai-danmaku-json/scripts/validate_spell_json.py lin
   钉 record/translate 模板方法、激光假句柄追踪、错误路径、折叠与激光
   mover 结构; CONTROL 模式钉模式分发、不支持模式的报错、IR 重建
   (回边→loop、条件前跳→if/else、嵌套循环、不可归约兜底)与妖归
-  compile_ir 的 repeat/delay/angle 表达式映射;
+  compile_ir 的 repeat/delay/angle 表达式映射; AUTO 模式钉 provenance
+  溯源(指令触发/运行时内部触发)、去重(静态已覆盖不进补充段)、静态
+  跳过事件的动态补回、merge 未实现的报错;
 - `tests/game_test/th07/test_th07_ecl_translate.py`: 真实 th07.dat 回放
   寒符 sub(DIRECT), 断言 trace 非空与 SpellDefinition 结构; CONTROL 模式
   跑寒符 sub 与 天符「天仙鳴動」sub(ecldata2 sub 64), 断言 repeat/delay
-  结构(无数据自动 skip)。
+  结构; AUTO 模式钉寒符非空(自动射击动态补回)与天符无重复(静态 4 +
+  补盲 10 条 fire)(无数据自动 skip)。

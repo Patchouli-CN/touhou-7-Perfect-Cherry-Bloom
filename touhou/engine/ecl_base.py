@@ -137,6 +137,10 @@ class EclMachineBase:
         self.current = EclContext()
         self.stack: list[EclContext] = []
         self.finished = False
+        # 正在 _execute 的指令(宿主回调溯源用, 如 engine/translate 的
+        # TraceEvent.origin); _frame_update 的帧收尾(自动射击/ex 指令)期间
+        # 为 None —— 那些发射不是某条指令触发的
+        self.executing_instr: Optional[EclInstr] = None
         # 调试: 置为一个 list 后, 每执行一条指令 append 其 id(测试/回放用)
         self.trace: Optional[list[int]] = None
         # 只警告一次的类别, 避免刷日志
@@ -341,6 +345,7 @@ class EclMachineBase:
         """RunEcl 的 exit 路径: 移动模式/自动射击/ex 指令/插值。"""
         e, w, ctx = self.enemy, self.world, self.current
         mult = w.framerate_multiplier
+        self.executing_instr = None  # 帧收尾期间的宿主回调不归属任何指令
 
         if e.move_mode == 3:
             e.move_angle = add_normalize_angle(
@@ -447,6 +452,7 @@ class EclMachineBase:
     # 返回 None=顺序前进 / EclInstr=跳到 / "restart" / "error"
 
     def _execute(self, instr: EclInstr):
+        self.executing_instr = instr
         handler = self._handlers.get(instr.id)
         if handler is not None:
             return handler(self, instr)

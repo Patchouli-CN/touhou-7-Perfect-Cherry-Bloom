@@ -43,6 +43,13 @@ compile 共用同一套 helper)。循环体的时间语义经 ``delay`` 表达: 
 angle1; SET_FLOAT 初值 + ADD_FLOAT 步进的经典旋转发射器模式), 映射不了
 的 log.warning 并跳过该指令。静态近似的边界见 docs/ecl_to_youkai_migration.md
 "翻译模式"一节。
+
+AUTO 模式(compile_auto 编排 + 本类 merge): 静态骨架 + 动态补盲。compile_ir
+期间静态未覆盖的指令 offset 登记进 ``self._skipped_offsets``(变量求值
+失败的弹幕/激光指令 + 不可静态翻译的指令); trace 里 origin 指向已静态
+翻译指令的事件被去重, 其余(origin=None 的运行时内部触发、指向被跳过
+指令、其他 sub 来的)经 compile() 折成补充段, merge 追加进静态骨架的
+phase on_tick。
 """
 
 from __future__ import annotations
@@ -809,8 +816,10 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         """CONTROL 模式: IrLoop→repeat / IrIf→conditional / 弹幕 IrOp→fire。
 
         变量操作数经仿射环境(初值+每轮步进)映射; 映射不了的 log.warning 跳过
-        (见模块头注与 docs "翻译模式"一节)。
+        (见模块头注与 docs "翻译模式"一节)。静态未覆盖的指令 offset 登记到
+        ``self._skipped_offsets``(AUTO 模式 compile_auto 的去重依据)。
         """
+        self._skipped_offsets = set()
         spell_name = ""
         gui_id = -1
         for op in _iter_ops(ir.nodes):
@@ -824,6 +833,25 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         cmds: dict[int, dict[str, Any]] = {}  # INIT_BULLET_CMD 槽位状态(文本序)
         actions = self._compile_ir_nodes(ir.nodes, env, unknown, cmds, "", False, 0)
         return self._assemble_spell(spell_name, gui_id, actions, "静态控制流(CONTROL 模式)近似")
+
+    def merge(self, static_result: dict, residual_result: dict) -> dict:
+        """AUTO 合并: 动态补充段追加进静态骨架同一 SpellDefinition 的 phase。
+
+        动态段动作自带 tick_interval/compare 门控(绝对帧), 与静态段的
+        repeat/delay 结构并存不冲突; 追加在静态段之后。静态骨架全空的边界
+        (如寒符: 全靠 SET_SHOOT_INTERVAL 自动射击)由动态段兜底, phases
+        不会输出空。display/id 以静态侧为准(compile_ir 总能从 IR 里拿到
+        BEGIN_SPELLCARD, 与指令跳过无关)。
+        """
+        phase_id = static_result["entry_phase"]
+        residual_phase = residual_result["phases"][residual_result["entry_phase"]]
+        static_result["phases"][phase_id]["on_tick"].extend(residual_phase["on_tick"])
+        static_result["display"]["description"] = (
+            f"{self.game} ECL sub {self.last_sub_id} 的声明式 AUTO 翻译"
+            f"(静态骨架+动态补盲, speed_scale={self.speed_scale}, "
+            "详见 docs/ecl_to_youkai_migration.md)"
+        )
+        return static_result
 
     # ---- IR 树遍历 ----
 
@@ -907,6 +935,9 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         if op in _VAR_WRITE_OPS:
             self._env_update(env, unknown, ins)
             return None
+        # 静态未覆盖(移动/音效/SET_SHOOT_INTERVAL/SPAWN_PREV 等): 登记 offset,
+        # AUTO 模式里这些指令触发的运行时事件会进动态补充段
+        self._skipped_offsets.add(ins.offset)
         log.debug("CONTROL: 指令 id={} offset={:#x} 不可静态翻译, 已跳过", op, ins.offset)
         return None
 
@@ -1112,6 +1143,7 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         """
 
         def fail(what: str) -> None:
+            self._skipped_offsets.add(ins.offset)
             log.warning(
                 "CONTROL: 弹幕指令 offset={:#x} 的{}依赖不可映射的 ECL 变量, 已跳过",
                 ins.offset,
@@ -1170,6 +1202,7 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         """激光 spawn 指令 → _fire_laser 同款 data(v1 仅常量操作数)。"""
 
         def fail(what: str) -> None:
+            self._skipped_offsets.add(ins.offset)
             log.warning(
                 "CONTROL: 激光指令 offset={:#x} 的{}依赖不可映射的 ECL 变量, 已跳过",
                 ins.offset,

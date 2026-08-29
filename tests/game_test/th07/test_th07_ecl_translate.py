@@ -114,3 +114,55 @@ def test_control_mode_loop_structure_preserved() -> None:
     fires = [a for a in all_actions if a["type"] == "fire_danmaku"]
     assert fires and all(f["count"] >= 1 and f["speed"] > 0 for f in fires)
     json.dumps(out, ensure_ascii=False)
+
+
+# ==================== AUTO 模式(静态骨架 + 动态补盲) ====================
+
+
+def test_auto_mode_lingering_cold_filled_by_dynamic() -> None:
+    """寒符 AUTO: 自动射击(SET_SHOOT_INTERVAL)是静态盲区, 动态段补回 → 非空。
+
+    这是 AUTO 的核心验收: 同一张卡的 CONTROL 输出近乎全空(v1 不覆盖
+    自动射击), AUTO 必须靠 provenance=None 的残余事件兜底出内容。
+    """
+    tr = YoukaiDanmakuTranslator("th07")
+    control = tr.translate(_ecl_bytes(), _LINGERING_COLD_SUB, mode=TranslateMode.CONTROL)
+    control_actions = control["phases"][control["entry_phase"]]["on_tick"]
+    assert not _walk_actions(control_actions), "寒符 CONTROL 应为空(静态盲区)"
+
+    out = tr.translate(
+        _ecl_bytes(), _LINGERING_COLD_SUB, mode=TranslateMode.AUTO, max_frames=3600
+    )
+    assert "寒符" in out["display"]["name"]
+    actions = out["phases"][out["entry_phase"]]["on_tick"]
+    assert actions, "静态骨架为空时动态段兜底, phases 不得为空"
+    all_actions = _walk_actions(actions)
+    fires = [a for a in all_actions if a["type"] == "fire_danmaku"]
+    assert fires
+    gated = [
+        a for a in actions if a.get("condition", {}).get("type") == "tick_interval"
+    ]
+    assert gated, "自动射击的周期 pattern 应折叠成 tick_interval 门控"
+    json.dumps(out, ensure_ascii=False)
+
+
+def test_auto_mode_tenken_structure_without_duplicates() -> None:
+    """天符 AUTO: repeat 结构保留; 静态已覆盖的事件不重复进动态补充段。
+
+    实测(provenance 溯源): 90 条弹幕事件里 41 条来自静态已翻译指令(去重
+    丢弃), 50 条来自 4 条变量依赖、静态求值失败的 fire 指令 —— 动态补回
+    折叠为 10 条 fire, 故 AUTO = 静态 4 + 补盲 10。
+    """
+    ecl = GameArchive.open(DEFAULT_DATA).load("ecldata2.ecl")
+    tr = YoukaiDanmakuTranslator("th07")
+    control = tr.translate(ecl, 64, mode=TranslateMode.CONTROL)
+    auto = tr.translate(ecl, 64, mode=TranslateMode.AUTO, max_frames=3600)
+
+    auto_all = _walk_actions(auto["phases"][auto["entry_phase"]]["on_tick"])
+    assert any(a["type"] == "repeat" for a in auto_all), "静态骨架的 repeat 应保留"
+    auto_fires = [a for a in auto_all if a["type"] == "fire_danmaku"]
+    control_all = _walk_actions(control["phases"][control["entry_phase"]]["on_tick"])
+    control_fires = [a for a in control_all if a["type"] == "fire_danmaku"]
+    assert len(control_fires) == 4
+    assert len(auto_fires) == 4 + 10  # 静态骨架 + 动态补盲(无重复)
+    json.dumps(auto, ensure_ascii=False)
