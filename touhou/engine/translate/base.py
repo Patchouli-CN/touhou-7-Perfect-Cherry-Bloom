@@ -380,7 +380,11 @@ class EclTranslatorBase(EclHost, abc.ABC):
         residual = [
             ev
             for ev in trace
-            if ev.origin is None
+            # spellcard 事件是运行时身份元数据(难度分支宣言哪张卡只有跑起来
+            # 才知道, 静态 compile_ir 拿的是文本序第一条)——始终保留,
+            # 由 merge 决定 display 名以运行时宣言为准
+            if ev.kind == "spellcard"
+            or ev.origin is None
             or ev.origin[0] != self.last_sub_id
             or ev.origin[1] in skipped
         ]

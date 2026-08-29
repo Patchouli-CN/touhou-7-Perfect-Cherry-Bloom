@@ -664,3 +664,32 @@ def test_auto_merge_not_implemented() -> None:
     tr = StubIrOnlyTranslator(FAKE_IR_GAME)
     with pytest.raises(NotImplementedError, match="不支持 AUTO 模式"):
         tr.translate(_mk(_fire_ring(0)), 0, mode=TranslateMode.AUTO)
+
+
+class StubBranchCardMachine(StubAutoMachine):
+    """符卡宣言归属静态已覆盖指令的场景(难度分支运行时宣言的模拟)。
+
+    静态 compile_ir 拿文本序第一条 BEGIN_SPELLCARD(氷符「テスト」), 运行时
+    实际宣言另一张(反魂蝶 -八分咲-), 且该宣言的 origin 指向静态已覆盖指令
+    —— 旧 AUTO 过滤会把这条事件丢掉, display 名错用静态首条。
+    """
+
+    def step(self) -> bool:
+        if self._t == 0:
+            self.executing_instr = self._fires[0]
+            self.host.begin_spellcard(None, 9, 0, "反魂蝶 -八分咲-")
+            self.executing_instr = None
+        return super().step()
+
+
+FAKE_BRANCH_GAME = "test04"  # 难度分支运行时宣言覆盖静态名
+if FAKE_BRANCH_GAME not in registered_games():
+    register_ecl(FAKE_BRANCH_GAME, file_format=EclFile)(StubBranchCardMachine)
+
+
+def test_auto_display_name_prefers_runtime_declaration() -> None:
+    """AUTO: display 名以运行时实际宣言为准(难度分支是静态盲区)。"""
+    tr = YoukaiDanmakuTranslator(FAKE_BRANCH_GAME)
+    out = tr.translate(_auto_data(), 0, mode=TranslateMode.AUTO)
+    assert out["display"]["name"] == "反魂蝶 -八分咲-"
+    assert out["custom_names"]["phase:main"] == "反魂蝶 -八分咲-"

@@ -840,12 +840,17 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         动态段动作自带 tick_interval/compare 门控(绝对帧), 与静态段的
         repeat/delay 结构并存不冲突; 追加在静态段之后。静态骨架全空的边界
         (如寒符: 全靠 SET_SHOOT_INTERVAL 自动射击)由动态段兜底, phases
-        不会输出空。display/id 以静态侧为准(compile_ir 总能从 IR 里拿到
-        BEGIN_SPELLCARD, 与指令跳过无关)。
+        不会输出空。**display 名以运行时宣言为准**: 静态 compile_ir 拿的是
+        文本序第一条 BEGIN_SPELLCARD, 而难度分支(如反魂蝶一分咲..八分咲)
+        实际宣言哪张只有跑起来才知道——动态段真宣言了卡就覆盖静态名。
         """
         phase_id = static_result["entry_phase"]
         residual_phase = residual_result["phases"][residual_result["entry_phase"]]
         static_result["phases"][phase_id]["on_tick"].extend(residual_phase["on_tick"])
+        runtime_name = residual_result.get("custom_names", {}).get("phase:main")
+        if runtime_name and runtime_name != static_result["display"]["name"]:
+            static_result["display"]["name"] = runtime_name
+            static_result["custom_names"] = dict(residual_result["custom_names"])
         static_result["display"]["description"] = (
             f"{self.game} ECL sub {self.last_sub_id} 的声明式 AUTO 翻译"
             f"(静态骨架+动态补盲, speed_scale={self.speed_scale}, "

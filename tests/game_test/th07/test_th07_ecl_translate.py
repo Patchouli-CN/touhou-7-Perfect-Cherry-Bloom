@@ -166,3 +166,19 @@ def test_auto_mode_tenken_structure_without_duplicates() -> None:
     assert len(control_fires) == 4
     assert len(auto_fires) == 4 + 10  # 静态骨架 + 动态补盲(无重复)
     json.dumps(auto, ensure_ascii=False)
+
+
+def test_auto_mode_hankaichou_display_name_is_lunatic_branch() -> None:
+    """反魂蝶(sub 62)AUTO + difficulty=3: display 名取运行时宣言的八分咲。
+
+    回归: 该 sub 四个难度变体四条 BEGIN_SPELLCARD, 静态 compile_ir 拿文本序
+    第一条(一分咲/Easy); 运行时宣言事件的 origin 指向分支指令, 旧 AUTO
+    过滤把它当"静态已覆盖"丢弃 → display 名错成一分咲。
+    """
+    ecl = GameArchive.open(DEFAULT_DATA).load("ecldata6.ecl")
+    tr = YoukaiDanmakuTranslator("th07")
+    out = tr.translate(
+        ecl, 62, mode=TranslateMode.AUTO, context={"difficulty": 3}, max_frames=3600
+    )
+    assert out["display"]["name"] == "「反魂蝶 -八分咲-」"
+    json.dumps(out, ensure_ascii=False)

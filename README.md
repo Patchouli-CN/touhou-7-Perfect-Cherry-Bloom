@@ -7,7 +7,7 @@
 ![python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)
 ![pygame](https://img.shields.io/badge/render-pygame-green)
 ![msgspec](https://img.shields.io/badge/data-msgspec-orange)
-![tests](https://img.shields.io/badge/tests-871%20passed-brightgreen)
+![tests](https://img.shields.io/badge/tests-873%20passed-brightgreen)
 
 ![gameplay](docs/assets/gameplay.png)
 

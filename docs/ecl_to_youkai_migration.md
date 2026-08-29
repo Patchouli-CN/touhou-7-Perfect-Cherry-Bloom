@@ -91,6 +91,10 @@ AUTO 把两路都跑一遍, 语义是**静态出骨架, 动态补盲区, 已覆�
 3. **合并**: 动态补充段(天然带 tick_interval/compare 门控)追加进静态
    骨架同一 SpellDefinition 的 phase `on_tick`, 与 repeat/delay 结构并存
    不冲突。静态骨架全空的边界(如寒符)由动态段兜底, phases 不会输出空。
+   **display 名以运行时宣言为准**: spellcard 事件(难度分支实际宣言哪张
+   卡)始终保留进动态段 —— 静态 compile_ir 拿的是文本序第一条
+   BEGIN_SPELLCARD, 而反魂蝶这类卡一个 sub 四个难度变体(一分咲..八分咲,
+   运行时按难度变量分支), 宣言哪张只有跑起来才知道。
 
 实测对照:
 
