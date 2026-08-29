@@ -13,13 +13,14 @@ class EclCodec:
 
     用法::
 
-        codec = EclCodec(game_name or None) 
+        codec = EclCodec(game_name or None)  # None = 作品无关, 直用 engine 的 EclFile
         ecl = codec.decode(data)        # bytes -> EclFile
         data2 = codec.encode(ecl)       # EclFile -> bytes
 
     错误路径:
     - 作品未注册: ``get_game`` 抛 NotRegisteredError(带已注册列表);
     - 已注册但缺 ECL 维度: 构造期抛 ValueError;
+    - 格式类缺序列化能力: ``encode`` 抛 NotImplementedError。
     """
 
     def __init__(self, game: str | None = None) -> None:
@@ -49,8 +50,13 @@ class EclCodec:
 
     def encode(self, ecl: EclFile) -> bytes:
         """把解析产物写回 .ecl 字节流; 格式类未实现 serialize 时报错。"""
-        if self._ecl_spec:
-            out: bytes = self._ecl_spec.file_format.serialize(ecl)
-        else:
-            out = EclFile.serialize(ecl)
+        fmt = self._ecl_spec.file_format if self._ecl_spec else EclFile
+        serialize = getattr(fmt, "serialize", None)
+        if not callable(serialize):
+            raise NotImplementedError(
+                f"作品 {self.game!r} 的 ECL 格式类 {fmt.__name__} 未实现 "
+                f"serialize(ECL 格式类需提供 parse/serialize 对, "
+                f"见 touhou/registry.py register_ecl)"
+            )
+        out: bytes = serialize(ecl)
         return out

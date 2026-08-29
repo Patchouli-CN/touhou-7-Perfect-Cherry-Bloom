@@ -80,12 +80,15 @@ def test_serialize_roundtrip_real_ecldata() -> None:
 # ---- EclCodec 入口 ----
 
 
-def test_codec_default_game_is_th07() -> None:
-    """默认作品名 th07; 经注册表拿到的格式类就是 engine 的 EclFile。"""
+def test_codec_default_is_game_agnostic() -> None:
+    """默认(不传作品名)= 作品无关模式: 直用 engine 的 EclFile, 不查注册表。"""
     codec = EclCodec()
-    assert codec.game == "th07"
-    assert codec._ecl_spec.file_format is EclFile
-    assert codec._ecl_spec.machine is not None
+    assert codec.game is None
+    assert codec._ecl_spec is None
+    data = _build_ecl([_instr(0, 4, args=(42,))])
+    ecl = codec.decode(data)
+    assert isinstance(ecl, EclFile)
+    assert codec.encode(ecl) == data
 
 
 def test_codec_decode_encode_synthetic() -> None:
