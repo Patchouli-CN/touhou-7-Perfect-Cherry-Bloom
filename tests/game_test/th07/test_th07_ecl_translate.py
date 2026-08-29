@@ -11,7 +11,7 @@ import json
 import pytest
 
 import touhou  # noqa: F401  # import 即完成 th07 注册
-from touhou.engine.translate import YoukaiDanmakuTranslator
+from touhou.engine.translate import TranslateMode, YoukaiDanmakuTranslator
 from touhou.paths import DEFAULT_DATA
 from touhou.schema.archive import GameArchive
 
@@ -69,4 +69,48 @@ def test_compile_produces_valid_spell_structure() -> None:
     assert fire["count"] >= 1 and fire["speed"] > 0 and fire["lifetime"] >= 1
 
     # 可序列化(交付物就是 JSON)
+    json.dumps(out, ensure_ascii=False)
+
+
+def _walk_actions(actions: list) -> list:
+    out = []
+    for a in actions:
+        out.append(a)
+        for key in ("body", "if_true", "if_false"):
+            sub = a.get(key)
+            if isinstance(sub, list):
+                out.extend(_walk_actions(sub))
+    return out
+
+
+def test_control_mode_real_spellcard_sub() -> None:
+    """CONTROL(静态控制流, 不走 VM): 真实符卡 sub → 合法 SpellDefinition 结构。"""
+    tr = YoukaiDanmakuTranslator("th07")
+    out = tr.translate(_ecl_bytes(), _LINGERING_COLD_SUB, mode=TranslateMode.CONTROL)
+
+    assert out["id"].startswith("youkaishomecoming:ecl_th07_card")
+    assert out["entry_phase"] == f"{out['id']}/main"
+    assert "寒符" in out["display"]["name"]
+    phase = out["phases"][out["entry_phase"]]
+    assert all("type" in a for a in phase["on_tick"])
+    json.dumps(out, ensure_ascii=False)
+
+
+def test_control_mode_loop_structure_preserved() -> None:
+    """二面 天符「天仙鳴動」(ecldata2 sub 64): 波次循环保留为嵌套 repeat。"""
+    ecl = GameArchive.open(DEFAULT_DATA).load("ecldata2.ecl")
+    tr = YoukaiDanmakuTranslator("th07")
+    out = tr.translate(ecl, 64, mode=TranslateMode.CONTROL)
+
+    actions = out["phases"][out["entry_phase"]]["on_tick"]
+    all_actions = _walk_actions(actions)
+    repeats = [a for a in all_actions if a["type"] == "repeat"]
+    assert repeats, "回边循环应重建为 repeat"
+    # 有限计数循环(DEC_JUMP 计数器初值可静态确定)
+    assert any(isinstance(r["count"], int) and r["count"] < 100000 for r in repeats)
+    # 循环体的时间语义: delay 迭代表达式 + fire
+    delays = [a for a in all_actions if a["type"] == "delay"]
+    assert any("$i" in d["delay_ticks"] for d in delays)
+    fires = [a for a in all_actions if a["type"] == "fire_danmaku"]
+    assert fires and all(f["count"] >= 1 and f["speed"] > 0 for f in fires)
     json.dumps(out, ensure_ascii=False)

@@ -21,6 +21,7 @@ laser trace 事件的 ``updates``/``stop_frame`` 字段。
 from __future__ import annotations
 
 import abc
+from enum import Enum
 from typing import Any
 
 import msgspec
@@ -38,8 +39,23 @@ from ..ecl import (
     Vec3,
 )
 from ..ecl_codec import EclCodec
+from .ir import IrSeq, build_ir
 
-__all__ = ["TraceEvent", "EclTranslatorBase", "decode_spellcard_name"]
+__all__ = ["TraceEvent", "TranslateMode", "EclTranslatorBase", "decode_spellcard_name"]
+
+
+class TranslateMode(Enum):
+    """ECL 翻译模式(translate 的 mode 参数)。
+
+    - ``DIRECT``: 直接翻 —— 回放作品 VM 录逐帧 trace(record)再编译,
+      忠实的运行时快照, 但循环/条件被展开压扁;
+    - ``CONTROL``: 控制流翻 —— 不走 VM, 对指令流做静态控制流重建
+      (parse_ir → IrNode 树)再编译, 保留循环/条件结构, 但是静态近似
+      (依赖 ECL 变量的操作数可能丢失)。
+    """
+
+    DIRECT = "direct"
+    CONTROL = "control"
 
 
 class TraceEvent(msgspec.Struct):
@@ -223,14 +239,48 @@ class EclTranslatorBase(EclHost, abc.ABC):
             )
         return self.trace
 
-    def translate(self, ecl_data: bytes, sub_id: int, **kw: Any) -> dict:
-        """模板方法: record() → compile(trace) → 可 json.dumps 的 dict。"""
+    def translate(
+        self,
+        ecl_data: bytes,
+        sub_id: int,
+        *,
+        mode: TranslateMode = TranslateMode.DIRECT,
+        **kw: Any,
+    ) -> dict:
+        """模板方法: 按模式分发 → 可 json.dumps 的 dict。
+
+        - ``TranslateMode.DIRECT``: record() → compile(trace)(回放录制,
+          ``**kw`` 透传给 record: max_frames/context);
+        - ``TranslateMode.CONTROL``: parse_ir() → compile_ir(ir)(静态控制流,
+          不走 VM, record 参数不适用, 传了记 debug 忽略)。
+        """
+        if mode is TranslateMode.CONTROL:
+            if kw:
+                log.debug("CONTROL 模式不走 VM 回放, record 参数被忽略: {}", sorted(kw))
+            return self.compile_ir(self.parse_ir(ecl_data, sub_id))
         trace = self.record(ecl_data, sub_id, **kw)
         return self.compile(trace)
+
+    def parse_ir(self, ecl_data: bytes, sub_id: int) -> IrSeq:
+        """CONTROL 模式前半: 静态解析 sub 指令流 → 控制流 IR(ir.py build_ir)。"""
+        ecl_file: EclFile = self._codec.decode(ecl_data)
+        if not (0 <= sub_id < len(ecl_file.subs)):
+            raise ValueError(
+                f"sub_id {sub_id} 越界(该 ECL 共 {len(ecl_file.subs)} 个 sub)"
+            )
+        self.last_sub_id = sub_id
+        return build_ir(ecl_file, sub_id)
 
     @abc.abstractmethod
     def compile(self, trace: list[TraceEvent]) -> dict:
         """把 trace 编译成目标格式(dict, 必须可 json.dumps)。"""
+
+    def compile_ir(self, ir: IrSeq) -> dict:
+        """把控制流 IR 编译成目标格式(CONTROL 模式; 子类按需重写)。"""
+        raise NotImplementedError(
+            f"{type(self).__name__} 未实现 compile_ir: "
+            "该翻译器不支持 CONTROL 模式(静态控制流翻译)"
+        )
 
     # ---- 弹幕录制(EclHost 回调面, ecl.py EclHost) ----
 

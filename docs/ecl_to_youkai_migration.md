@@ -9,9 +9,69 @@
 
 - `EclTranslatorBase`(base.py): `EclHost` 的**录制**实现。`record()` 用
   注册表里的作品 VM(`EclMachineTh07`)逐帧回放 sub, 把每次弹幕回调记成
-  带帧戳的 `TraceEvent`; `translate()` = `record()` → `compile()` 模板方法。
+  带帧戳的 `TraceEvent`; `translate()` 按 `TranslateMode` 双模式分发
+  (DIRECT = record → `compile(trace)`; CONTROL = `parse_ir()` →
+  `compile_ir(ir)`, 见下节)。
+- `ir.py`: CONTROL 模式的控制流 IR(`IrSeq`/`IrLoop`/`IrIf`/`IrOp`)与
+  静态重建算法(作品无关)。
 - `YoukaiDanmakuTranslator`(youkai.py): `compile(trace)` 把逐帧命令式
-  trace **折叠**成妖归的声明式动作 JSON。
+  trace **折叠**成妖归的声明式动作 JSON; `compile_ir(ir)` 把控制流 IR
+  **直接映射**成妖归动作(循环/条件结构保留)。
+
+## 翻译模式(DIRECT vs CONTROL)
+
+`translate(ecl_data, sub_id, *, mode=...)` 两模式是两种不同的翻译哲学:
+
+| | DIRECT(默认) | CONTROL |
+|---|---|---|
+| 路线 | 回放作品 VM 录逐帧 trace → 折叠 | 静态控制流重建 IR → 直接映射(不走 VM) |
+| 保真度 | **忠实的运行时快照**(变量演进、rank 插值、自动射击都算出来了) | **静态近似**(只认指令字面值 + 简单仿射变量) |
+| 结构 | 循环/条件被展开压扁成 tick_interval 平铺 | **保留循环/条件**(repeat/conditional/delay) |
+| 变量依赖 | 不存在(回放时已是具体值) | 映射不了的跳过(log.warning) |
+| 适用 | 要"这张卡实际长什么样"的权威快照 | 要可读的波次结构/想手调循环参数/给 LuaSTG 类目标供结构化 IR |
+
+CONTROL 的 IR 重建规则(ir.py, 作品无关):
+
+- **回边 → `IrLoop`**: 无条件 JUMP 跳回前面的指令 = 无限循环
+  (`condition=None`); `DEC_JUMP` 回边 = 计数循环(`counter_var`);
+  `JUMP_IF_*` 回边 = 条件循环。节点保留时间语义: `loop_time`(回边重置的
+  context time)与 `period`(一轮帧数), 迭代 k 里 time=T 的指令在绝对帧
+  T + k×period 执行。
+- **条件前跳 → `IrIf`**: `JUMP_IF_*` 向前跳 = if; if_true 末尾是无条件
+  JUMP 且跳到更后面时识别出 else 双臂。
+- **其余 → `IrOp`**: 原样携带 `EclInstr`。goto 蛛网不做完备结构化:
+  回边目标不在节点边界、循环体内有逃逸跳转等不可归约情形保留为 IrOp
+  平铺(log.debug 说明), 另有深度(32)/节点数(4096)兜底, 不会死循环/炸栈。
+
+CONTROL 的妖归映射(youkai.py compile_ir):
+
+- `IrLoop` → `repeat`: DEC_JUMP 计数器初值可静态确定 → 有限 `count`;
+  无限/次数未知 → `count=100000` 近似上限(≈27.8 分钟, 覆盖任意真实符卡)。
+  循环体发射包 `delay`(`delay_ticks = "$i * period + T"`, `$i` 是 repeat
+  的 index_variable, 嵌套用 `$j`/`$k`)。
+- `IrIf` → `conditional`(常量条件); 条件依赖变量且不可静态求值 →
+  log.warning, if_true 内联近似(if_false 丢弃)。
+- 弹幕/激光 IrOp → `fire_danmaku`/`fire_laser`(映射表与 DIRECT 共用)。
+- **变量操作数**: 能识别成"SET 初值 + 每轮 ADD/SUB/INC/DEC 步进"仿射形式
+  的, angle1 映射成 NumberExpr 简写(如 `$j * -22.5`, 度制); 其他操作数
+  (count/speed/sprite 等)只接受常量, 带步进或不可求值 → log.warning 并
+  跳过该指令。未写过的变量按 ECL 默认 0 处理 —— **难度分支变量也会取 0**,
+  即 CONTROL 静态走的是 Easy 分支结构(首张 BEGIN_SPELLCARD 名也多为
+  `-Easy-` 变体)。
+- v1 不覆盖: `SET_SHOOT_INTERVAL` 自动射击(是 VM 帧更新行为, 不是指令)、
+  激光的跨指令角度更新(ADD_LASER_ANGLE 等)、INIT_INTERP 插值 —— 这些卡的
+  CONTROL 输出会偏少甚至为空(如实反映静态可见性)。
+
+两模式实测对照(二面 天符「天仙鳴動」ecldata2 sub 64):
+
+- CONTROL: `repeat(100000) → repeat(5) → delay("$i * 644 + $j * 20") →
+  fire(line 10发, angle_offset="$j * -22.5")` —— 外层无限循环每 644 帧
+  一轮, 内层 5 波每 20 帧一波, 每波旋转 -22.5°, 结构一目了然。
+- DIRECT: `conditional(tick_interval interval=20 offset=240) →
+  fire(line 11发, angle_offset="phase_tick * -1.125 + 270")` —— 同样的
+  旋转(-1.125°/帧 × 20 帧 = -22.5°/波)被压扁成帧级表达式; count 差 1
+  (DIRECT 是回放运行时值, 含 rank/ spellcard 状态影响)。
+- 输出均过官方校验器 OK。
 
 ## 用法
 
@@ -200,7 +260,12 @@ uv run python scratch_dbg/youkai-danmaku-json/scripts/validate_spell_json.py lin
 
 ## 测试
 
-- `tests/test_ecl_translate.py`: 通用层(stub VM), 钉 record/translate
-  模板方法、激光假句柄追踪、错误路径、折叠与激光 mover 结构;
+- `tests/test_ecl_translate.py`: 通用层(stub VM + 手工构造 ECL 字节流),
+  钉 record/translate 模板方法、激光假句柄追踪、错误路径、折叠与激光
+  mover 结构; CONTROL 模式钉模式分发、不支持模式的报错、IR 重建
+  (回边→loop、条件前跳→if/else、嵌套循环、不可归约兜底)与妖归
+  compile_ir 的 repeat/delay/angle 表达式映射;
 - `tests/game_test/th07/test_th07_ecl_translate.py`: 真实 th07.dat 回放
-  寒符 sub, 断言 trace 非空与 SpellDefinition 结构(无数据自动 skip)。
+  寒符 sub(DIRECT), 断言 trace 非空与 SpellDefinition 结构; CONTROL 模式
+  跑寒符 sub 与 天符「天仙鳴動」sub(ecldata2 sub 64), 断言 repeat/delay
+  结构(无数据自动 skip)。
