@@ -31,6 +31,8 @@ from touhou.engine.translate import (
     TranslateMode,
     YoukaiDanmakuTranslator,
     decode_spellcard_name,
+    list_spellcards,
+    spellcard_name,
 )
 from touhou.registry import register_ecl, registered_games
 
@@ -505,6 +507,24 @@ def test_ir_irreducible_escape_jump_stays_flat() -> None:
     )
     nodes = _nodes_of(StubTranslator(FAKE_IR_GAME).parse_ir(data, 0))
     assert len(nodes) == 6 and all(isinstance(n, IrOp) for n in nodes)
+
+
+# ---- 符卡名 helper(spellcard_name / list_spellcards) ----
+
+
+def test_spellcard_name_and_list_spellcards() -> None:
+    """字节切片/XOR 解码收进 helper: 调用方只给指令/EclFile, 不碰布局。"""
+    data = _mk(
+        _fire_ring(30),
+        _spellcard_instr(7, "氷符「テスト」"),
+        _spellcard_instr(8, "霜符「フロスト」"),
+    )
+    ecl_file = EclFile.parse(data)
+    cards = list_spellcards(ecl_file)
+    assert cards == [(0, "氷符「テスト」"), (0, "霜符「フロスト」")]
+    # 单指令 helper 与列表 helper 同源
+    instr = [ins for ins in ecl_file.subs[0] if ins.id == EclOpcode.BEGIN_SPELLCARD][0]
+    assert spellcard_name(instr) == "氷符「テスト」"
 
 
 # ---- 妖归 CONTROL 端到端(合成字节流) ----

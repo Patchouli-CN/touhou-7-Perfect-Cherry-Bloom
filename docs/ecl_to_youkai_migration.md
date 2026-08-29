@@ -162,14 +162,14 @@ uv run python <youkai-danmaku-json>/scripts/validate_spell_json.py lingering_col
 
 ```python
 from touhou.engine.ecl import EclFile
-from touhou.engine.translate import decode_spellcard_name
+from touhou.engine.translate import list_spellcards
 
-ecl_file = EclFile.parse(ecl)
-for sub_id, sub in enumerate(ecl_file.subs):
-    for ins in sub:
-        if ins.id == 90:  # BEGIN_SPELLCARD
-            print(sub_id, decode_spellcard_name(ins.raw_arg_bytes()[4:52]))
+for sub_id, name in list_spellcards(EclFile.parse(ecl)):
+    print(sub_id, name)   # 42 リンガリングコールド ...
 ```
+
+（底层解码是 XOR 0xAA + Shift-JIS，布局细节收在 `spellcard_name`/
+`decode_spellcard_name` 里，调用方不用关心字节区间。）
 
 注意一张卡常带多个难度变体(`skipOnDifficulty` 位掩码); 回放难度用
 `record(..., context={"difficulty": 2})` 指定(0=E 1=N 2=H 3=L, 默认 1)。

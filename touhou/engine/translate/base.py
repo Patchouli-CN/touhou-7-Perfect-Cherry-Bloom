@@ -38,6 +38,8 @@ from ..ecl import (
     EclEnemyState,
     EclFile,
     EclHost,
+    EclInstr,
+    EclOpcode,
     EclWorld,
     EnemyBulletShooter,
     EnemyLaserShooter,
@@ -46,7 +48,14 @@ from ..ecl import (
 from ..ecl_codec import EclCodec
 from .ir import IrIf, IrLoop, IrNode, IrOp, IrSeq, build_ir
 
-__all__ = ["TraceEvent", "TranslateMode", "EclTranslatorBase", "decode_spellcard_name"]
+__all__ = [
+    "TraceEvent",
+    "TranslateMode",
+    "EclTranslatorBase",
+    "decode_spellcard_name",
+    "list_spellcards",
+    "spellcard_name",
+]
 
 
 class TranslateMode(Enum):
@@ -94,9 +103,36 @@ def decode_spellcard_name(raw: bytes) -> str:
     XOR 0xAA, NUL 截断。th07 VM(games/th07/ecl_vm.py _begin_spellcard)
     已内联同款解码 —— 宿主回调收到的 name 是解码后的; 本 helper 供需要
     直接解原始指令字节的场景(或其他作品 VM 未解码时)。
+
+    一般不需要直接调本函数: 拿整条指令用 ``spellcard_name(instr)``,
+    列全文件符卡用 ``list_spellcards(ecl_file)``。
     """
     name_bytes = bytes(b ^ 0xAA for b in raw)
     return name_bytes.split(b"\x00", 1)[0].decode("shift_jis", errors="replace")
+
+
+#: BEGIN_SPELLCARD 指令的内联名字段(字 1..12 = 原始字节 4..52, th07 布局,
+#: EclManager.cpp BeginSpellcard)。布局知识收在本模块, 调用方不该自己切片
+_NAME_SLICE = slice(4, 52)
+
+
+def spellcard_name(instr: EclInstr) -> str:
+    """BEGIN_SPELLCARD 指令 → 符卡名(内联名字段切片 + 解码一步到尾)。"""
+    return decode_spellcard_name(instr.raw_arg_bytes()[_NAME_SLICE])
+
+
+def list_spellcards(ecl_file: EclFile) -> list[tuple[int, str]]:
+    """列出 ECL 文件里全部符卡 ``[(sub_id, 符卡名)]`` —— 找翻译目标用::
+
+        for sub_id, name in list_spellcards(EclFile.parse(ecl_data)):
+            print(sub_id, name)
+    """
+    out: list[tuple[int, str]] = []
+    for sub_id, sub in enumerate(ecl_file.subs):
+        for ins in sub:
+            if ins.id == EclOpcode.BEGIN_SPELLCARD:
+                out.append((sub_id, spellcard_name(ins)))
+    return out
 
 
 def _cmd_snapshot(c: BulletCommandData) -> dict[str, Any]:

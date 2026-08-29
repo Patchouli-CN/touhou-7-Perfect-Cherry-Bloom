@@ -60,7 +60,7 @@ from typing import Any, Iterator, Optional
 from ..bullet_commands import CmdFlag
 from ..ecl import EclInstr, EclOpcode
 from ...logger import logger as log
-from .base import EclTranslatorBase, TraceEvent, decode_spellcard_name
+from .base import EclTranslatorBase, TraceEvent, spellcard_name
 from .ir import IrCond, IrIf, IrLoop, IrNode, IrOp, IrOperand, IrSeq
 
 __all__ = ["YoukaiDanmakuTranslator"]
@@ -825,7 +825,7 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         for op in _iter_ops(ir.nodes):
             if op.instr.id == EclOpcode.BEGIN_SPELLCARD:
                 ins = op.instr
-                spell_name = decode_spellcard_name(ins.raw_arg_bytes()[4:52])
+                spell_name = spellcard_name(ins)
                 gui_id = ins.arg_i16(0, 0)
                 break
         env: _VarEnv = {}

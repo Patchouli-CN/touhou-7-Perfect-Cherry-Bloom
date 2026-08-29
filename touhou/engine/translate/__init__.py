@@ -8,7 +8,14 @@
   SpellDefinition 映射。
 """
 
-from .base import EclTranslatorBase, TraceEvent, TranslateMode, decode_spellcard_name
+from .base import (
+    EclTranslatorBase,
+    TraceEvent,
+    TranslateMode,
+    decode_spellcard_name,
+    list_spellcards,
+    spellcard_name,
+)
 from .ir import IrCond, IrIf, IrLoop, IrNode, IrOp, IrOperand, IrSeq, build_ir
 from .youkai import YoukaiDanmakuTranslator
 
@@ -26,4 +33,6 @@ __all__ = [
     "YoukaiDanmakuTranslator",
     "build_ir",
     "decode_spellcard_name",
+    "list_spellcards",
+    "spellcard_name",
 ]
