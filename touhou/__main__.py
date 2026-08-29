@@ -61,7 +61,7 @@ def main() -> None:
     )
     _print_banner()
     logger.info("=== 游戏启动 ===")
-    log_environment(logger)
+    log_environment(logger, game=args.game)
     try:
         # 窗口版: 弹出游戏界面, 阻塞至关窗
         TouhouWorld(game=args.game, headless=False).run()

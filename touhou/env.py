@@ -51,10 +51,23 @@ def detect_environment(data_path: str | Path | None = None) -> dict[str, str]:
     return info
 
 
-def log_environment(log, data_path: str | Path | None = None) -> None:
-    """把环境探测结果写进 INFO 日志。"""
+def log_environment(
+    log, data_path: str | Path | None = None, game: str | None = None
+) -> None:
+    """把环境探测结果写进 INFO 日志。
+
+    ``game`` 是本次请求启动的作品名(如 CLI 的 --game): 已注册则显示作品
+    标题, 未注册则明确标注——避免"请求 th08 却打印 th07 标题"的误导。
+    不传时回落旧行为(显示首个已注册作品的标题)。
+    """
     info = detect_environment(data_path)
-    log.info("作品: {}", info["title"])
+    if game is not None:
+        if game in registered_games():
+            log.info("启动作品: {} — {}", game, GAME_TITLES.get(game, game))
+        else:
+            log.info("启动作品: {} (未注册! 已注册: {})", game, info["games"])
+    else:
+        log.info("作品: {}", info["title"])
     log.info(
         "环境: Python {} | pygame {} | {}",
         info["python"],
