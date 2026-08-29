@@ -66,12 +66,12 @@ export TOUHOU_DAT=/games/th07/th07.dat  # Linux
 统一入口 `TouhouWorld`（headless 事件流 / 窗口版游戏）：
 
 ```python
-from touhou import TouhouWorld, WorldData, Character, Difficulty
+from touhou import TouhouWorld, WorldData
 
 wd = WorldData(res_dat=".../th07.dat", bgm_dat=".../thbgm.dat")  # 均可省略走默认解析
 
-tw = TouhouWorld(wd=wd, character=Character.REIMU_A,
-                 difficulty=Difficulty.NORMAL, lives=3, headless=True)
+tw = TouhouWorld(wd=wd, character="ReimuA",
+                 difficulty="Normal", lives=3, headless=True)
 stream = tw.run()            # headless: 返回 TouhouWorldEventStream
 for event in stream:         # 迭代即驱动世界, 终局自动收尾
     print(event.kind.value, event.name or "")
@@ -90,7 +90,7 @@ def my_policy(game) -> Input:   # 逐帧输入策略: 观测面与 Game 门面�
 
 # 窗口照开, 跳过标题菜单直接进游戏, 每帧输入来自策略而非键盘
 # (角色/难度/残机/种子以 TouhouWorld 自身属性为准); Esc 随时中止
-tw3 = TouhouWorld(character=Character.MARISA_A, difficulty=Difficulty.NORMAL,
+tw3 = TouhouWorld(character="MarisaA", difficulty="Normal",
                   headless=False, auto_input=my_policy)
 tw3.run()
 
@@ -102,9 +102,9 @@ stream.save_replay()           # None → replays/ 下时间戳命名; 返回实
 **细粒度控制**用 `Game` 门面：
 
 ```python
-from touhou import Game, Input, ShotType, Difficulty, GamePhase
+from touhou import Game, Input, GamePhase
 
-game = Game(character=ShotType.REIMU_A, difficulty=Difficulty.NORMAL, seed=42)
+game = Game(character="ReimuA", difficulty="Normal", seed=42)
 while game.phase in (GamePhase.RUNNING, GamePhase.DIALOG):
     events = game.step(Input(shoot=True, advance=True))
     for ev in events:                       # SPELLCARD_BEGIN/PLAYER_DEATH/...

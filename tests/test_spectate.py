@@ -16,11 +16,9 @@ from types import SimpleNamespace
 import pytest
 
 from touhou.apis.basic import (
-    Difficulty,
     Game,
     GamePhase,
     Input,
-    ShotType,
     TouhouWorld,
 )
 from touhou.engine.render import FrameInput
@@ -193,8 +191,8 @@ def test_spectate_kwarg_and_make_game_override() -> None:
     角色/难度/残机/种子以 TouhouWorld 自身属性为准。"""
     policy = lambda g: Input.none()
     tw = _tw_with_capture_app(
-        character=ShotType.MARISA_A,
-        difficulty=Difficulty.HARD,
+        character="MarisaA",
+        difficulty="Hard",
         lives=5,
         seed=42,
         headless=False,
@@ -225,7 +223,7 @@ def test_headless_callable_auto_input_is_stream_policy() -> None:
     tw = TouhouWorld(
         headless=True,
         seed=1,
-        difficulty=Difficulty.NORMAL,
+        difficulty="Normal",
         auto_input=lambda g: Input(left=True, shoot=True),
     )
     frames0 = tw.game.frame
@@ -242,7 +240,7 @@ def test_stream_save_replay_round_trip(tmp_path) -> None:
     tw = TouhouWorld(
         headless=True,
         seed=7,
-        difficulty=Difficulty.NORMAL,
+        difficulty="Normal",
         lives=3,
         auto_input=lambda g: Input(shoot=True, advance=True),
     )
@@ -259,7 +257,7 @@ def test_stream_save_replay_round_trip(tmp_path) -> None:
     assert meta["frames"] == len(r["codes"]) == tw.game.frame
 
     # 确定性复现: 同种子新对局逐帧喂回输入, 终态一致
-    g2 = Game(difficulty=Difficulty.NORMAL, character=ShotType.REIMU_A, seed=7, lives=3)
+    g2 = Game(difficulty="Normal", character="ReimuA", seed=7, lives=3)
     for code in r["codes"]:
         keys, bomb, adv, skip = decode_input(code)
         g2._impl.tick(keys=keys, bomb=bomb, advance=adv, skip=skip)
@@ -270,7 +268,7 @@ def test_stream_save_replay_round_trip(tmp_path) -> None:
 
 def test_save_replay_before_iteration_is_empty(tmp_path) -> None:
     """未迭代即 save_replay: 存 0 帧录像, meta 仍完整。"""
-    tw = TouhouWorld(headless=True, seed=None, difficulty=Difficulty.EASY)
+    tw = TouhouWorld(headless=True, seed=None, difficulty="Easy")
     path = tw.events.save_replay(tmp_path / "empty.json")
     r = load_replay(path)
     assert r["codes"] == []
