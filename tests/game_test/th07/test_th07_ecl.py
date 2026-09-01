@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.schema.archive import GameArchive  # noqa: E402
+from touhou.schema.archive import open_archive  # noqa: E402
 from touhou.engine.ecl import (  # noqa: E402
     EclFile,
     EclHost,
@@ -130,7 +130,7 @@ def make_machine(*subs: list[bytes], difficulty: int = 1, life: int = 10):
 
 @NEEDS_DAT
 def test_parse_all_real_ecl_files() -> None:
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     total_instr = 0
     for n in range(1, 9):
         f = EclFile.parse(arch.load(f"ecldata{n}.ecl"))
@@ -145,7 +145,7 @@ def test_parse_all_real_ecl_files() -> None:
 @NEEDS_DAT
 def test_parse_ecldata1_layout() -> None:
     """ecldata1 的头/sub 表/时间轴与 EclManager.cpp Load 的读法一致。"""
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     data = arch.load("ecldata1.ecl")
     assert len(data) == 44920
     f = EclFile.parse(data)
@@ -483,7 +483,7 @@ def test_spellcard_name_decryption() -> None:
 @NEEDS_DAT
 def test_replay_real_sub0_death_drop() -> None:
     """ecldata1 sub0(死亡掉落): SPAWN_ITEMS → DIV → SPAWN_POINT_ITEMS → UNIMP。"""
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     f = EclFile.parse(arch.load("ecldata1.ecl"))
     host = RecordingHost()
     m = EclMachine(f, host=host)
@@ -502,7 +502,7 @@ def test_replay_real_sub0_death_drop() -> None:
 @NEEDS_DAT
 def test_replay_real_sub2_callback_loop() -> None:
     """ecldata1 sub2(粒子回调): 逐帧验证 DEC_JUMP 循环的执行序列。"""
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     f = EclFile.parse(arch.load("ecldata1.ecl"))
     m = EclMachine(f, host=RecordingHost())
     m.enemy.life = 10
@@ -531,7 +531,7 @@ def test_replay_real_sub2_callback_loop() -> None:
 @NEEDS_DAT
 def test_timeline_spawns_at_scheduled_time() -> None:
     """真实 timeline0: 第 600 帧刷出第一条(op=2: 显式参数 + mirror)。"""
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     f = EclFile.parse(arch.load("ecldata1.ecl"))
     host = RecordingHost()
     world = EclWorld()

@@ -1,6 +1,6 @@
 """anm sprite 缓存(通用基建) —— 从 sprite_view.py 拆出的作品无关部分。
 
-`SpriteBank`: 懒加载数据包(GameArchive), 按 (anm, entry, id) 缓存 sprite
+`SpriteBank`: 懒加载数据包(open_archive 认头), 按 (anm, entry, id) 缓存 sprite
 Surface, 附带链式 entry 偏移表(LoadAnms: max(sprite id, script id)+1 累加)
 与旋转/翻转变换缓存。th07 的布局常量与 GameView(战斗画面渲染)在
 games/th07/view/sprite_view.py; 本模块不 import 任何作品包。
@@ -18,7 +18,7 @@ import pygame
 
 from ...logger import logger as log
 from ...schema.anm import AnmFile, parse_cached
-from ...schema.archive import GameArchive
+from ...schema.archive import ArchiveBase, open_archive
 
 # anm 加载超过该耗时打 DEBUG 日志(卡顿定位用, BUGS.md 增量#3)
 _SLOW_LOAD_MS = 30.0
@@ -85,7 +85,7 @@ class SpriteBank:
 
     def __init__(self, data_path: str | Path) -> None:
         self._data_path = Path(data_path)
-        self._arc: GameArchive | None = None
+        self._arc: ArchiveBase | None = None
         self._anms: dict[str, AnmFile] = {}
         self._raws: dict[str, bytes] = {}
         self._first: dict[str, list[dict[int, int]]] = {}
@@ -95,9 +95,9 @@ class SpriteBank:
         self._flip: dict[int, pygame.Surface] = {}
 
     # ---- 资源 ----
-    def _archive(self) -> GameArchive:
+    def _archive(self) -> ArchiveBase:
         if self._arc is None:
-            self._arc = GameArchive.open(self._data_path)
+            self._arc = open_archive(self._data_path)
         return self._arc
 
     def _load(self, name: str) -> bool:

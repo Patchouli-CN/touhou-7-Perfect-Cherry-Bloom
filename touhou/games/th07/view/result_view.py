@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pygame
 
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from ....engine.score_store import ScoreStore
 from .screens import (
     CHARACTERS,
@@ -65,7 +65,7 @@ class ResultScreen:
     def __init__(self, data_path=DEFAULT_DATA) -> None:
         self._bg: pygame.Surface | None = None
         try:
-            raw = GameArchive.open(Path(data_path)).load("result.jpg")
+            raw = open_archive(Path(data_path), game="th07").load("result.jpg")
             self._bg = pygame.image.load(io.BytesIO(raw)).convert()
         except Exception:
             self._bg = None  # 缺资源时纯色底

@@ -32,7 +32,7 @@
 【th07 专属】本模块的贴图/坐标布局是妖妖梦窗口版实现, 不随 GameData 泛化;
 新作品复用窗口版需自带选人界面 view。
 
-资源运行时从 th07.dat 解(GameArchive), 不落盘。
+资源运行时从 th07.dat 解(open_archive), 不落盘。
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from pathlib import Path
 import pygame
 
 from ....schema.anm import parse_cached
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from .screens import PRACTICE_STAGE_ITEMS
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
 
@@ -79,7 +79,7 @@ class SelectView:
     def ensure_loaded(self) -> None:
         if self._loaded:
             return
-        arc = GameArchive.open(self._data_path)
+        arc = open_archive(self._data_path, game="th07")
         raw = None
         for key in ("select00.jpg", "title/select00.jpg", "data/title/select00.jpg"):
             try:

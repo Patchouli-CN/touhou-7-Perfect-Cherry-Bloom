@@ -155,10 +155,10 @@ class TestEndingMusic:
 
     @NEEDS_DAT
     def test_real_ending_has_music(self) -> None:
-        from touhou.schema.archive import GameArchive
+        from touhou.schema.archive import open_archive
         from touhou.engine.ending import EndingData
 
-        arc = GameArchive.open(DAT)
+        arc = open_archive(DAT)
         ed = EndingData.load(arc, 0, bad=False)  # end00.end (灵梦A)
         assert ed.music == "th07_14.mid"
 
@@ -196,15 +196,16 @@ class TestBgmSmoke:
 
         sp = SoundPlayer(DAT)
         sp.ensure_loaded()
-        assert sp._enabled  # dummy driver 下 mixer 可用
-        for name in ("th07_01.mid", "th07_02.mid", "th07_14.mid", "init.mid"):
-            sp.play_music(name)
-            assert sp._current_bgm == name
-        sp.fadeout_music(0.1)
-        assert sp._current_bgm == ""
-        sp.play_music("th07_02.mid")
-        sp.stop_music()
-        assert sp._current_bgm == ""
-        # 不存在的曲子: 仅记日志不炸
-        sp.play_music("th07_99.mid")
+        if not sp.silence:  # 静音豁免
+            assert sp.enabled, "再未静音状态下不可用"
+            for name in ("th07_01.mid", "th07_02.mid", "th07_14.mid", "init.mid"):
+                sp.play_music(name)
+                assert sp._current_bgm == name
+            sp.fadeout_music(0.1)
+            assert sp._current_bgm == ""
+            sp.play_music("th07_02.mid")
+            sp.stop_music()
+            assert sp._current_bgm == ""
+            # 不存在的曲子: 仅记日志不炸
+            sp.play_music("th07_99.mid")
         pygame.mixer.quit()

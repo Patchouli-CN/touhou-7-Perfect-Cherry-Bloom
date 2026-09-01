@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pygame
 
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from .result_view import _load_font
 from .screens import CHARACTERS, DIFFICULTIES, ReplayFlow
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
@@ -31,7 +31,7 @@ class ReplayView:
     def __init__(self, data_path=DEFAULT_DATA) -> None:
         self._bg: pygame.Surface | None = None
         try:
-            arc = GameArchive.open(Path(data_path))
+            arc = open_archive(Path(data_path), game="th07")
             raw = None
             for key in ("select00.jpg", "title00.jpg"):
                 try:

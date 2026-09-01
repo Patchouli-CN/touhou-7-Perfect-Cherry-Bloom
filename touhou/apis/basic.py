@@ -196,11 +196,16 @@ def _resolve_ids(
             raise ValueError(
                 f"{spec.name} 不支持角色 {character!r}，可选: {list(data.characters)}"
             )
-        if not isinstance(difficulty, str) or difficulty.casefold() not in ci_difficulties:
+        if (
+            not isinstance(difficulty, str)
+            or difficulty.casefold() not in ci_difficulties
+        ):
             raise ValueError(
                 f"{spec.name} 不支持难度 {difficulty!r}，可选: {list(data.difficulties)}"
             )
-        return ci_characters[character.casefold()], ci_difficulties[difficulty.casefold()]
+        return ci_characters[character.casefold()], ci_difficulties[
+            difficulty.casefold()
+        ]
     if isinstance(character, int) and isinstance(difficulty, int):
         return character, difficulty
     raise ValueError(

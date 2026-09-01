@@ -12,7 +12,7 @@ from touhou.engine.ecl_codec import EclCodec
 from touhou.paths import DEFAULT_DATA
 from touhou.registry import register_anm, register_ecl
 from touhou.schema.anm import AnmFile
-from touhou.schema.archive import GameArchive
+from touhou.schema.archive import open_archive
 
 needs_data = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
 
@@ -67,7 +67,7 @@ def test_serialize_roundtrip_synthetic() -> None:
 @needs_data
 def test_serialize_roundtrip_real_ecldata() -> None:
     """真实 th07.dat 的全部 ecldata*.ecl: 逐字节相等。"""
-    arc = GameArchive.open(DEFAULT_DATA)
+    arc = open_archive(DEFAULT_DATA)
     names = sorted(
         n for n in arc.names() if n.startswith("ecldata") and n.endswith(".ecl")
     )
@@ -105,7 +105,7 @@ def test_codec_decode_encode_synthetic() -> None:
 def test_codec_roundtrip_real_ecldata() -> None:
     """经 EclCodec 对真实 ecldata 做 decode→encode, 逐字节相等。"""
     codec = EclCodec()
-    arc = GameArchive.open(DEFAULT_DATA)
+    arc = open_archive(DEFAULT_DATA)
     for n in range(1, 9):
         data = arc.load(f"ecldata{n}.ecl")
         assert codec.encode(codec.decode(data)) == data

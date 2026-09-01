@@ -14,13 +14,13 @@ from touhou.utils import Vec2, angle_to  # noqa: E402
 from touhou.engine.bullets import BulletWorld, SCREEN  # noqa: E402
 from touhou.games.th07.player import Player  # noqa: E402
 from touhou.schema.stage import Stage  # noqa: E402
-from touhou.schema.archive import GameArchive  # noqa: E402
+from touhou.schema.archive import open_archive  # noqa: E402
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 
 
 def test_archive_loads_real_data() -> None:
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     assert "etama.anm" in arch
     assert len(arch) == 197
     ecl = arch.load("ecldata1.ecl")
@@ -37,7 +37,7 @@ def test_vec2_ops() -> None:
 
 
 def test_stage_title_and_bgm() -> None:
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     stage = Stage.read(arch.load("stage1.std"), 1)
     assert "Pseudo Winter" in stage.title
     assert stage.main_bgm == "bgm/th07_02.mid"
@@ -56,7 +56,7 @@ def test_bullet_world_ring_aimed() -> None:
 
 
 def test_player_moves_and_shoots() -> None:
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     from touhou.schema.shot_data import parse_sht
 
     sd = parse_sht(arch.load("ply00a.sht"))

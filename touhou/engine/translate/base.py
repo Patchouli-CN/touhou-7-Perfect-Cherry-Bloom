@@ -124,8 +124,8 @@ def spellcard_name(instr: EclInstr) -> str:
 def list_spellcards(ecl_file: EclFile) -> list[tuple[int, str]]:
     """列出 ECL 文件里全部符卡 ``[(sub_id, 符卡名)]`` —— 找翻译目标用::
 
-        for sub_id, name in list_spellcards(EclFile.parse(ecl_data)):
-            print(sub_id, name)
+    for sub_id, name in list_spellcards(EclFile.parse(ecl_data)):
+        print(sub_id, name)
     """
     out: list[tuple[int, str]] = []
     for sub_id, sub in enumerate(ecl_file.subs):
@@ -423,7 +423,9 @@ class EclTranslatorBase(EclHost, abc.ABC):
 
     def spawn_bullet_pattern(self, props: EnemyBulletShooter) -> None:
         self.trace.append(
-            TraceEvent(self.frame, "bullets", _bullet_snapshot(props), self._provenance())
+            TraceEvent(
+                self.frame, "bullets", _bullet_snapshot(props), self._provenance()
+            )
         )
 
     # ---- 激光录制(假句柄追踪) ----
@@ -492,7 +494,9 @@ class EclTranslatorBase(EclHost, abc.ABC):
         )
 
     def end_spellcard(self, enemy: EclEnemyState) -> None:
-        self.trace.append(TraceEvent(self.frame, "spellcard_end", {}, self._provenance()))
+        self.trace.append(
+            TraceEvent(self.frame, "spellcard_end", {}, self._provenance())
+        )
 
     # ---- 其余回调: 翻译场景无关, 跳过并记 debug(不无声丢弃) ----
 

@@ -331,7 +331,7 @@ class GameApp:
     def _warmup_step(self) -> None:
         """菜单场景每帧预载一项对局资源。
 
-        解压(GameArchive._DECOMP_CACHE)与解码(schema.anm.parse_cached)
+        解压(ArchiveBase._DECOMP_CACHE)与解码(schema.anm.parse_cached)
         都是进程级共享缓存, 预热后开局/对局内各视图命中即免费; 用户
         快速开局时未预载完的项退回原懒加载路径, 无回归。队列耗尽后
         每次调用仅一次空判断, 零开销。

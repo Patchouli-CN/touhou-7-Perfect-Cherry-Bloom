@@ -140,12 +140,16 @@ class StubAutoMachine:
     def start(self, sub_id: int) -> None:
         self.current.sub_id = sub_id
         self._fires = [
-            i for i in self.file.subs[sub_id] if 64 <= i.id <= 72 and not i.is_terminator
+            i
+            for i in self.file.subs[sub_id]
+            if 64 <= i.id <= 72 and not i.is_terminator
         ]
 
     def _shoot(self, count1: int, speed1: float) -> None:
         self.host.spawn_bullet_pattern(
-            EnemyBulletShooter(sprite=0, count1=count1, count2=1, speed1=speed1, aim_mode=2)
+            EnemyBulletShooter(
+                sprite=0, count1=count1, count2=1, speed1=speed1, aim_mode=2
+            )
         )
 
     def step(self) -> bool:
@@ -219,7 +223,8 @@ def _spellcard_instr(gui_id: int, name: str) -> tuple:
     """BEGIN_SPELLCARD(op 90): word0 = gui_id|idx<<16, word1..12 = 名 XOR 0xAA。"""
     raw = name.encode("shift_jis")[:48].ljust(48, b"\x00")
     words = [gui_id & 0xFFFF] + [
-        struct.unpack_from("<I", bytes(b ^ 0xAA for b in raw), i * 4)[0] for i in range(12)
+        struct.unpack_from("<I", bytes(b ^ 0xAA for b in raw), i * 4)[0]
+        for i in range(12)
     ]
     return (0, EclOpcode.BEGIN_SPELLCARD, tuple(words))
 
@@ -553,7 +558,10 @@ def test_youkai_control_counter_loop_with_angle_expr() -> None:
     assert delay["type"] == "delay" and delay["delay_ticks"] == "$i + 60"
     fire = delay["body"][0]
     assert fire["type"] == "fire_danmaku" and fire["pattern"] == "ring"
-    assert fire["count"] == 8 and fire["angle_offset"] == f"$i * {round(math.degrees(0.5), 4)}"
+    assert (
+        fire["count"] == 8
+        and fire["angle_offset"] == f"$i * {round(math.degrees(0.5), 4)}"
+    )
 
 
 def test_youkai_control_infinite_loop_and_if() -> None:
@@ -620,7 +628,11 @@ def test_record_provenance() -> None:
     """provenance: 指令触发的回调带 (sub_id, offset); 运行时内部触发 → None。"""
     tr = YoukaiDanmakuTranslator(FAKE_AUTO_GAME)
     trace = tr.record(_auto_data(), 0)
-    covered, auto_shoot, skipped = _auto_fire_offsets()[0], None, _auto_fire_offsets()[1]
+    covered, auto_shoot, skipped = (
+        _auto_fire_offsets()[0],
+        None,
+        _auto_fire_offsets()[1],
+    )
     by_frame = {ev.frame: ev for ev in trace if ev.kind == "bullets"}
     assert len(by_frame) == 9
     for f in (0, 3, 6):  # fires[0] 触发(静态已覆盖)
@@ -642,7 +654,9 @@ def test_auto_mode_dedup_and_blind_spot_fill() -> None:
     static_fires = [a for a in actions if a["type"] == "fire_danmaku"]
     assert len(static_fires) == 1 and static_fires[0]["count"] == 8
     # 动态补充段: 两组折叠(tick_interval) —— 自动射击(count 4) + 静态跳过补回(count 2)
-    folded = [a for a in actions if a.get("condition", {}).get("type") == "tick_interval"]
+    folded = [
+        a for a in actions if a.get("condition", {}).get("type") == "tick_interval"
+    ]
     assert len(folded) == 2
     assert sorted(f["if_true"][0]["count"] for f in folded) == [2, 4]
     # 去重: 静态已覆盖的 count-8 周期组(t 0/3/6)不进补充段

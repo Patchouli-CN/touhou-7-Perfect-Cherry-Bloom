@@ -16,7 +16,7 @@ import numpy as np  # noqa: E402
 import pygame  # noqa: E402
 import pytest  # noqa: E402
 
-from touhou.schema.archive import GameArchive  # noqa: E402
+from touhou.schema.archive import ArchiveBase, open_archive  # noqa: E402
 from touhou.schema.stage import Stage  # noqa: E402
 from touhou.schema.anm import parse_scripts  # noqa: E402
 from touhou.engine.view.bg3d_view import (  # noqa: E402
@@ -29,14 +29,14 @@ DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 
 
 @pytest.fixture(scope="module")
-def arc() -> GameArchive:
-    return GameArchive.open(DAT)
+def arc() -> ArchiveBase:
+    return open_archive(DAT)
 
 
 # ---- .std 解析(schema/stage.py) ----
 
 
-def test_std_parse_all_stages(arc: GameArchive) -> None:
+def test_std_parse_all_stages(arc: ArchiveBase) -> None:
     """8 关全部解析: quad 数与头一致, 实例引用合法, 脚本指令非空。"""
     expect_quads = {1: 19, 2: 35, 3: 5, 4: 10, 5: 29, 6: 4, 7: 30, 8: 30}
     for n in range(1, 9):
@@ -53,7 +53,7 @@ def test_std_parse_all_stages(arc: GameArchive) -> None:
                 assert q.type == 0 and q.anm_script >= 0
 
 
-def test_std_instr_distribution(arc: GameArchive) -> None:
+def test_std_instr_distribution(arc: ArchiveBase) -> None:
     """关键指令分布: 每关都有相机 pos/插值指令; stage4 有 up 贝塞尔;
     stage5 有 pos 贝塞尔; stage6 有 wait 标记 + 全屏 VM。"""
     ops = {}
@@ -72,7 +72,7 @@ def test_std_instr_distribution(arc: GameArchive) -> None:
     assert frames == sorted(frames)
 
 
-def test_anm_parse_scripts(arc: GameArchive) -> None:
+def test_anm_parse_scripts(arc: ArchiveBase) -> None:
     """stg1bg.anm: 3 个 script, 首指令 SET_ACTIVE_SPRITE, 以 EXIT 结尾。"""
     scripts = parse_scripts(arc.load("stg1bg.anm"))
     assert len(scripts) == 1
@@ -95,7 +95,7 @@ def _render_frames(scene: StageScene, frames: int) -> np.ndarray:
     return fb
 
 
-def test_bg3d_renders_and_evolves(arc: GameArchive) -> None:
+def test_bg3d_renders_and_evolves(arc: ArchiveBase) -> None:
     """stage1: 渲出非全黑画面, 且背景随时间轴变化。"""
     scene = StageScene.load(arc, 1)
     assert scene is not None
@@ -108,7 +108,7 @@ def test_bg3d_renders_and_evolves(arc: GameArchive) -> None:
     assert diff > 1.0, f"背景未随时间变化: mean|diff|={diff}"
 
 
-def test_bg3d_all_stages_render(arc: GameArchive) -> None:
+def test_bg3d_all_stages_render(arc: ArchiveBase) -> None:
     """8 关: 加载 + 推进不炸; 多个时刻采样, 至少一个画面非全黑
     (部分关卡开场雾色近黑, 如 4 面魔法森林)。"""
     for n in range(1, 9):
@@ -124,7 +124,7 @@ def test_bg3d_all_stages_render(arc: GameArchive) -> None:
         assert best > 0.3, f"stage{n} 近全黑 (best={best:.2f})"
 
 
-def test_bg3d_render_into_surface(arc: GameArchive) -> None:
+def test_bg3d_render_into_surface(arc: ArchiveBase) -> None:
     """dummy driver 下 render_into(pygame.Surface) 不炸。"""
     pygame.init()
     scene = StageScene.load(arc, 2)
@@ -137,7 +137,7 @@ def test_bg3d_render_into_surface(arc: GameArchive) -> None:
     assert (arr > 0).any()
 
 
-def test_bg3d_perf(arc: GameArchive) -> None:
+def test_bg3d_perf(arc: ArchiveBase) -> None:
     """性能: tick+render 均耗应远低于预算(打印实测, 宽松断言仅防失控)。
 
     stage1 为轻负载基线; stage7 是最重关卡之一(历史实测 ~28-35 ms/帧,

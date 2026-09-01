@@ -30,7 +30,7 @@ import pygame
 
 from ...exceptions import ThbgmFormatError
 from ...logger import logger as log
-from ...schema.archive import GameArchive
+from ...schema.archive import ArchiveBase, open_archive
 from ...schema.sound import SE_FILES, SE_VOLUMES
 from ...schema.thbgm import ThbgmTrack, build_wav, check_thbgm_header, parse_fmt
 
@@ -51,7 +51,7 @@ class SoundPlayer:
         self._bgm_path_override = Path(bgm_path) if bgm_path else None
         self._loaded = False
         self._enabled = False
-        self._archive: GameArchive | None = None
+        self._archive: ArchiveBase | None = None
         self.sounds: dict[int, pygame.mixer.Sound] = {}
         self._current_bgm = ""
         self._bgm_volume = 1.0  # BGM 主音量(Option, 0-1)
@@ -63,6 +63,24 @@ class SoundPlayer:
         self._wav_bgm: ThbgmTrack | None = None  # 当前 WAV 曲(循环轮询用)
         self._wav_pass_ms = 0.0  # 本播段长度 ms(首遍=全曲, 之后=循环段)
         self._music_paused = False  # BGM 暂停态(AUDIO_PAUSE)
+        self._is_dummy = False  # 测试用模式
+        self._silence = False  # 是否静音
+
+    # ---- 状态 ----
+    @property
+    def is_dummy(self) -> bool:
+        """是否是测试状态"""
+        return self._is_dummy
+
+    @property
+    def enabled(self) -> bool:
+        """是否启用"""
+        return self._enabled
+
+    @property
+    def silence(self) -> bool:
+        """是否静音"""
+        return self._silence
 
     # ---- 资源 ----
     def ensure_loaded(self) -> None:
@@ -73,11 +91,14 @@ class SoundPlayer:
         # dummy 声卡(headless/CI/测试, SDL_AUDIODRIVER=dummy): mixer 能 init
         # 成功, 但 mixer.music 原生调用(pause 等)会间歇死锁 —— 视同无声卡静音
         if os.environ.get("SDL_AUDIODRIVER") == "dummy":
+            self._is_dummy = True
+            self._silence = True  # dummy情况下是静音播放的！
             return
         if not pygame.mixer.get_init():
+            self._silence = True
             return  # 无声卡/headless: 静音
         try:
-            arc = GameArchive.open(self._data_path)
+            arc = open_archive(self._data_path)
             loaded: dict[str, bytes] = {}
             for idx, name in SE_FILES.items():
                 if name not in loaded:
@@ -88,6 +109,7 @@ class SoundPlayer:
         except (OSError, KeyError, pygame.error) as e:
             log.warning("音效资源加载失败, 静音运行: {}", e)
             self.sounds = {}
+            self._silence = True
             return
         try:
             pygame.mixer.set_num_channels(16)
@@ -97,7 +119,7 @@ class SoundPlayer:
         self._setup_thbgm(arc)
         self._enabled = True
 
-    def _setup_thbgm(self, arc: GameArchive) -> None:
+    def _setup_thbgm(self, arc: ArchiveBase) -> None:
         """探测 thbgm.dat + 解析 thbgm.fmt; 任一失败则留空, 走 MIDI 回退。"""
         thbgm_path = self._bgm_path_override or self._data_path.with_name("thbgm.dat")
         if not check_thbgm_header(thbgm_path):
@@ -186,7 +208,7 @@ class SoundPlayer:
         self._se_volume = max(0.0, min(1.0, float(v)))
         for idx, snd in self.sounds.items():
             try:
-                snd.set_volume(_db_to_gain(SE_VOLUMES[idx]) * self._se_volume)
+                snd.set_volume(_db_to_gain(SE_VOLUMES[idx]) * self._se_volume)  # type: ignore
             except (pygame.error, KeyError):
                 pass
 
@@ -229,7 +251,7 @@ class SoundPlayer:
 
     def _play_midi(self, name: str) -> None:
         try:
-            data = self._archive.load(name)
+            data = self._archive.load(name)  # type: ignore
             pygame.mixer.music.load(io.BytesIO(data))
             pygame.mixer.music.set_volume(self._bgm_volume)
             pygame.mixer.music.play(-1)

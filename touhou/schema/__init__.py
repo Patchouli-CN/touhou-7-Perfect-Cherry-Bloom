@@ -4,7 +4,8 @@
 新作品在本层扩展自己的格式模块), 无游戏运行时行为、
 不 import engine 的行为模块、不碰 pygame:
 
-- ``archive``: th07.dat 包体解包(GameArchive)
+- ``archive``: 资源包解包(``open_archive`` 认头 + 各格式模块; 容器格式与作品
+  解耦, th07 = pbg4, 见该包 docstring)
 - ``anm``: .anm 贴图/脚本条目解析(AnmFile)与全量脚本指令(parse_scripts)
 - ``stage``: .std 关卡解析(Stage): 标题/BGM + 3D 场景(物件/quad/
   实例/场景脚本指令)

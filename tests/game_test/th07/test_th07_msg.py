@@ -190,9 +190,9 @@ def test_vm_switch_bright_dim_exit() -> None:
 
 @NEEDS_DAT
 def test_parse_msg1_real() -> None:
-    from touhou.schema.archive import GameArchive
+    from touhou.schema.archive import open_archive
 
-    a = GameArchive.open(DAT)
+    a = open_archive(DAT)
     f = MsgFile.parse(a.load("msg1.dat"))
     assert f.num_messages == 22
     m0 = f.messages[0]
@@ -215,9 +215,9 @@ def test_parse_msg1_real() -> None:
 @NEEDS_DAT
 def test_vm_msg1_appear_enemy_window() -> None:
     """APPEAR_ENEMY: 当帧 MsgWait 放行(ignoreWaitCounter), 次帧恢复停轴。"""
-    from touhou.schema.archive import GameArchive
+    from touhou.schema.archive import open_archive
 
-    a = GameArchive.open(DAT)
+    a = open_archive(DAT)
     vm = MsgVm(MsgFile.parse(a.load("msg1.dat")))
     vm.read(0)
     released = 0
@@ -234,9 +234,9 @@ def test_vm_msg1_appear_enemy_window() -> None:
 def test_vm_msg1_next_level_end() -> None:
     """msg1(过关结算): NEXT_LEVEL → currentMsgIdx=-2, HasCurrentMsgIdx 仍真,
     MsgWait 放行(时间轴不再停)。"""
-    from touhou.schema.archive import GameArchive
+    from touhou.schema.archive import open_archive
 
-    a = GameArchive.open(DAT)
+    a = open_archive(DAT)
     vm = MsgVm(MsgFile.parse(a.load("msg1.dat")))
     vm.read(1)
     frames = 0

@@ -172,7 +172,7 @@ class StageScene:
     def load(
         cls, archive, stage_no: int, render_scale: float = 0.45
     ) -> "StageScene | None":
-        """从 GameArchive 加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。"""
+        """从资源包加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。"""
         t0 = time.perf_counter()
         try:
             std_raw = None

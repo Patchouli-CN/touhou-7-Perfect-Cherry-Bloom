@@ -7,7 +7,7 @@
 - 右栏评论: 光标曲的评论(musiccmt.txt, ≤8 行, TrackDescriptor.description);
 - 操作: ↑↓ 选曲, Z 播放/停止, X/Esc 返回(导航见 screens.MusicRoomFlow)。
 
-资源运行时从 th07.dat 解(GameArchive), 不落盘。
+资源运行时从 th07.dat 解(open_archive), 不落盘。
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pygame
 
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from .result_view import _load_font
 from .screens import MUSIC_ROOM_VISIBLE, MusicRoomFlow, load_tracks  # noqa: F401 (load_tracks 再导出, 单一来源在 screens)
 from .title_view import DEFAULT_DATA, TITLE_H, TITLE_W
@@ -36,7 +36,7 @@ class MusicRoomView:
     def __init__(self, data_path=DEFAULT_DATA) -> None:
         self._bg: pygame.Surface | None = None
         try:
-            arc = GameArchive.open(Path(data_path))
+            arc = open_archive(Path(data_path), game="th07")
             raw = None
             for key in ("music.jpg", "result.jpg", "title00.jpg"):
                 try:

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .paths import resolve_data_path
 from .registry import registered_games, registered_renderers, GAME_TITLES
-from .schema.archive import GameArchive
+from .schema.archive import open_archive
 
 
 def detect_environment(data_path: str | Path | None = None) -> dict[str, str]:
@@ -31,12 +31,15 @@ def detect_environment(data_path: str | Path | None = None) -> dict[str, str]:
 
     res = resolve_data_path(data_path)
     info["res_dat"] = str(res)
+    info["res_format"] = "未知"
     if res.exists():
         info["res_entries"] = "?"
         try:
-            # 只读目录头不解压: GameArchive.open 只解析文件表, 开销小
-            info["res_entries"] = str(len(GameArchive.open(res)))
-        except Exception:  # noqa: BLE001
+            # 只读目录头不解压: open_archive 只认头 + 解析文件表, 开销小
+            arc = open_archive(res)
+            info["res_entries"] = str(len(arc))
+            info["res_format"] = arc.format_name
+        except Exception:  # noqa: BLE001 - 探测不炸是硬性要求
             info["res_entries"] = "无法读取"
     else:
         info["res_entries"] = "未找到"
@@ -74,6 +77,11 @@ def log_environment(
         info["pygame"],
         info["platform"],
     )
-    log.info("资源包: {} ({} 个条目)", info["res_dat"], info["res_entries"])
+    log.info(
+        "资源包: {} ({} 格式, {} 个条目)",
+        info["res_dat"],
+        info["res_format"],
+        info["res_entries"],
+    )
     log.info("BGM 包: {}", info["bgm_dat"])
     log.info("注册作品: {} | 渲染后端: {}", info["games"], info["renderers"])

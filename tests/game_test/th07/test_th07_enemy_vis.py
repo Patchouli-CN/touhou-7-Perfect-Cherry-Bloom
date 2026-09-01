@@ -37,7 +37,7 @@ from touhou.games.th07.view.sprite_view import (  # noqa: E402
     _ANM_OFFSET_ENEMY,
 )
 from touhou.schema.anm import AnmFile  # noqa: E402
-from touhou.schema.archive import GameArchive  # noqa: E402
+from touhou.schema.archive import open_archive  # noqa: E402
 
 DAT = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
 NEEDS_DAT = pytest.mark.skipif(not DAT.exists(), reason="需要真实 th07.dat")
@@ -206,7 +206,7 @@ def test_face_book_chain_keys() -> None:
     """face_rm00: entry0 脸 0-4 + entry1 脸 8-12(链式偏移 = max(sprite,script)+1
     = 8, LoadAnms AnmManager.cpp:430/564); msg1 用的 0,1,2,3,8,9 全部命中且
     entry1 的脸不是 entry0 的回落。"""
-    arc = GameArchive.open(DAT)
+    arc = open_archive(DAT)
     raw = arc.load("face_rm00.anm")
     book = _FaceBook(AnmFile.parse(raw), raw)
     for k in (0, 1, 2, 3, 4, 8, 9, 10, 11, 12):

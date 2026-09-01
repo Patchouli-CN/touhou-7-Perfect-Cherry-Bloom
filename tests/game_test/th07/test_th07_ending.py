@@ -297,9 +297,9 @@ def _real_archive():
 
     if not DEFAULT_DATA.exists():
         pytest.skip("th07.dat 不在默认路径")
-    from touhou.schema.archive import GameArchive
+    from touhou.schema.archive import open_archive
 
-    return GameArchive.open(DEFAULT_DATA)
+    return open_archive(DEFAULT_DATA)
 
 
 def test_real_ending_and_staff_roll() -> None:

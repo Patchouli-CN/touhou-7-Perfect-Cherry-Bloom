@@ -25,7 +25,7 @@ import pygame
 
 from ....logger import logger as log
 from ....schema.anm import AnmFile, parse_cached
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from ....schema.msg import MsgOpcode, MsgVm, TEXT_COLORS_A
 
 # 角色 → 自机立绘 anm(C: character 0..2 → face_rm/mr/sk00.anm, Gui.cpp:421-456)
@@ -144,7 +144,7 @@ class DialogueView:
         self._text_cache: dict = {}
         self._faces: list[_FaceBook | None] = [None, None]
         try:
-            arc = GameArchive.open(data_path)
+            arc = open_archive(data_path, game="th07")
             player_face = CHARACTER_FACE[min(character, 2)]
             raw = arc.load(player_face)
             # parse_cached: 换关重建/多视图共享同一解码 (BUGS.md 增量#3)

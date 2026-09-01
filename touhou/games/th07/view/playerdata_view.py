@@ -13,7 +13,7 @@ playerdata view。
   统计   = 总游玩次数/时间/通关/续关 + clrd 每机体各难度到达面数表;
 - 操作: ↑↓ 难度, ←→ 机体, Z 切板块, X/Esc 返回(导航见 screens.PlayerDataFlow)。
 
-资源运行时从 th07.dat 解(GameArchive), 不落盘。
+资源运行时从 th07.dat 解(open_archive), 不落盘。
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pygame
 
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from .. import playerdata
 from ....engine.score_store import ScoreStore
 from .result_view import _load_font
@@ -46,7 +46,7 @@ class PlayerDataView:
     def __init__(self, data_path=DEFAULT_DATA) -> None:
         self._bg: pygame.Surface | None = None
         try:
-            arc = GameArchive.open(Path(data_path))
+            arc = open_archive(Path(data_path), game="th07")
             raw = None
             for key in ("result.jpg", "title00.jpg"):
                 try:

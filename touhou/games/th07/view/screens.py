@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ....paths import DEFAULT_DATA
 from ....registry import get_game
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from ....schema.musiccmt import parse_musiccmt
 from ....engine.config import (
     LIVES_MAX,
@@ -96,7 +96,7 @@ RESULT_SAVE_ITEMS = ["Yes", "No"]
 def load_tracks(data_path=DEFAULT_DATA) -> list:
     """从 th07.dat 解 musiccmt.txt → Music Room 曲目表; 失败返回空表(容错)。"""
     try:
-        arc = GameArchive.open(Path(data_path))
+        arc = open_archive(Path(data_path), game="th07")
         return parse_musiccmt(arc.load("musiccmt.txt"))
     except Exception:
         return []

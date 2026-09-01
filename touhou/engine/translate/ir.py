@@ -198,7 +198,9 @@ class _IrBuilder:
 
     def parse_range(self, lo: int, hi: int, depth: int) -> list[IrNode]:
         if depth > _MAX_DEPTH:
-            log.debug("IR 重建超过最大深度 {}, [{}, {}) 平铺为 IrOp", _MAX_DEPTH, lo, hi)
+            log.debug(
+                "IR 重建超过最大深度 {}, [{}, {}) 平铺为 IrOp", _MAX_DEPTH, lo, hi
+            )
             return [IrOp(i) for i in self.instrs[lo:hi]]
         nodes: list[IrNode] = []
         starts: list[int] = []  # nodes[k] 覆盖的起始指令下标(与 nodes 平行)
@@ -242,7 +244,9 @@ class _IrBuilder:
                     if end is not None:
                         mid, nxt = end
                         if_true = self.parse_range(i + 1, mid, depth + 1)
-                        if_false = self.parse_range(tgt, nxt, depth + 1) if nxt > tgt else []
+                        if_false = (
+                            self.parse_range(tgt, nxt, depth + 1) if nxt > tgt else []
+                        )
                         nodes.append(IrIf(j.cond, if_true, if_false))
                         starts.append(i)
                         self.count += 1

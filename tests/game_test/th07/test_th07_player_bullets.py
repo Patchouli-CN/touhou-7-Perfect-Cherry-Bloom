@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.schema.archive import GameArchive  # noqa: E402
+from touhou.schema.archive import open_archive  # noqa: E402
 from touhou.games.th07.player import (  # noqa: E402
     BULLET_POOL_SIZE,
     OptionState,
@@ -121,7 +121,7 @@ def fire_frames(p: Player, n: int, **keys) -> None:
 
 
 def test_real_sht_callback_index_distribution() -> None:
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     expect = {
         # shotType: 0/1=ReimuA/B, 2/3=MarisaA/B, 4/5=SakuyaA/B; s 后缀=focus
         "ply00a.sht": {"upd": {UPDATE_HOMING}},  # 灵梦A 追踪符
@@ -170,7 +170,7 @@ def test_real_sht_callback_index_distribution() -> None:
 
 def test_real_sht_marisa_b_persistent_slots() -> None:
     """魔理沙B: 非 focus 两条 orb 激光占槽 0/1(周期=持续时间), focus 激光占槽 2。"""
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     sd = parse_sht(arch.load("ply01b.sht"))
     orbs = [
         e

@@ -14,17 +14,27 @@ from touhou.engine.ecl import EclFile
 from touhou.registry import (
     GameData,
     GameHooks,
+    get_archive_format,
+    get_archive_spec,
     get_game,
     register_anm,
     register_app,
+    register_archive,
     register_ecl,
     register_game_data,
     register_game_hooks,
     register_mods,
     register_world_impl,
+    registered_archives,
     registered_games,
 )
 from touhou.schema.anm import AnmFile
+from touhou.schema.archive import (
+    ArchiveBase,
+    ArchiveEntry,
+    open_archive,
+    sniff_archive,
+)
 
 
 # ---- 注册/查找 ----
@@ -168,3 +178,186 @@ def test_register_mods_stub() -> None:
     # 已登记作品(假作品 test00)同维度重复注册同样报错
     with pytest.raises(ValueError, match=f"重复注册.*{FAKE_GAME}"):
         register_mods(FAKE_GAME)(FakeMods)
+
+
+# ---- 资源包格式维度(容器与作品解耦的接缝) ----
+STUB_MAGIC = b"STUB"
+
+
+def _stub_pack(items: dict[str, bytes], magic: bytes = STUB_MAGIC) -> bytes:
+    """造一个假容器: 魔数 + 每条 (名字\\0, u32 长度, 明文数据)。"""
+    out = bytearray(magic)
+    for name, payload in items.items():
+        out += name.encode() + b"\x00"
+        out += len(payload).to_bytes(4, "little")
+        out += payload
+    return bytes(out)
+
+
+class StubArchive(ArchiveBase):
+    """不压缩的假容器格式: 证明新格式只要实现三件事就能接进来。
+
+    魔数是类属性 —— 各测试的桩格式各用一个, 认头时互不抢(注册表是进程级的,
+    多个桩格式会同时在册)。
+    """
+
+    format_name = "stubarc"
+    magic = STUB_MAGIC
+
+    @classmethod
+    def sniff(cls, header: bytes) -> bool:
+        return header[:4] == cls.magic
+
+    @classmethod
+    def from_bytes(cls, data: bytes, path=None):
+        entries: list[ArchiveEntry] = []
+        pos = len(cls.magic)
+        while pos < len(data):
+            end = data.index(b"\x00", pos)
+            name = data[pos:end].decode()
+            pos = end + 1
+            size = int.from_bytes(data[pos : pos + 4], "little")
+            pos += 4
+            entries.append(ArchiveEntry(name, pos, size))
+            pos += size
+        return cls(entries, data, path=path)
+
+    def decode(self, entry: ArchiveEntry, raw: bytes) -> bytes:
+        return raw  # 明文, 不解压
+
+
+def test_register_archive_stub_format() -> None:
+    """archive 维度可插桩: 假格式按"作品名→规格""格式名→规格"双表查得到。"""
+    register_archive("th91", format_name="stub91")(StubArchive)
+
+    spec = get_game("th91")
+    assert spec.archive is not None
+    assert spec.archive.container_cls is StubArchive
+    assert spec.archive.format_name == "stub91"
+    assert get_archive_spec("th91").container_cls is StubArchive
+    assert get_archive_format("stub91").container_cls is StubArchive
+    assert "stub91" in registered_archives()
+    assert "th91" in registered_games()
+
+
+def test_register_archive_format_name_from_class() -> None:
+    """不传 format_name 时取类的 format_name 属性。"""
+    register_archive("th90")(StubArchive)
+    assert get_archive_spec("th90").format_name == "stubarc"
+    # 同格式服务多作: 格式表幂等(同名同类不报错), 作品表各自登记
+    register_archive("th89arc")(StubArchive)
+    assert get_archive_spec("th89arc").container_cls is StubArchive
+
+
+def test_register_archive_multi_games_one_call() -> None:
+    """一种格式服务多部作品(pbgz 之于 th08/th09): games 收序列。"""
+
+    class MultiArchive(StubArchive):
+        format_name = "multiarc"
+        magic = b"MULT"
+
+    register_archive(["th88", "th87"], format_name="multiarc")(MultiArchive)
+    assert get_archive_spec("th88").container_cls is MultiArchive
+    assert get_archive_spec("th87").container_cls is MultiArchive
+    assert registered_archives().count("multiarc") == 1  # 格式表只一条
+
+
+def test_register_archive_duplicates_raise() -> None:
+    """作品名重复报错; 同格式名换实现类也报错(防静默覆盖)。"""
+
+    class OtherArchive(StubArchive):
+        format_name = "dup-fmt"
+        magic = b"DUPF"
+
+    register_archive("th86", format_name="dup-fmt")(OtherArchive)
+    with pytest.raises(ValueError, match="重复注册.*th86"):
+        register_archive("th86", format_name="dup-fmt")(OtherArchive)
+
+    class Impostor(StubArchive):
+        format_name = "dup-fmt"
+        magic = b"IMPO"
+
+    with pytest.raises(ValueError, match="格式重复注册.*dup-fmt"):
+        register_archive("th85", format_name="dup-fmt")(Impostor)
+
+
+def test_register_archive_needs_format_name() -> None:
+    """类没声明 format_name 又不传参: 当场报错, 不留无名格式。"""
+
+    class Nameless(StubArchive):
+        format_name = ""
+        magic = b"NONE"
+
+    with pytest.raises(ValueError, match="未声明格式名"):
+        register_archive("th84")(Nameless)
+
+
+def test_unregistered_archive_lookups_raise() -> None:
+    """未注册的作品/格式: KeyError 信息含已注册列表。"""
+    with pytest.raises(KeyError, match="th00arc.*未注册资源包格式"):
+        get_archive_spec("th00arc")
+    with pytest.raises(KeyError, match="未注册的资源包格式.*nope") as ei:
+        get_archive_format("nope")
+    assert "pbg4" in str(ei.value)
+
+
+def test_open_archive_sniffs_among_registered_formats(tmp_path) -> None:
+    """认头: open_archive 不需要知道是哪部作品, 也不 import 具体格式类。
+
+    这是解耦的实质 —— 通用层(engine/*)只给路径, 新格式注册进来就能被认出。
+    """
+    register_archive("th83", format_name="sniffable")(StubArchive)
+    p = tmp_path / "stub.dat"
+    p.write_bytes(_stub_pack({"a.txt": b"hello", "b.bin": b"\x01\x02\x03"}))
+
+    arc = open_archive(p)  # 不传 game/format_name
+    assert isinstance(arc, StubArchive)
+    assert sorted(arc.names()) == ["a.txt", "b.bin"]
+    assert arc.load("a.txt") == b"hello"
+    assert arc.load("b.bin") == b"\x01\x02\x03"
+    assert "a.txt" in arc and len(arc) == 2
+    assert arc.path == p
+
+    assert sniff_archive(STUB_MAGIC + b"xx") is StubArchive
+    assert sniff_archive(b"NOPE....") is None
+
+
+def test_open_archive_explicit_game_and_format(tmp_path) -> None:
+    """显式指定作品/格式时按注册表直取, 不做认头兜底。"""
+    register_archive("th82", format_name="explicit82")(StubArchive)
+    p = tmp_path / "stub.dat"
+    p.write_bytes(_stub_pack({"x": b"1"}))
+
+    assert open_archive(p, game="th82").load("x") == b"1"
+    assert open_archive(p, format_name="explicit82").load("x") == b"1"
+    # 格式不符: 当场报 ArchiveFormatError, 不拖到缺条目才炸
+    with pytest.raises(touhou.ArchiveFormatError):
+        open_archive(p, game="th07")
+
+
+def test_open_archive_unknown_format_raises(tmp_path) -> None:
+    """认头认不出: 报错带文件头与已注册格式列表。"""
+    p = tmp_path / "junk.dat"
+    p.write_bytes(b"WHAT" + b"\x00" * 32)
+    with pytest.raises(touhou.ArchiveFormatError, match="无法识别的资源包格式") as ei:
+        open_archive(p)
+    assert "pbg4" in str(ei.value)
+
+
+def test_archive_decomp_cache_keyed_by_format(tmp_path) -> None:
+    """解压缓存含格式名: 不同格式的同名条目互不串味。"""
+    register_archive("th81", format_name="cachefmt")(StubArchive)
+    p = tmp_path / "c.dat"
+    p.write_bytes(_stub_pack({"same.bin": b"first"}))
+    first = open_archive(p, format_name="cachefmt").load("same.bin")
+    assert first == b"first"
+    # 同路径同条目名再开: 命中缓存(同一 bytes 对象)
+    assert open_archive(p, format_name="cachefmt").load("same.bin") is first
+
+
+def test_archive_exported_at_top_level() -> None:
+    """archive 维度的注册表 API 从包顶层可拿(框架公共面)。"""
+    assert touhou.register_archive is register_archive
+    assert touhou.get_archive_spec is get_archive_spec
+    assert "ArchiveSpec" in touhou.__all__
+    assert "registered_archives" in touhou.__all__

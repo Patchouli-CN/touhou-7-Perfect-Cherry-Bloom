@@ -126,11 +126,11 @@ AUTO 把两路都跑一遍, 语义是**静态出骨架, 动态补盲区, 已覆�
 ```python
 import json
 import touhou  # import 即完成 th07 注册
-from touhou.schema.archive import GameArchive
+from touhou.schema.archive import open_archive
 from touhou.engine.translate import YoukaiDanmakuTranslator
 from touhou.paths import DEFAULT_DATA
 
-arc = GameArchive.open(DEFAULT_DATA)  # th07.dat(或传自己的路径)
+arc = open_archive(DEFAULT_DATA, game="th07")  # th07.dat(或传自己的路径)
 ecl = arc.load("ecldata1.ecl")        # 一面 ECL
 
 tr = YoukaiDanmakuTranslator("th07", speed_scale=0.5)
@@ -144,10 +144,10 @@ with open("lingering_cold.json", "w", encoding="utf-8") as f:
 ```bash
 uv run python -c "
 import json, touhou
-from touhou.schema.archive import GameArchive
+from touhou.schema.archive import open_archive
 from touhou.engine.translate import YoukaiDanmakuTranslator
 from touhou.paths import DEFAULT_DATA
-ecl = GameArchive.open(DEFAULT_DATA).load('ecldata1.ecl')
+ecl = open_archive(DEFAULT_DATA, game='th07').load('ecldata1.ecl')
 out = YoukaiDanmakuTranslator('th07').translate(ecl, 42, max_frames=3600)
 json.dump(out, open('lingering_cold.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 "

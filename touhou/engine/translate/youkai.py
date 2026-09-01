@@ -256,7 +256,12 @@ _VAR_WRITE_OPS: dict[int, tuple[int, bool]] = {
     EclOpcode.DEC_JUMP: (2, False),
 }
 
-_AFFINE_ADD_OPS = (EclOpcode.ADD, EclOpcode.SUB, EclOpcode.ADD_FLOAT, EclOpcode.SUB_FLOAT)
+_AFFINE_ADD_OPS = (
+    EclOpcode.ADD,
+    EclOpcode.SUB,
+    EclOpcode.ADD_FLOAT,
+    EclOpcode.SUB_FLOAT,
+)
 
 
 def _iter_ops(nodes: list[IrNode]) -> Iterator[IrOp]:
@@ -735,7 +740,11 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         return actions
 
     def _fire_laser(
-        self, data: dict[str, Any], spawn_frame: int = 0, *, clamp_to_recording: bool = True
+        self,
+        data: dict[str, Any],
+        spawn_frame: int = 0,
+        *,
+        clamp_to_recording: bool = True,
     ) -> dict:
         color = self.laser_colors.get(data["sprite_offset"], "white")
         # ECL 常驻激光的 duration 是"开到被停"的占位大数; 取 stop_frame/回放界收紧
@@ -832,7 +841,9 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         unknown: set[_VarKey] = set()
         cmds: dict[int, dict[str, Any]] = {}  # INIT_BULLET_CMD 槽位状态(文本序)
         actions = self._compile_ir_nodes(ir.nodes, env, unknown, cmds, "", False, 0)
-        return self._assemble_spell(spell_name, gui_id, actions, "静态控制流(CONTROL 模式)近似")
+        return self._assemble_spell(
+            spell_name, gui_id, actions, "静态控制流(CONTROL 模式)近似"
+        )
 
     def merge(self, static_result: dict, residual_result: dict) -> dict:
         """AUTO 合并: 动态补充段追加进静态骨架同一 SpellDefinition 的 phase。
@@ -880,16 +891,22 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         actions: list[dict] = []
         for node in nodes:
             if isinstance(node, IrOp):
-                a = self._compile_ir_op(node.instr, env, unknown, cmds, prefix, add_time)
+                a = self._compile_ir_op(
+                    node.instr, env, unknown, cmds, prefix, add_time
+                )
                 if a is not None:
                     actions.append(a)
             elif isinstance(node, IrSeq):
                 actions.extend(
-                    self._compile_ir_nodes(node.nodes, env, unknown, cmds, prefix, add_time, depth)
+                    self._compile_ir_nodes(
+                        node.nodes, env, unknown, cmds, prefix, add_time, depth
+                    )
                 )
             elif isinstance(node, IrIf):
                 actions.extend(
-                    self._compile_ir_if(node, env, unknown, cmds, prefix, add_time, depth)
+                    self._compile_ir_if(
+                        node, env, unknown, cmds, prefix, add_time, depth
+                    )
                 )
                 # 分支内的变量写不可静态确定 → 保守失效
                 for key in self._writes_in(node):
@@ -897,7 +914,9 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
                     unknown.add(key)
             elif isinstance(node, IrLoop):
                 actions.extend(
-                    self._compile_ir_loop(node, env, unknown, cmds, prefix, add_time, depth)
+                    self._compile_ir_loop(
+                        node, env, unknown, cmds, prefix, add_time, depth
+                    )
                 )
                 for key in self._writes_in(node):
                     env.pop(key, None)
@@ -914,7 +933,11 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         add_time: bool,
     ) -> Optional[dict]:
         op = ins.id
-        if EclOpcode.SPAWN_BULLET_PATTERN_SPREAD_AIMED <= op <= EclOpcode.SPAWN_BULLET_PATTERN_RANDOM:
+        if (
+            EclOpcode.SPAWN_BULLET_PATTERN_SPREAD_AIMED
+            <= op
+            <= EclOpcode.SPAWN_BULLET_PATTERN_RANDOM
+        ):
             res = self._bullet_data_static(ins, env, unknown, cmds)
             if res is None:
                 return None
@@ -922,11 +945,15 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
             # angle_expr 非空时镜像 DIRECT 折叠的约定: angle1=None,
             # 完整表达式进 angle_offset(固定方向取初值 data["angle1"])
             fire = self._fire_danmaku(
-                data, None if angle_expr is not None else data["angle1"],
+                data,
+                None if angle_expr is not None else data["angle1"],
                 angle_offset=angle_expr,
             )
             return self._wrap_time(ins, fire, prefix, add_time)
-        if op in (EclOpcode.SPAWN_LASER_PATTERN_FIXED, EclOpcode.SPAWN_LASER_PATTERN_MOVING):
+        if op in (
+            EclOpcode.SPAWN_LASER_PATTERN_FIXED,
+            EclOpcode.SPAWN_LASER_PATTERN_MOVING,
+        ):
             laser_data = self._laser_data_static(ins, env, unknown)
             if laser_data is None:
                 return None
@@ -943,10 +970,14 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         # 静态未覆盖(移动/音效/SET_SHOOT_INTERVAL/SPAWN_PREV 等): 登记 offset,
         # AUTO 模式里这些指令触发的运行时事件会进动态补充段
         self._skipped_offsets.add(ins.offset)
-        log.debug("CONTROL: 指令 id={} offset={:#x} 不可静态翻译, 已跳过", op, ins.offset)
+        log.debug(
+            "CONTROL: 指令 id={} offset={:#x} 不可静态翻译, 已跳过", op, ins.offset
+        )
         return None
 
-    def _wrap_time(self, ins: EclInstr, fire: dict, prefix: str, add_time: bool) -> dict:
+    def _wrap_time(
+        self, ins: EclInstr, fire: dict, prefix: str, add_time: bool
+    ) -> dict:
         """按时间上下文包装 fire: 顶层 one-shot; 循环体 delay(迭代表达式)。"""
         if not prefix:
             return self._one_shot(ins.time, fire)
@@ -986,7 +1017,9 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
                     _INFINITE_LOOP_COUNT,
                 )
             else:
-                log.debug("CONTROL: 无限循环 → repeat count={} 近似", _INFINITE_LOOP_COUNT)
+                log.debug(
+                    "CONTROL: 无限循环 → repeat count={} 近似", _INFINITE_LOOP_COUNT
+                )
             count = _INFINITE_LOOP_COUNT
 
         # 仿射环境: 第一遍净步进/失效扫描, 第二遍编译时按文本序修正基值
@@ -1016,7 +1049,13 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
             pfx = f"{prefix} + {pfx}"
             add_time = False  # 嵌套循环不再叠加绝对时间(静态近似)
         body = self._compile_ir_nodes(
-            loop.body, loop_env, loop_unknown, cmds, pfx, add_time or not prefix, depth + 1
+            loop.body,
+            loop_env,
+            loop_unknown,
+            cmds,
+            pfx,
+            add_time or not prefix,
+            depth + 1,
         )
         if not body:
             log.debug("CONTROL: 循环体无可翻译动作, 已跳过")
@@ -1291,7 +1330,14 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         """指令写到的变量(key 列表; 用于失效扫描)。"""
         op = ins.id
         if op == EclOpcode.VEC_FROM_ANGLE_MAG:  # 写 arg0/arg1 两个 float 变量
-            return [k for k in (self._target_key(ins, 0, True), self._target_key(ins, 1, True)) if k]
+            return [
+                k
+                for k in (
+                    self._target_key(ins, 0, True),
+                    self._target_key(ins, 1, True),
+                )
+                if k
+            ]
         spec = _VAR_WRITE_OPS.get(op)
         if spec is None:
             return []
@@ -1361,7 +1407,9 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
             if op in (EclOpcode.INC, EclOpcode.DEC):
                 key = self._target_key(ins, 0, False)
                 if key is not None:
-                    steps[key] = steps.get(key, 0.0) + (1.0 if op == EclOpcode.INC else -1.0)
+                    steps[key] = steps.get(key, 0.0) + (
+                        1.0 if op == EclOpcode.INC else -1.0
+                    )
                 continue
             if op in _AFFINE_ADD_OPS:
                 is_f = op in (EclOpcode.ADD_FLOAT, EclOpcode.SUB_FLOAT)
@@ -1371,7 +1419,9 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
                     k1 = self._target_key(ins, 1, is_f)
                     if k0 is not None and k0 == k1:
                         k = ins.arg_float(2) if is_f else float(ins.arg_int(2))
-                        sign = -1.0 if op in (EclOpcode.SUB, EclOpcode.SUB_FLOAT) else 1.0
+                        sign = (
+                            -1.0 if op in (EclOpcode.SUB, EclOpcode.SUB_FLOAT) else 1.0
+                        )
                         steps[k0] = steps.get(k0, 0.0) + sign * k
                         affine = True
                 if not affine:

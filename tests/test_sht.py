@@ -6,14 +6,14 @@ import sys
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
-from touhou.schema.archive import GameArchive  # noqa: E402
+from touhou.schema.archive import open_archive  # noqa: E402
 from touhou.schema.shot_data import parse_sht  # noqa: E402
 
 DAT = r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat"
 
 
 def _sd(name: str):
-    arch = GameArchive.open(DAT)
+    arch = open_archive(DAT)
     return parse_sht(arch.load(name))
 
 

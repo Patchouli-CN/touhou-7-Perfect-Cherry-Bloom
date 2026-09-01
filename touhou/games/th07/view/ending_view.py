@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pygame
 
-from ....schema.archive import GameArchive
+from ....schema.archive import ArchiveBase, open_archive
 from ....engine.ending import (
     TEXT_LINE_H,
     TEXT_MAX_SLOTS,
@@ -70,9 +70,9 @@ class EndingView:
         self.pending_music: list[tuple] = []  # ("play", name)/("fadeout", 秒)
 
     # ---- 资源 ----
-    def _arch(self) -> GameArchive:
+    def _arch(self) -> ArchiveBase:
         if self._archive is None:
-            self._archive = GameArchive.open(self._data_path)
+            self._archive = open_archive(self._data_path, game="th07")
         return self._archive
 
     def _bg(self, name: str | None) -> pygame.Surface | None:

@@ -19,7 +19,7 @@ Esc/X 取消; Reset to Default 恢复默认(engine/config.py DEFAULT_KEYMAP)。
 (Yes/No, AsciiManager.cpp PauseMenu case 5-8)。暂停时 WAV BGM 暂停、
 MIDI 继续(AUDIO_PAUSE 仅 WAV 音源响应, SoundPlayer.cpp:846-855)。
 
-资源运行时从 th07.dat 解(GameArchive), 不落盘。
+资源运行时从 th07.dat 解(open_archive), 不落盘。
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from pathlib import Path
 import pygame
 
 from ....schema.anm import parse_cached
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from .screens import (
     KEYCONFIG_ITEMS,
     KEYCONFIG_LABELS,
@@ -102,7 +102,7 @@ class OptionView:
     def ensure_loaded(self) -> None:
         if self._loaded:
             return
-        arc = GameArchive.open(self._data_path)
+        arc = open_archive(self._data_path, game="th07")
         self.background = pygame.image.load(io.BytesIO(arc.load("title00.jpg")))
         # parse_cached: 标题/选人/设置三视图共享同一解码 (BUGS.md 增量#3)
         anm = parse_cached(arc.load("title01.anm"))

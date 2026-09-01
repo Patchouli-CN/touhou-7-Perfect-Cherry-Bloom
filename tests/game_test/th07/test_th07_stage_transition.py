@@ -223,9 +223,9 @@ def test_parse_end_minimal() -> None:
 @NEEDS_DAT
 def test_real_end_files_parse() -> None:
     """真实 end00/end10/end20b: 全部能解出文本与背景段。"""
-    from touhou.schema.archive import GameArchive
+    from touhou.schema.archive import open_archive
 
-    arc = GameArchive.open(DAT)
+    arc = open_archive(DAT)
     for path in ("end00.end", "end10.end", "end20b.end"):
         segs = parse_end(arc.load(path))
         assert segs and sum(len(s.lines) for s in segs) >= 5
@@ -240,7 +240,12 @@ def test_stage1_to_2_continuous_run() -> None:
     """从 1 面真打到 3 面开场: msg STAGERESULTS/NEXT_LEVEL 驱动换关,
     timeline 重新驱动, score 全程只增(换关不丢分), 本关计数换关即重置。"""
     from touhou.utils import Vec2
-    from tests.game_test.th07.test_th07_stage_smoke import _bosses, _crush, _move_keys, _signature
+    from tests.game_test.th07.test_th07_stage_smoke import (
+        _bosses,
+        _crush,
+        _move_keys,
+        _signature,
+    )
 
     g = PerfectCherryBloom(
         data_path=DAT,

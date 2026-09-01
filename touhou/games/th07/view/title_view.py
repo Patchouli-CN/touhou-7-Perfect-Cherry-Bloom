@@ -14,7 +14,7 @@ MainMenu.cpp OnUpdatePreInput 的 VM 使用):
 - 版本号: 原版标题画面不画版本号(ver 1.00b 只在窗口标题, 见
   GameWindow.cpp:299); 这里按需求用小号字体画在右下角近似。
 
-资源运行时从 th07.dat 解(GameArchive), 不落盘。
+资源运行时从 th07.dat 解(open_archive), 不落盘。
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from pathlib import Path
 import pygame
 
 from ....schema.anm import parse_cached
-from ....schema.archive import GameArchive
+from ....schema.archive import open_archive
 from .screens import MAIN_MENU_ITEMS
 
 from ....paths import DEFAULT_DATA, resolve_data_path  # noqa: F401 (DEFAULT_DATA 再导出)
@@ -109,7 +109,7 @@ class TitleScreen:
     def ensure_loaded(self) -> None:
         if self._loaded:
             return
-        arc = GameArchive.open(self._data_path)
+        arc = open_archive(self._data_path, game="th07")
         self.background = pygame.image.load(io.BytesIO(arc.load("title00.jpg")))
         # parse_cached: 标题/选人/设置三视图共享同一解码 (BUGS.md 增量#3)
         anm = parse_cached(arc.load("title01.anm"))

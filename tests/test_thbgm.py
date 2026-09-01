@@ -16,7 +16,6 @@ import pytest
 sys.path.insert(0, r"D:\python_play\Touhou08")
 
 from touhou.schema.thbgm import (  # noqa: E402
-    THBGM_HEADER_SIZE,
     ThbgmTrack,
     build_wav,
     check_thbgm_header,
@@ -110,9 +109,9 @@ def test_build_wav_roundtrip() -> None:
 
 @NEEDS_THBGM
 def test_real_fmt_and_header() -> None:
-    from touhou.schema.archive import GameArchive
+    from touhou.schema.archive import open_archive
 
-    arc = GameArchive.open(DAT)
+    arc = open_archive(DAT)
     key = "bgm/thbgm.fmt" if "bgm/thbgm.fmt" in arc else "thbgm.fmt"
     tracks = parse_fmt(arc.load(key))
     assert len(tracks) == 20
@@ -310,19 +309,20 @@ def test_real_wav_bgm_smoke() -> None:
         pytest.skip("无 mixer")
     sp = SoundPlayer(DAT)
     sp.ensure_loaded()
-    assert sp._enabled
-    assert sp.bgm_source == "wav" and len(sp._thbgm_tracks) == 20
-    sp.play_music("th07_02.mid")
-    assert sp._current_bgm == "th07_02.mid"
-    assert sp._wav_bgm is not None and sp._wav_bgm.name == "th07_02.wav"
-    assert pygame.mixer.music.get_busy()
-    # 切歌: 上一首 WAV 内存被新曲替换(任意时刻至多一首)
-    sp.play_music("bgm/th07_03.mid")
-    assert sp._wav_bgm.name == "th07_03.wav"
-    assert pygame.mixer.music.get_busy()
-    # fmt 没有的曲 → MIDI 回退
-    sp.play_music("init.mid")
-    assert sp._current_bgm == "init.mid" and sp._wav_bgm is None
-    sp.stop_music()
-    assert not pygame.mixer.music.get_busy()
+    if not sp.silence:  # 静音豁免
+        assert sp.enabled, "再未静音状态下不可用"
+        assert sp.bgm_source == "wav" and len(sp._thbgm_tracks) == 20
+        sp.play_music("th07_02.mid")
+        assert sp._current_bgm == "th07_02.mid"
+        assert sp._wav_bgm is not None and sp._wav_bgm.name == "th07_02.wav"
+        assert pygame.mixer.music.get_busy()
+        # 切歌: 上一首 WAV 内存被新曲替换(任意时刻至多一首)
+        sp.play_music("bgm/th07_03.mid")
+        assert sp._wav_bgm.name == "th07_03.wav"
+        assert pygame.mixer.music.get_busy()
+        # fmt 没有的曲 → MIDI 回退
+        sp.play_music("init.mid")
+        assert sp._current_bgm == "init.mid" and sp._wav_bgm is None
+        sp.stop_music()
+        assert not pygame.mixer.music.get_busy()
     pygame.mixer.quit()

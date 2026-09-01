@@ -17,12 +17,17 @@ from touhou.games.th07.world import PerfectCherryBloom
 from touhou.paths import DEFAULT_DATA
 from touhou.registry import (
     GameData,
+    get_archive_format,
+    get_archive_spec,
     get_game,
     get_renderer,
     register_game_data,
     register_world_impl,
+    registered_archives,
 )
 from touhou.schema.anm import AnmFile
+from touhou.schema.archive import open_archive
+from touhou.schema.archive.pbg4 import Pbg4Archive
 
 needs_data = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
 
@@ -41,6 +46,28 @@ def test_th07_registered_on_import() -> None:
     assert spec.hooks.msg_file == "msg{n}.dat"
     assert spec.world is PerfectCherryBloom
     assert spec.app is GameApp
+    assert spec.archive is not None
+    assert spec.archive.container_cls is Pbg4Archive
+    assert spec.archive.format_name == "pbg4"
+
+
+def test_th07_archive_format_registered() -> None:
+    """th07 的资源包格式 = pbg4(容器实现不再由消费方直接 import)。"""
+    assert get_archive_spec("th07").container_cls is Pbg4Archive
+    assert get_archive_format("pbg4").container_cls is Pbg4Archive
+    assert "pbg4" in registered_archives()
+
+
+@needs_data
+def test_th07_archive_opens_by_game_and_by_sniff() -> None:
+    """真实 th07.dat: 按作品名取格式与按文件头认头得到同一个容器类。"""
+    by_game = open_archive(DEFAULT_DATA, game="th07")
+    by_sniff = open_archive(DEFAULT_DATA)
+    assert isinstance(by_game, Pbg4Archive) and isinstance(by_sniff, Pbg4Archive)
+    assert by_game.format_name == "pbg4"
+    assert len(by_game) == len(by_sniff)
+    # 解压缓存跨实例共享(BUGS.md 增量#3): 同条目同一 bytes 对象
+    assert by_game.load("ecldata1.ecl") is by_sniff.load("ecldata1.ecl")
 
 
 @needs_data

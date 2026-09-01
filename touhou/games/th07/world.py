@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from ...schema.archive import GameArchive
+from ...schema.archive import open_archive
 from ...registry import GameData, GameHooks, register_world_impl
 from .data import CHARACTER_SHT, TH07_DATA
 from ...engine.bullets import BulletWorld, SCREEN
@@ -150,7 +150,8 @@ class PerfectCherryBloom:
             list(self.data.drop_table) if self.data.drop_table else None
         )
         # data_path 解析顺序: 显式参数 > TOUHOU_DAT 环境变量 > 默认 (paths.py)
-        self.archive = GameArchive.open(resolve_data_path(data_path))
+        # game="th07": 按注册表取本作容器格式(pbg4), 拿错作品的包当场报错
+        self.archive = open_archive(resolve_data_path(data_path), game="th07")
         self.stage_no = 1
         self.stage = Stage.read(
             self.archive.load(self.hooks.stage_file.format(n=self.stage_no)),

@@ -16,6 +16,11 @@
   提供者类(th07 = games.th07.mods.Th07Mods), ``ModApi(game)`` 构造时实例化
   并把其公开方法收割进分层命名空间(归属用 ``@mod_namespace(ns)`` 声明,
   作品机制不堆进 ModApi 通用核, 见 apis/modding.py 的分层纪律)
+- 资源包格式:   ``@register_archive(games, format_name=...)`` 装饰容器实现类
+  (schema.archive.ArchiveBase 子类; th07 = pbg4 的 Pbg4Archive)。一种格式
+  常服务多作(pbgz 之于 th08/th09), 故按"作品名 → 规格"与"格式名 → 规格"
+  双表登记; 消费方不 import 具体格式类, 走 schema.archive.open_archive
+  (不指定作品时按文件头在已注册格式里认头)
 
 另有与作品名无关的正交维度:
 - 渲染后端:     ``@register_renderer(name)``            装饰 Renderer 实现类
@@ -38,32 +43,39 @@ games.th07.data.TH07_DATA)。指令集拆分为独立子包是未来作品(th08)
 from __future__ import annotations
 
 import msgspec
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, TYPE_CHECKING, overload, Literal
+from typing import Any, Callable, TypeVar, TYPE_CHECKING, overload, Literal
 
 if TYPE_CHECKING:
     from .engine.ecl_base import EclMachineBase
     from .engine.ecl import EclFile
+    from .schema.archive import ArchiveBase
 
 from .exceptions import DuplicateRegistrationError, NotRegisteredError
 
 __all__ = [
     "AnmSpec",
+    "ArchiveSpec",
     "EclSpec",
     "GameData",
     "GameHooks",
     "GameSpec",
+    "get_archive_format",
+    "get_archive_spec",
     "get_game",
     "get_renderer",
     "mod_namespace",
     "register_anm",
     "register_app",
+    "register_archive",
     "register_ecl",
     "register_game_data",
     "register_game_hooks",
     "register_mods",
     "register_renderer",
     "register_world_impl",
+    "registered_archives",
     "registered_games",
     "registered_renderers",
 ]
@@ -84,6 +96,13 @@ class AnmSpec:
 
     format: type  # AnmFile 类(解析器)
     version: int  # 期望的 anm 版本号(th07 = 2)
+
+
+class ArchiveSpec(msgspec.Struct, frozen=True):
+    """一部作品的资源包容器格式(``.dat`` 解包实现)。"""
+
+    container_cls: type["ArchiveBase"]  # 容器实现类, 如 pbg4.Pbg4Archive
+    format_name: str  # 格式标识(pbg4/pbgz/tha1…), 供按格式直取与认头遍历
 
 
 class GameData(msgspec.Struct, frozen=True):
@@ -137,6 +156,7 @@ class GameSpec:
     data: GameData | None = None  # 数值表(register_game_data 登记; None=未登记)
     app: type | None = None  # 窗口 App 类(register_app 登记; None=未登记)
     mods: type | None = None  # mod 能力提供者类(register_mods 登记; None=未登记)
+    archive: ArchiveSpec | None = None  # 作品dat文件解析器
 
 
 # ---- 全局注册表(按维度分表; 同名不同维度允许共存) ----
@@ -148,6 +168,8 @@ _DATA: dict[str, GameData] = {}
 _APP: dict[str, type] = {}
 _MODS: dict[str, type] = {}
 _RENDERER: dict[str, type] = {}  # 渲染后端(与作品名无关的正交维度)
+_ARCHIVE: dict[str, ArchiveSpec] = {}  # 作品名 → 容器格式
+_ARCHIVE_FORMAT: dict[str, ArchiveSpec] = {}  # 格式名 → 容器格式(认头遍历用)
 
 #: 已注册作品号 → 作品名(检测到对应资源时打印; 新作品注册时在此补名字)
 GAME_TITLES = {
@@ -306,6 +328,74 @@ def mod_namespace(name: str) -> Callable[[Any], Any]:
     return deco
 
 
+#: 容器实现类(装饰器保型: 返回的还是被装饰的那个具体类)
+_ArchiveT = TypeVar("_ArchiveT", bound="ArchiveBase")
+
+
+def register_archive(
+    games: str | Sequence[str],
+    *,
+    format_name: str | None = None,
+) -> Callable[[type[_ArchiveT]], type[_ArchiveT]]:
+    """注册资源包容器格式(装饰 ArchiveBase 子类, 原样返回)。
+
+    一种格式常服务多部作品(如 pbgz 之于 th08/th09), 故 ``games`` 收字符串
+    或字符串序列; 格式名缺省取类的 ``format_name`` 类属性。格式表按格式名
+    登记一次(同名同类幂等, 同名换类报错), 作品表按作品名登记, 重复报
+    DuplicateRegistrationError。
+
+    Args:
+        games: 本格式服务的作品名(单个或多个)
+        format_name: 格式标识; 缺省取 ``cls.format_name``
+    """
+    names = [games] if isinstance(games, str) else list(games)
+    if not names:
+        raise ValueError("register_archive 至少要指定一个作品名")
+
+    def deco(cls: type[_ArchiveT]) -> type[_ArchiveT]:
+        fmt = format_name or getattr(cls, "format_name", "")
+        if not fmt:
+            raise ValueError(
+                f"{cls.__name__} 未声明格式名: 传 format_name= 或设类属性 format_name"
+            )
+        spec = ArchiveSpec(container_cls=cls, format_name=fmt)
+        known = _ARCHIVE_FORMAT.get(fmt)
+        if known is None:
+            _ARCHIVE_FORMAT[fmt] = spec
+        elif known.container_cls is not cls:
+            raise DuplicateRegistrationError(
+                f"资源包格式重复注册: {fmt!r} (已注册 {known.container_cls.__name__})"
+            )
+        for game in names:
+            _put(_ARCHIVE, "资源包格式", game, spec)
+        return cls
+
+    return deco
+
+
+def get_archive_spec(name: str) -> ArchiveSpec:
+    """按作品名取容器格式; 未注册报带已注册列表的 NotRegisteredError。"""
+    if name not in _ARCHIVE:
+        raise NotRegisteredError(
+            f"作品 {name!r} 未注册资源包格式 (已注册: {sorted(_ARCHIVE)})"
+        )
+    return _ARCHIVE[name]
+
+
+def get_archive_format(format_name: str) -> ArchiveSpec:
+    """按格式名取容器格式; 未注册报带已注册列表的 NotRegisteredError。"""
+    if format_name not in _ARCHIVE_FORMAT:
+        raise NotRegisteredError(
+            f"未注册的资源包格式: {format_name!r} (已注册: {registered_archives()})"
+        )
+    return _ARCHIVE_FORMAT[format_name]
+
+
+def registered_archives() -> list[str]:
+    """全部已注册资源包格式名, 排序返回(认头遍历按此顺序)。"""
+    return sorted(_ARCHIVE_FORMAT)
+
+
 def registered_games() -> list[str]:
     """全部已注册作品名(任一维度出现即算), 排序返回。"""
     return sorted(
@@ -316,6 +406,7 @@ def registered_games() -> list[str]:
         | set(_DATA)
         | set(_APP)
         | set(_MODS)
+        | set(_ARCHIVE)
     )
 
 
@@ -369,6 +460,7 @@ def get_game(name: str | None, report_err: bool = True) -> GameSpec | None:
         and name not in _DATA
         and name not in _APP
         and name not in _MODS
+        and name not in _ARCHIVE
     ):
         if report_err:
             raise NotRegisteredError(
@@ -384,4 +476,5 @@ def get_game(name: str | None, report_err: bool = True) -> GameSpec | None:
         data=_DATA.get(name),
         app=_APP.get(name),
         mods=_MODS.get(name),
+        archive=_ARCHIVE.get(name),
     )

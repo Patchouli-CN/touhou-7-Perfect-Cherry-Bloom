@@ -13,7 +13,7 @@ import pytest
 import touhou  # noqa: F401  # import 即完成 th07 注册
 from touhou.engine.translate import TranslateMode, YoukaiDanmakuTranslator
 from touhou.paths import DEFAULT_DATA
-from touhou.schema.archive import GameArchive
+from touhou.schema.archive import open_archive
 
 NEEDS_DAT = pytest.mark.skipif(not DEFAULT_DATA.exists(), reason="需要真实 th07.dat")
 
@@ -26,7 +26,7 @@ _LINGERING_COLD_SUB = 42
 
 
 def _ecl_bytes() -> bytes:
-    return GameArchive.open(DEFAULT_DATA).load(_STAGE1_ECL)
+    return open_archive(DEFAULT_DATA).load(_STAGE1_ECL)
 
 
 def test_record_real_spellcard_sub() -> None:
@@ -98,7 +98,7 @@ def test_control_mode_real_spellcard_sub() -> None:
 
 def test_control_mode_loop_structure_preserved() -> None:
     """二面 天符「天仙鳴動」(ecldata2 sub 64): 波次循环保留为嵌套 repeat。"""
-    ecl = GameArchive.open(DEFAULT_DATA).load("ecldata2.ecl")
+    ecl = open_archive(DEFAULT_DATA).load("ecldata2.ecl")
     tr = YoukaiDanmakuTranslator("th07")
     out = tr.translate(ecl, 64, mode=TranslateMode.CONTROL)
 
@@ -126,7 +126,9 @@ def test_auto_mode_lingering_cold_filled_by_dynamic() -> None:
     自动射击), AUTO 必须靠 provenance=None 的残余事件兜底出内容。
     """
     tr = YoukaiDanmakuTranslator("th07")
-    control = tr.translate(_ecl_bytes(), _LINGERING_COLD_SUB, mode=TranslateMode.CONTROL)
+    control = tr.translate(
+        _ecl_bytes(), _LINGERING_COLD_SUB, mode=TranslateMode.CONTROL
+    )
     control_actions = control["phases"][control["entry_phase"]]["on_tick"]
     assert not _walk_actions(control_actions), "寒符 CONTROL 应为空(静态盲区)"
 
@@ -153,7 +155,7 @@ def test_auto_mode_tenken_structure_without_duplicates() -> None:
     丢弃), 50 条来自 4 条变量依赖、静态求值失败的 fire 指令 —— 动态补回
     折叠为 10 条 fire, 故 AUTO = 静态 4 + 补盲 10。
     """
-    ecl = GameArchive.open(DEFAULT_DATA).load("ecldata2.ecl")
+    ecl = open_archive(DEFAULT_DATA).load("ecldata2.ecl")
     tr = YoukaiDanmakuTranslator("th07")
     control = tr.translate(ecl, 64, mode=TranslateMode.CONTROL)
     auto = tr.translate(ecl, 64, mode=TranslateMode.AUTO, max_frames=3600)
@@ -175,7 +177,7 @@ def test_auto_mode_hankaichou_display_name_is_lunatic_branch() -> None:
     第一条(一分咲/Easy); 运行时宣言事件的 origin 指向分支指令, 旧 AUTO
     过滤把它当"静态已覆盖"丢弃 → display 名错成一分咲。
     """
-    ecl = GameArchive.open(DEFAULT_DATA).load("ecldata6.ecl")
+    ecl = open_archive(DEFAULT_DATA).load("ecldata6.ecl")
     tr = YoukaiDanmakuTranslator("th07")
     out = tr.translate(
         ecl, 62, mode=TranslateMode.AUTO, context={"difficulty": 3}, max_frames=3600
