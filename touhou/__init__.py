@@ -25,6 +25,8 @@ from .games.th07 import mods as _th07_mods  # noqa: F401  (登记 th07 mod 能�
 from .games.th08 import data as _th08_data  # noqa: F401  (登记 th08 数值表)
 from .games.th08 import ecl_vm as _th08_ecl_vm  # noqa: F401  (登记 th08 ECL 维度:
 #  EclMachineTh08 + EclFileTh08)
+from .games.th08 import ecl_host as _th08_ecl_host  # noqa: F401  (登记 th08 游戏
+#  回调包: Th08GameEclHost + 关卡资源命名)
 from .apis.basic import (
     BossSnapshot,
     BulletSnapshot,

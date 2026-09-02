@@ -94,6 +94,8 @@ class EclMachineBase:
     _handlers: ClassVar[dict[int, EclHandler]] = {}
     # 位置分量变量 id(插值命中时回算 axis_speed); 子类按作品变量表覆盖
     _INTERP_POS_VARS: ClassVar[tuple[int, ...]] = ()
+    # ex 指令里的空操作槽位(th07 = 3 ExInsNoOp; th08 的 32 条无空槽, 置 -1)
+    _EX_NOOP_IDX: ClassVar[int] = 3
 
     @classmethod
     def register(
@@ -306,7 +308,7 @@ class EclMachineBase:
                     goto_exit = True
                     break
                 if ctx.time == instr.time:
-                    if (instr.skip_difficulty & w.difficulty_mask) == 0:
+                    if self._difficulty_skip(instr):
                         instr = self._advance(instr)
                         if instr is None:
                             return False
@@ -332,6 +334,14 @@ class EclMachineBase:
                 self._frame_update(instr)
                 return True
 
+    def _difficulty_skip(self, instr: EclInstr) -> bool:
+        """难度掩码过滤(th07 语义: 指令掩码不含当前难度位则跳过, ecl_base 主循环用)。
+
+        th08 语义不同(掩码需完整包含 全局难度位|敌人覆盖位, EclRun.cpp:67-74),
+        由 EclMachineTh08 覆写; 单难度位且无覆盖时两者等价。
+        """
+        return (instr.skip_difficulty & self.world.difficulty_mask) == 0
+
     def _advance(self, instr: EclInstr) -> Optional[EclInstr]:
         if instr.is_terminator:
             log.error("ECL 执行越过 sub 终止符 (offset={:#x})", instr.offset)
@@ -341,12 +351,15 @@ class EclMachineBase:
             log.error("ECL 指令流跑飞: offset={:#x}", instr.offset + instr.size)
         return nxt
 
-    def _frame_update(self, instr: EclInstr) -> None:
-        """RunEcl 的 exit 路径: 移动模式/自动射击/ex 指令/插值。"""
-        e, w, ctx = self.enemy, self.world, self.current
-        mult = w.framerate_multiplier
-        self.executing_instr = None  # 帧收尾期间的宿主回调不归属任何指令
+    def _update_movement(self) -> None:
+        """移动模式积分(C Enemy::UpdateMovement 的 mode 1/2/3 分支)。
 
+        从 _frame_update 抽出的 protected 辅助: th08 的 child 上下文块轮询时
+        每个上下文都会走 _frame_update, 但 C 只在全部上下文跑完后统一做一次
+        UpdateMovement(EclRun.cpp:206), EclMachineTh08 据此覆写本方法延后调用。
+        """
+        e, w = self.enemy, self.world
+        mult = w.framerate_multiplier
         if e.move_mode == 3:
             e.move_angle = add_normalize_angle(
                 e.move_angle, mult * e.move_angular_velocity
@@ -394,19 +407,42 @@ class EclMachineBase:
                 e.pos = e.move_interp_start_pos + e.move_interp
                 e.axis_speed = Vec3()
 
+    def _frame_update(self, instr: EclInstr) -> None:
+        """RunEcl 的 exit 路径: 移动模式/自动射击/ex 指令/插值。"""
+        e, w, ctx = self.enemy, self.world, self.current
+        self.executing_instr = None  # 帧收尾期间的宿主回调不归属任何指令
+
+        self._update_movement()
+
         if e.life > 0:
-            if e.shoot_interval > 0:
-                e.shoot_interval_timer += 1
-                if e.shoot_interval_timer >= e.shoot_interval:
-                    e.bullet_props.pos = e.pos + e.shoot_offset
-                    self.host.spawn_bullet_pattern(e.bullet_props)
-                    e.shoot_interval_timer = 0
+            self._update_shoot()
             if ctx.ex_instr_idx >= 0:
                 self._run_ex(ctx.ex_instr_idx, ctx.ex_instr)
             self._step_interps()
 
         ctx.instr_offset = instr.offset
         ctx.time = i32(ctx.time + 1)
+
+    def _update_shoot(self) -> None:
+        """自动射击计时(C Enemy::UpdateShotAndAnm 的射击分支)。
+
+        与 _update_movement 同为 protected 辅助: th08 child 轮询时每个上下文
+        都走 _frame_update, 但 C 只在全部上下文跑完后统一做一次
+        (EclDependencies.cpp:784-802), EclMachineTh08 据此覆写延后。
+        """
+        e = self.enemy
+        if e.shoot_interval > 0:
+            e.shoot_interval_timer += 1
+            if e.shoot_interval_timer >= e.shoot_interval:
+                self._auto_shoot()
+                e.shoot_interval_timer = 0
+
+    def _auto_shoot(self) -> None:
+        """自动射击到点发射(th07: 用持久 bullet_props; th08 重写为重新派发
+        pending 指令, 见 EclMachineTh08)。"""
+        e = self.enemy
+        e.bullet_props.pos = e.pos + e.shoot_offset
+        self.host.spawn_bullet_pattern(e.bullet_props)
 
     def _step_interps(self) -> None:
         e = self.enemy
@@ -441,7 +477,7 @@ class EclMachineBase:
 
     def _run_ex(self, idx: int, instr: Optional[EclInstr]) -> None:
         """ex 指令分发框架: 语义在宿主侧(run_ex_instr), VM 只委托。"""
-        if idx == 3:  # ExInsNoOp
+        if idx == self._EX_NOOP_IDX:  # ExInsNoOp(th07=3; th08 无空槽, 置 -1)
             return
         if not self.host.run_ex_instr(idx, self.enemy, instr, ctx=self.current):
             if ("ex", idx) not in self._warned:
