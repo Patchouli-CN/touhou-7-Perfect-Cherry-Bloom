@@ -524,6 +524,13 @@ def test_clock_value_object() -> None:
     assert not c.advance()  # 封顶
     ex = Th08Clock.for_extra()
     assert (ex.units, str(ex)) == (6, "2:00")
+    # moment: datetime 原生表达(年月日经 gensokyo_time 的 at() 桥提供)
+    c2 = Th08Clock.for_stage()
+    assert str(c2.moment) == "2004-09-27 23:00:00"
+    assert not c2.next_day
+    c2.units = MAX_UNITS
+    assert str(c2.moment) == "2004-09-28 05:00:00"  # 跨午夜进中秋名月当天
+    assert c2.next_day
 
 
 def test_clock_ops_route_to_host() -> None:

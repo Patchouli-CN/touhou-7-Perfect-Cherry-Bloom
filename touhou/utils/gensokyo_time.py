@@ -1,6 +1,27 @@
-"""幻想乡时间模块（彩蛋模块）"""
+"""幻想乡时间模块（彩蛋模块）
 
-from datetime import date
+历法设定考据（尊重 ZUN 设定，出处标注）：
+- 幻想乡通用两套历法：居民主要用公历（太阳历，因外界使用而跟进），
+  妖怪之山沿用妖怪太阴历（THBWiki「幻想乡」§历法，出典 东方香霖堂 第23话）：
+  以月相周期为月、最小单位是"月"（不存在"日"，新月=午夜、满月=正午的感觉）、
+  周期长达六十年；有不叫闰月的"十三月"，该年妖怪力量增强，
+  故 13 在某些地方被视为不吉利。
+- "第 ○○ 季"纪年：《文文。新闻》纪年法，很可能指博丽大结界张开后
+  经过的年份，月份表述与日本旧历一致（THBWiki「幻想乡」§历法）。
+  注意：第零季=1885 是**推算**（由 花映塚 2005年=第120季、60年周期回推，
+  60×2=1885），官方从未明写 1885（Touhou Wiki Talk:Gensokyo Timeline、
+  THBWiki「幻想乡年表」问题点节亦列有第零季/第一季之争）。
+- 年属性：每季由 三精×四季×五行 组合命名（求闻史纪/花映塚设定：
+  三系统每年各推进一位，3×4×5=60 年遍历全组合），锚点 第120季=
+  「日与春与土」（六十年不见的紫香花，万物再生），推进规则经
+  THBWiki「幻想乡年表」第118-126季逐年验证（如 第119季=「星与冬与金」）。
+
+参考：
+- https://thbwiki.cc/幻想乡年表
+- https://en.touhouwiki.net/wiki/Gensokyo_Timeline
+"""
+
+from datetime import date, datetime, time
 from typing import Self
 
 import msgspec
@@ -9,10 +30,39 @@ import msgspec
 # ── 常量 ──────────────────────────────────────────
 
 HAKUREI_GREAT_BARRIER_BUILT_TIME: date = date(1885, 1, 1)
-"""博丽大结界建立时间（第零季）"""
+"""博丽大结界建立时间（第零季）。
+
+注意：1885 是推算值（由 花映塚 2005年=第120季 按 60 年周期回推 60×2），
+官方未明写，详见模块 docstring 的考据说明"""
 
 INCIDENT_CYCLE_YEARS: int = 60
 """大结界异变周期：每60季一次"""
+
+# ── 年属性：三精 × 四季 × 五行（求闻史纪/花映塚设定）──
+
+SANSEI: tuple[str, str, str] = ("日", "月", "星")
+"""三精（气质）：日(傲慢) → 月(协调) → 星(多样)"""
+
+SHIKI: tuple[str, str, str, str] = ("春", "夏", "秋", "冬")
+"""四季（生命）：春(诞生) → 夏(成长) → 秋(成果衰退) → 冬(死)"""
+
+WUXING: tuple[str, str, str, str, str] = ("火", "水", "木", "金", "土")
+"""五行（物质）：火(激情) → 水(归还于无) → 木(强大温柔) → 金(沉默) → 土(再生)"""
+
+ATTRIBUTE_ANCHOR_SEASON: int = 120
+"""年属性锚点：第120季 = 「日与春与土」（六十年不见的紫香花，万物再生）"""
+
+# ── 日本旧历月名（《文文。新闻》纪年月份表述与之一致）──
+
+TRADITIONAL_MONTH_NAMES: tuple[str, ...] = (
+    "睦月", "如月", "弥生", "卯月", "皐月", "水無月",
+    "文月", "葉月", "長月", "神無月", "霜月", "師走",
+)
+"""旧历十二月名（1月=睦月 … 12月=師走）"""
+
+THIRTEENTH_MONTH_NAME: str = "十三月"
+"""妖怪太阴历的"十三月"：不叫闰月；有十三月的年份妖怪力量增强，
+故 13 在某些地方被视为不吉利（东方香霖堂 第23话，霖之助述）"""
 
 
 # ── 内部工具 ──────────────────────────────────────
@@ -52,6 +102,28 @@ def barrier_incident_number(today: date | None = None) -> int:
     return gensokyo_current_season(today) // INCIDENT_CYCLE_YEARS
 
 
+def year_attributes(season: int) -> tuple[str, str, str]:
+    """指定季的三精×四季×五行年属性，如 第119季 → ("星", "冬", "金")。
+
+    三系统每年各推进一位（3×4×5=60 年遍历全组合），锚点 第120季=
+    （日, 春, 土）（六十年不见的紫香花）；推进规则经 THBWiki「幻想乡年表」
+    第118-126季逐年验证（119=星冬金、121=月夏火、122=星秋水、123=日冬木…）。
+    """
+    offset = season - ATTRIBUTE_ANCHOR_SEASON
+    return (
+        SANSEI[offset % len(SANSEI)],
+        SHIKI[offset % len(SHIKI)],
+        # 锚点季=土，土在 WUXING 循环（火水木金土）中排第 5
+        WUXING[(WUXING.index("土") + offset) % len(WUXING)],
+    )
+
+
+def year_attributes_str(season: int) -> str:
+    """年属性的年表风格写法，如 "星与冬与金之年" """
+    sansei, shiki, wuxing = year_attributes(season)
+    return f"{sansei}与{shiki}与{wuxing}之年"
+
+
 # ── 数据结构 ──────────────────────────────────────
 
 
@@ -79,13 +151,35 @@ class GensokyoSeasonTime(msgspec.Struct):
         """转换为外界日期（YYYY-MM-DD）"""
         return _season_to_date(self.season, self.month, self.day)
 
+    def at(self, hour: int, minute: int = 0, second: int = 0) -> datetime:
+        """补上时分秒，转换为外界 datetime。
+
+        datetime 必须年月日齐全才能携带时分秒——年月日由季历提供
+        （这正是本模块存在的意义之一），时分秒由调用方给出
+        （如永夜抄开局 23:00 = INCIDENT_ETERNAL_NIGHT.season_time.at(23)）。
+        """
+        return datetime.combine(self.to_outside(), time(hour, minute, second))
+
+    @property
+    def year_attributes(self) -> tuple[str, str, str]:
+        """本季的三精×四季×五行年属性（见模块级 year_attributes）"""
+        return year_attributes(self.season)
+
+    @property
+    def traditional_month_name(self) -> str:
+        """旧历月名（睦月…師走，《文文。新闻》纪年用）"""
+        return TRADITIONAL_MONTH_NAMES[self.month - 1]
+
     @property
     def barrier_cycle(self) -> int:
         """当前处于第几次大结界异变周期"""
         return self.season // INCIDENT_CYCLE_YEARS
 
     def __str__(self) -> str:
-        return f"第{self.season}季-{self.month:02d}月{self.day:02d}日（外界{self.to_outside()}）"
+        return (
+            f"第{self.season}季-{self.month:02d}月{self.day:02d}日"
+            f"（{year_attributes_str(self.season)} / 外界{self.to_outside()}）"
+        )
 
     def __repr__(self) -> str:
         return f"GensokyoSeasonTime(season={self.season}, month={self.month}, day={self.day})"
@@ -145,7 +239,11 @@ INCIDENT_GATHERING_NIGHT_PARADE = GensokyoIncident(
 INCIDENT_ETERNAL_NIGHT = GensokyoIncident(
     name="永夜异变",
     season_time=GensokyoSeasonTime(season=119, month=9, day=27),  # 2004-09-27/28
-    description="永夜抄。伪月、竹取物语、蓬莱之药",
+    description=(
+        "永夜抄。伪月、竹取物语、蓬莱之药。"
+        "当晚为迎接中秋名月之夜（2004年中秋=旧历8月15=新历9月28日，满月），"
+        "23:00 开局、跨午夜至 9月28日 凌晨（THBWiki 幻想乡年表 第119季）"
+    ),
 )
 
 INCIDENT_SIXTY_YEAR_CYCLE = GensokyoIncident(

@@ -10,10 +10,13 @@
   clock_hide), 时刻状态由本对象承载。
 
 日期锚点从 utils.gensokyo_time 导入(永夜异变 = 第 119 季 9 月 27 日夜),
-尊重 ZUN 设定; gensokyo_time 只有季/月/日精度, 时钟概念由本类补充。
+尊重 ZUN 设定; 时分秒的表达直接用 py 内置 datetime —— 年月日经
+``GensokyoSeasonTime.at()`` 桥由季历提供, 时钟概念由本类补充。
 """
 
 from __future__ import annotations
+
+from datetime import datetime, timedelta
 
 import msgspec
 
@@ -55,15 +58,24 @@ class Th08Clock(msgspec.Struct):
         self.hidden = True
 
     @property
+    def moment(self) -> datetime:
+        """当前时刻的外界 datetime: 开局 9月27日 23:00 + units×30 分钟,
+        跨午夜自然进入 9月28日(中秋名月当天)。年月日经 gensokyo_time 的
+        ``at()`` 桥提供, 时分秒由本时钟推进 —— datetime 原生处理。"""
+        return INCIDENT.season_time.at(23, 0) + timedelta(
+            minutes=self.units * MINUTES_PER_UNIT
+        )
+
+    @property
     def time_of_day(self) -> tuple[int, int]:
         """(时, 分): 23:00 + units×30 分钟, 跨午夜回绕到次日(9 月 28 日)。"""
-        total = 23 * 60 + self.units * MINUTES_PER_UNIT
-        return (total // 60) % 24, total % 60
+        m = self.moment
+        return m.hour, m.minute
 
     @property
     def next_day(self) -> bool:
         """是否已跨午夜(进入 9 月 28 日)。"""
-        return 23 * 60 + self.units * MINUTES_PER_UNIT >= 24 * 60
+        return self.moment.date() > INCIDENT.outside_date
 
     def __str__(self) -> str:
         h, m = self.time_of_day
