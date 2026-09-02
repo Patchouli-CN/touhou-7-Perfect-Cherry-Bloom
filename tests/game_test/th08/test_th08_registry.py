@@ -1,4 +1,4 @@
-"""th08 注册事实测试 —— import touhou 后 th08 各维度(阶段 1: data + archive)的注册内容。
+"""th08 注册事实测试 —— import touhou 后 th08 各维度(data + archive + ecl)的注册内容。
 
 照 game_test/th07/test_th07_registry.py 的模式; 通用契约见 tests/test_registry.py。
 """
@@ -43,6 +43,16 @@ def test_th08_archive_format_registered() -> None:
     assert get_archive_format("pbgz").container_cls is PbgzArchive
     assert "pbgz" in registered_archives()
     assert "th08" in registered_games()
+
+
+def test_th08_ecl_registered() -> None:
+    """th08 的 ECL 维度(阶段 2 单 A): 占位 VM + th08 文件格式类。"""
+    from touhou.games.th08.ecl_file import EclFileTh08
+    from touhou.games.th08.ecl_vm import EclMachineTh08
+
+    spec = get_game("th08")
+    assert spec.ecl is not None
+    assert spec.ecl.machine is EclMachineTh08 and spec.ecl.file_format is EclFileTh08
 
 
 def test_th08_title_constant() -> None:

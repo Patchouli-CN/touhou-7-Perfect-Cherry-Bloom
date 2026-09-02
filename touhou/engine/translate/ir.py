@@ -48,7 +48,7 @@ __all__ = [
 _MAX_DEPTH = 32
 _MAX_NODES = 4096
 
-# 条件跳转 opcode → 比较运算符(与 ecl_base.py _compare 同语义)
+# 条件跳转 opcode → 比较运算符(与 ecl_std_ops.py _compare 同语义)
 _COND_JUMP_OPS: dict[int, str] = {
     EclOpcode.JUMP_IF_EQ: "==",
     EclOpcode.JUMP_IF_NEQ: "!=",

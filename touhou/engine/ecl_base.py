@@ -3,7 +3,7 @@
 职责边界:
 - 本模块只有 VM 框架: 主循环(step/_run_ecl)、调用栈、wait timer、O(1) handler
   分发(_handlers + register)、参数编解码(_int_arg/_float_arg/_store_*)、
-  物理/插值通用逻辑(_move/_frame_update/_step_interps/_do_jump/_compare)、
+  物理/插值通用逻辑(_move/_frame_update/_step_interps/_do_jump)、
   ex 指令分发框架(_run_ex —— 语义委托 host.run_ex_instr, 见 ecl.py 头注)。
 - **没有任何具体 opcode 实现, 也没有 EclVarId 变量语义**: 变量读写是 stub,
   opcode handler 全部由作品子类用 ``@<子类>.register(...)`` 装饰器登记。
@@ -476,17 +476,3 @@ class EclMachineBase:
             log.error("ECL 跳转目标非法: offset={:#x}", instr.offset + byte_offset)
             return "error"
         return nxt
-
-    @staticmethod
-    def _compare(op: int, a: float, b: float) -> bool:
-        if op in (EclOpcode.JUMP_IF_EQ, EclOpcode.JUMP_IF_EQ_FLOAT):
-            return a == b
-        if op in (EclOpcode.JUMP_IF_NEQ, EclOpcode.JUMP_IF_NEQ_FLOAT):
-            return a != b
-        if op in (EclOpcode.JUMP_IF_LT, EclOpcode.JUMP_IF_LT_FLOAT):
-            return a < b
-        if op in (EclOpcode.JUMP_IF_LEQ, EclOpcode.JUMP_IF_LEQ_FLOAT):
-            return a <= b
-        if op in (EclOpcode.JUMP_IF_GT, EclOpcode.JUMP_IF_GT_FLOAT):
-            return a > b
-        return a >= b

@@ -16,8 +16,10 @@
 EclFile 双向: parse 解字节, serialize 写回(承诺 serialize(parse(data)) == data
 逐字节成立, 保留字段的取舍见 EclFile docstring)。按作品名解析格式的统一
 enc/dec 入口在 engine/ecl_codec.py(EclCodec, 经注册表 EclSpec.file_format)。
-VM 框架在 engine/ecl_base.py(EclMachineBase), TH07 的变量映射与 161 条
-opcode 实现在 games/th07/ecl_vm.py(EclMachineTh07 + EclVarId)。
+VM 框架在 engine/ecl_base.py(EclMachineBase); 作品无关核心指令 handler
+(跳转/算术/条件跳/call/ret 等)在 engine/ecl_std_ops.py(按作品编号表参数化
+注册); TH07 的变量映射与作品专属 opcode 在 games/th07/ecl_vm.py
+(EclMachineTh07 + EclVarId)。
 
 ExIns (RUN_EX_INS/SET_EX_INS, 24 条 boss 特技) 覆盖状态:
 - idx 0..23 全部在 ecl_host.GameEclHost 实现 (EnemyEclInstr.cpp 逐条对照);

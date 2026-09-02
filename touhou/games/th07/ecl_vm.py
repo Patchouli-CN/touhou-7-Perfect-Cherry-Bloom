@@ -3,12 +3,14 @@
 对照 th07 反编译源码 `EclManager.cpp/.hpp`、`EnemyEclInstr.cpp`:
 - ``EclVarId``: TH07 变量命名空间(10000~10073, EclManager.hpp 的变量表);
 - ``EclMachineTh07``: 变量系统(_get_int/_set_int/_get_float/_set_float +
-  GET_BOSS 系的 _peer_int/_peer_float) + 161 条 opcode handler + 作品辅助
+  GET_BOSS 系的 _peer_int/_peer_float) + 作品专属 opcode handler + 作品辅助
   方法(_spawn_bullet_pattern/_spawn_laser_pattern/_begin_spellcard/
-  _init_interp/_exit_angle/_jitter_pos/_spawn_items)。
+  _exit_angle/_jitter_pos/_spawn_items)。
 
 VM 框架(主循环/调用栈/分发/参数编解码)在引擎层 ``engine/ecl_base.py``
-的 ``EclMachineBase``; ex 指令(24 条 boss 特技)语义在宿主层
+的 ``EclMachineBase``; 作品无关核心指令(跳转/算术/条件跳/call/ret 等)在
+``engine/ecl_std_ops.py``, 本模块底部用 th07 编号表(``_TH07_CORE_OPS``)
+注册同一批 handler(行为等价迁移); ex 指令(24 条 boss 特技)语义在宿主层
 ``ecl_host.GameEclHost.run_ex_instr``, VM 只负责分发。
 
 新增 opcode 的注册示例:
@@ -29,7 +31,7 @@ from __future__ import annotations
 import math
 import struct
 from enum import IntEnum
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .ecl_host import GameEclHost  # 仅类型检查期(cast 收窄宿主用)
@@ -42,14 +44,12 @@ from ...engine.ecl import (
     Vec3,
 )
 from ...engine.ecl_base import EclMachineBase
-from ...logger import logger as log
+from ...engine.ecl_std_ops import CoreOps, register_core_ops
 from ...registry import register_ecl
 from ...utils import (
     ZUN_2PI,
     ZUN_PI,
     add_normalize_angle,
-    cdiv,
-    cmod,
     f32,
     i16,
     i32,
@@ -149,7 +149,9 @@ class EclVarId(IntEnum):
 class EclMachineTh07(EclMachineBase):
     """TH07 的 ECL VM: 框架(``EclMachineBase``) + 本作变量映射/辅助方法。
 
-    opcode handler 全部在本模块底部用 ``@EclMachineTh07.register`` 登记。
+    作品无关核心 handler 经 ``register_core_ops`` 从 engine/ecl_std_ops 注册
+    (本模块底部 ``_TH07_CORE_OPS``); 作品专属 handler 在本模块底部用
+    ``@EclMachineTh07.register`` 登记。
     """
 
     # 插值写位置分量时要回算 axis_speed(见基类 _step_interps)
@@ -408,27 +410,7 @@ class EclMachineTh07(EclMachineBase):
             ctx.args = saved_args
             self.enemy = saved_enemy
 
-    # ---- 作品辅助方法(弹幕/激光/符卡/插值/道具) ----
-
-    def _init_interp(self, instr: EclInstr) -> None:
-        ctx = self.current
-        target = int(instr.arg_float(0))  # f32 值形式存的变量 id
-        for it in ctx.interps:
-            if it.active and it.target_var != target:
-                continue
-            it.active = True
-            it.timer = 0
-            it.target_var = target
-            it.duration = self._int_arg(instr, 1)
-            it.func_idx = self._int_arg(instr, 2)
-            it.easing = self._int_arg(instr, 3)
-            it.params = [
-                self._float_arg(instr, 4),
-                self._float_arg(instr, 5),
-                self._float_arg(instr, 6),
-                self._float_arg(instr, 7),
-            ]
-            break
+    # ---- 作品辅助方法(弹幕/激光/符卡/道具) ----
 
     def _spawn_bullet_pattern(self, instr: EclInstr) -> None:
         e, w = self.enemy, self.world
@@ -557,55 +539,67 @@ class EclMachineTh07(EclMachineBase):
 
 
 # ==========================================================================
-# 161 条 opcode handler(从原 _execute 的 elif 链逐条拆出, self.→m. 机械替换)
+# opcode handler(从原 _execute 的 elif 链逐条拆出, self.→m. 机械替换)
 # ==========================================================================
 
+# 作品无关核心指令(stop/wait/nop/跳转/算术/三角/lerp/插值/条件跳/call/ret)
+# 已下沉 engine/ecl_std_ops.py, 这里用 th07 编号表注册同一批 handler(行为等价;
+# th07↔th08 编号对照结论见 ecl_std_ops 模块 docstring —— 仅 1 号同号同义,
+# 其余系统性错位, 故共享核按 int 编号参数化)
+_TH07_CORE_OPS = CoreOps(
+    unimp=int(EclOpcode.UNIMP),
+    nop=(0, 141),  # 0: 无操作标记(C 的 switch 没有 case 0, 编译器生成的时间
+    # 同步点); 141: C 枚举 140→142 跳号, switch 无 case 141, 二进制里等于无操作
+    wait_timer=int(EclOpcode.SET_WAIT_TIMER),
+    jump=int(EclOpcode.JUMP),
+    dec_jump=int(EclOpcode.DEC_JUMP),
+    set_int=int(EclOpcode.SET_INT),
+    set_float=int(EclOpcode.SET_FLOAT),
+    rand_sign=int(EclOpcode.RAND_SIGN),
+    rand_sign_float=int(EclOpcode.RAND_SIGN_FLOAT),
+    int_arith=(
+        int(EclOpcode.ADD),
+        int(EclOpcode.SUB),
+        int(EclOpcode.MUL),
+        int(EclOpcode.DIV),
+        int(EclOpcode.MOD),
+    ),
+    float_arith=(
+        int(EclOpcode.ADD_FLOAT),
+        int(EclOpcode.SUB_FLOAT),
+        int(EclOpcode.MUL_FLOAT),
+        int(EclOpcode.DIV_FLOAT),
+        int(EclOpcode.MOD_FLOAT),
+    ),
+    inc=int(EclOpcode.INC),
+    dec=int(EclOpcode.DEC),
+    sin=int(EclOpcode.SIN),
+    cos=int(EclOpcode.COS),
+    atan2=int(EclOpcode.ATAN2),
+    lerp=int(EclOpcode.LERP),
+    init_interp=int(EclOpcode.INIT_INTERP),
+    normalize_angle=int(EclOpcode.NORMALIZE_ANGLE),
+    cond_jumps=(
+        int(EclOpcode.JUMP_IF_EQ),
+        int(EclOpcode.JUMP_IF_EQ_FLOAT),
+        int(EclOpcode.JUMP_IF_NEQ),
+        int(EclOpcode.JUMP_IF_NEQ_FLOAT),
+        int(EclOpcode.JUMP_IF_LT),
+        int(EclOpcode.JUMP_IF_LT_FLOAT),
+        int(EclOpcode.JUMP_IF_LEQ),
+        int(EclOpcode.JUMP_IF_LEQ_FLOAT),
+        int(EclOpcode.JUMP_IF_GT),
+        int(EclOpcode.JUMP_IF_GT_FLOAT),
+        int(EclOpcode.JUMP_IF_GEQ),
+        int(EclOpcode.JUMP_IF_GEQ_FLOAT),
+    ),
+    sub_call=int(EclOpcode.SUB_CALL),
+    sub_ret=int(EclOpcode.SUB_RET),
+)
+register_core_ops(EclMachineTh07, _TH07_CORE_OPS)
 
-@EclMachineTh07.register(EclOpcode.UNIMP)
-def _op_unimp(m: EclMachineTh07, instr: EclInstr):
-    return "error"  # RunEcl 直接返回错误(= 脚本结束/despawn)
 
-
-@EclMachineTh07.register((0, 141))
-def _op_noop(m: EclMachineTh07, instr: EclInstr):
-    # 0: 无操作标记(C 的 switch 没有 case 0, 编译器生成的时间同步点)
-    # 141: C 枚举 140→142 跳号, switch 无 case 141, 二进制里等于无操作
-    return None
-
-
-@EclMachineTh07.register(EclOpcode.SET_WAIT_TIMER)
-def _op_set_wait_timer(m: EclMachineTh07, instr: EclInstr):
-    m.current.wait_timer = m._int_arg(instr, 0)
-
-
-@EclMachineTh07.register(EclOpcode.DEC_JUMP)
-def _op_dec_jump(m: EclMachineTh07, instr: EclInstr):
-    t = m._int_target(instr, 2)
-    if t is not None:
-        m._set_int(t, m._get_int(t) - 1)
-    if m._int_arg(instr, 2) <= 0:
-        return None  # 顺序前进
-    return m._do_jump(instr, instr.arg_int(0), instr.arg_int(1))
-
-
-@EclMachineTh07.register(EclOpcode.JUMP)
-def _op_jump(m: EclMachineTh07, instr: EclInstr):
-    return m._do_jump(instr, instr.arg_int(0), instr.arg_int(1))
-
-
-@EclMachineTh07.register(EclOpcode.SET_INT)
-def _op_set_int(m: EclMachineTh07, instr: EclInstr):
-    m._store_int(instr, 0, m._int_arg(instr, 1))
-
-
-@EclMachineTh07.register(EclOpcode.SET_FLOAT)
-def _op_set_float(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(instr, 0, m._float_arg(instr, 1))
-
-
-@EclMachineTh07.register(EclOpcode.NORMALIZE_ANGLE)
-def _op_normalize_angle(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(instr, 0, add_normalize_angle(m._float_arg(instr, 0), 0.0))
+# ---- TH07 专属: RAND 系(th08 无对应 opcode, 随机走变量, 见 ecl_std_ops 对照表) ----
 
 
 @EclMachineTh07.register(EclOpcode.RAND)
@@ -632,24 +626,7 @@ def _op_rand_float_add(m: EclMachineTh07, instr: EclInstr):
     )
 
 
-@EclMachineTh07.register(EclOpcode.RAND_SIGN)
-def _op_rand_sign(m: EclMachineTh07, instr: EclInstr):
-    m._store_int(instr, 0, m.world.rng.sign() * m._int_arg(instr, 1))
-
-
-@EclMachineTh07.register(EclOpcode.RAND_SIGN_FLOAT)
-def _op_rand_sign_float(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(instr, 0, float(m.world.rng.sign()) * m._float_arg(instr, 1))
-
-
-_INC_DEC: dict[int, int] = {int(EclOpcode.INC): 1, int(EclOpcode.DEC): -1}
-
-
-@EclMachineTh07.register(tuple(_INC_DEC))
-def _op_inc_dec(m: EclMachineTh07, instr: EclInstr):
-    t = m._int_target(instr, 0)
-    if t is not None:
-        m._set_int(t, m._get_int(t) + _INC_DEC[instr.id])
+# ---- TH07 专属: GET_BOSS 系(th08 无对应, 见 ecl_std_ops 对照表) ----
 
 
 @EclMachineTh07.register(EclOpcode.GET_BOSS_INT)
@@ -668,139 +645,6 @@ def _op_get_boss_float(m: EclMachineTh07, instr: EclInstr):
         return None
     fvalue = m._peer_float(boss, instr, 1)
     m._store_float(instr, 0, fvalue)
-
-
-# 算术四则(+取模) 5 合一: int 版
-_INT_BINOP: dict[int, Callable[[int, int], int]] = {
-    int(EclOpcode.ADD): lambda a, b: a + b,
-    int(EclOpcode.SUB): lambda a, b: a - b,
-    int(EclOpcode.MUL): lambda a, b: a * b,
-    int(EclOpcode.DIV): lambda a, b: cdiv(a, b) if b else 0,
-    int(EclOpcode.MOD): lambda a, b: cmod(a, b) if b else 0,
-}
-
-
-@EclMachineTh07.register(tuple(_INT_BINOP))
-def _op_int_arith(m: EclMachineTh07, instr: EclInstr):
-    m._store_int(
-        instr, 0, _INT_BINOP[instr.id](m._int_arg(instr, 1), m._int_arg(instr, 2))
-    )
-
-
-# 算术四则(+取模) 5 合一: float 版
-_FLOAT_BINOP: dict[int, Callable[[float, float], float]] = {
-    int(EclOpcode.ADD_FLOAT): lambda a, b: a + b,
-    int(EclOpcode.SUB_FLOAT): lambda a, b: a - b,
-    int(EclOpcode.MUL_FLOAT): lambda a, b: a * b,
-    int(EclOpcode.DIV_FLOAT): lambda a, b: a / b if b != 0.0 else 0.0,
-    int(EclOpcode.MOD_FLOAT): lambda a, b: math.fmod(a, b) if b != 0.0 else 0.0,
-}
-
-
-@EclMachineTh07.register(tuple(_FLOAT_BINOP))
-def _op_float_arith(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(
-        instr, 0, _FLOAT_BINOP[instr.id](m._float_arg(instr, 1), m._float_arg(instr, 2))
-    )
-
-
-@EclMachineTh07.register(EclOpcode.SIN)
-def _op_sin(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(instr, 0, math.sin(m._float_arg(instr, 1)))
-
-
-@EclMachineTh07.register(EclOpcode.COS)
-def _op_cos(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(instr, 0, math.cos(m._float_arg(instr, 1)))
-
-
-@EclMachineTh07.register(EclOpcode.ATAN2)
-def _op_atan2(m: EclMachineTh07, instr: EclInstr):
-    m._store_float(
-        instr,
-        0,
-        math.atan2(
-            m._float_arg(instr, 4) - m._float_arg(instr, 2),
-            m._float_arg(instr, 3) - m._float_arg(instr, 1),
-        ),
-    )
-
-
-@EclMachineTh07.register(EclOpcode.LERP)
-def _op_lerp(m: EclMachineTh07, instr: EclInstr):
-    delta = m._float_arg(instr, 1) - m._float_arg(instr, 2)
-    m._store_float(instr, 0, delta * m._float_arg(instr, 3) + m._float_arg(instr, 2))
-
-
-@EclMachineTh07.register(EclOpcode.INIT_INTERP)
-def _op_init_interp(m: EclMachineTh07, instr: EclInstr):
-    m._init_interp(instr)
-
-
-# 条件跳转 6 合一: int 版
-_JUMP_IF_INT = (
-    EclOpcode.JUMP_IF_EQ,
-    EclOpcode.JUMP_IF_NEQ,
-    EclOpcode.JUMP_IF_LT,
-    EclOpcode.JUMP_IF_LEQ,
-    EclOpcode.JUMP_IF_GT,
-    EclOpcode.JUMP_IF_GEQ,
-)
-
-
-@EclMachineTh07.register(_JUMP_IF_INT)
-def _op_jump_if_int(m: EclMachineTh07, instr: EclInstr):
-    a, b = m._int_arg(instr, 0), m._int_arg(instr, 1)
-    if m._compare(instr.id, a, b):
-        return m._do_jump(instr, instr.arg_int(2), instr.arg_int(3))
-    return None
-
-
-# 条件跳转 6 合一: float 版
-_JUMP_IF_FLOAT = (
-    EclOpcode.JUMP_IF_EQ_FLOAT,
-    EclOpcode.JUMP_IF_NEQ_FLOAT,
-    EclOpcode.JUMP_IF_LT_FLOAT,
-    EclOpcode.JUMP_IF_LEQ_FLOAT,
-    EclOpcode.JUMP_IF_GT_FLOAT,
-    EclOpcode.JUMP_IF_GEQ_FLOAT,
-)
-
-
-@EclMachineTh07.register(_JUMP_IF_FLOAT)
-def _op_jump_if_float(m: EclMachineTh07, instr: EclInstr):
-    fa, fb = m._float_arg(instr, 0), m._float_arg(instr, 1)
-    if m._compare(instr.id, fa, fb):
-        return m._do_jump(instr, instr.arg_int(2), instr.arg_int(3))
-    return None
-
-
-@EclMachineTh07.register(EclOpcode.SUB_CALL)
-def _op_sub_call(m: EclMachineTh07, instr: EclInstr):
-    e, w, ctx = m.enemy, m.world, m.current
-    ctx.instr_offset = instr.offset + instr.size
-    if not e.no_stack_ret:
-        m._push_context()
-    m.call_sub(instr.arg_int(0))
-    # 新 sub 拿到活动全局变量的快照(C: eclContextArgs.globalVars = g_GlobalEclVars)
-    ctx.args.global_ints = list(w.global_ints)
-    ctx.args.global_floats = list(w.global_floats)
-    return "restart"
-
-
-@EclMachineTh07.register(EclOpcode.SUB_RET)
-def _op_sub_ret(m: EclMachineTh07, instr: EclInstr):
-    e, ctx = m.enemy, m.current
-    if e.no_stack_ret:
-        log.warning("ECL_SUB_RET with noStackRet")
-    if not m.stack:
-        log.error("ECL 调用栈下溢")
-        return "error"
-    if ctx.is_periodic_sub:
-        e.saved_context_args = ctx.args.clone()
-        ctx.is_periodic_sub = 0
-    m.current = m.stack.pop()
-    return "restart"
 
 
 @EclMachineTh07.register(EclOpcode.SET_ANM)

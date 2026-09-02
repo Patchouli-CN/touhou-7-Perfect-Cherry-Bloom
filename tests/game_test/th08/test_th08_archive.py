@@ -1,7 +1,8 @@
 """th08 真实资源包(th08.dat, PBGZ)测试 —— 缺失自动 skip(见 conftest.needs_data)。
 
-只抽 ecl 类纯 LZSS 条目验证: anm/std 有条目内层加密(TryDecryptFromTable,
-Global.cpp:901-927), 解压出密文不算本层失败, 刻意避开。
+条目内容只有 LZSS 一层(本层职责); ecl/anm/std 等条目解压后还带 "edz"
+内层签名加密(TryDecryptFromTable, Global.cpp:901-927), 那是解析层的事
+(games/th08/crypt.py), 本层只验证解压成功且大小与目录表吻合。
 """
 
 from __future__ import annotations

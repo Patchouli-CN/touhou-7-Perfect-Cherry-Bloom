@@ -2,8 +2,8 @@
 
 对外 API 见 touhou/apis/basic.py; 顶层直接导出全部公共类型。作品经
 touhou/registry.py 的 decorator 注册接入; import 本包即完成 th07 的
-全维度注册(见下方 games.th07 的触发 import)与 th08 的数据维度注册
-(阶段 1 地基, ECL/world 等维度后续阶段接入)。
+全维度注册(见下方 games.th07 的触发 import)与 th08 的数据+ECL 维度注册
+(阶段 1/2 地基, world 等维度后续阶段接入)。
 
 窗口版游戏入口: ``python -m touhou`` 或安装后的 ``touhou07`` 命令。
 """
@@ -23,6 +23,8 @@ from .games.th07 import mods as _th07_mods  # noqa: F401  (登记 th07 mod 能�
 
 #  提供者 Th07Mods)
 from .games.th08 import data as _th08_data  # noqa: F401  (登记 th08 数值表)
+from .games.th08 import ecl_vm as _th08_ecl_vm  # noqa: F401  (登记 th08 ECL 维度:
+#  EclMachineTh08 + EclFileTh08)
 from .apis.basic import (
     BossSnapshot,
     BulletSnapshot,
