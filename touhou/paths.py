@@ -1,7 +1,7 @@
-"""游戏资源(.dat 数据包)路径解析 —— 内置默认按首发作品 th07 的布局。
+"""游戏资源(.dat 数据包)路径解析 —— 内置默认按作品分表(DEFAULT_DATA_PATHS)。
 
-解析顺序: 显式参数 > 环境变量 ``TOUHOU_DAT`` > 内置默认路径。
-thbgm.dat(BGM)由播放层按 th07.dat 同目录推导, 不单独配置。
+解析顺序: 显式参数 > 环境变量 ``TOUHOU_DAT`` > 内置默认路径(按作品查表)。
+thbgm.dat(BGM)由播放层按 .dat 同目录推导, 不单独配置。
 """
 
 from __future__ import annotations
@@ -9,8 +9,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# 内置默认数据源(本机游戏目录)
-DEFAULT_DATA = Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat")
+# 内置默认数据源(本机游戏目录, 按作品名查表; 新作品接入时在此补默认路径)
+DEFAULT_DATA_PATHS = {
+    "th07": Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat"),
+    "th08": Path(r"D:\TOUHOU_GAME\[th08] 东方永夜抄 (日文版)\th08.dat"),
+}
+
+#: th07 默认路径别名(既有调用方不破坏; 等价 DEFAULT_DATA_PATHS["th07"])
+DEFAULT_DATA = DEFAULT_DATA_PATHS["th07"]
 
 ENV_DATA = "TOUHOU_DAT"
 
@@ -19,11 +25,16 @@ ENV_DATA = "TOUHOU_DAT"
 DEFAULT_SCORE_PATH = Path(__file__).resolve().parent.parent / "score.json"
 
 
-def resolve_data_path(data_path: str | Path | None = None) -> Path:
-    """按 显式参数 > TOUHOU_DAT 环境变量 > 内置默认 的顺序解析 th07.dat 路径。"""
+def resolve_data_path(
+    data_path: str | Path | None = None, *, game: str = "th07"
+) -> Path:
+    """按 显式参数 > TOUHOU_DAT 环境变量 > 内置默认(按 ``game`` 查表) 解析 .dat 路径。
+
+    环境变量是全局覆盖, 不分作品(单包调试场景); 未登记的作品名回落 th07 默认。
+    """
     if data_path is not None:
         return Path(data_path)
     env = os.environ.get(ENV_DATA)
     if env:
         return Path(env)
-    return DEFAULT_DATA
+    return DEFAULT_DATA_PATHS.get(game, DEFAULT_DATA)

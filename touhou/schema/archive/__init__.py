@@ -4,7 +4,7 @@
 - ``lzss``: 可参数化 LZSS 解压(不认容器头)
 - ``base``: ``ArchiveBase``/``ArchiveEntry`` —— 只读视图通用面 + 进程级解压缓存
 - 各格式模块: 认头/读目录表/解一条, 用 ``registry.register_archive`` 登记
-  自己服务的作品(th07 = ``pbg4``, 见 ``pbg4.Pbg4Archive``)
+  自己服务的作品(th07 = ``pbg4``, th08 = ``pbgz``)
 
 调用方入口是 ``open_archive(path)``: 不传 ``game``/``format_name`` 时按文件头
 自动识别已注册格式, 因此通用层(engine/*)不需要知道当前是哪部作品; 作品包
@@ -21,12 +21,14 @@ from ...registry import get_archive_format, get_archive_spec, registered_archive
 from .base import ArchiveBase, ArchiveEntry
 from .lzss import LzssDecompressor
 from .pbg4 import Pbg4Archive
+from .pbgz import PbgzArchive
 
 __all__ = [
     "ArchiveBase",
     "ArchiveEntry",
     "LzssDecompressor",
     "Pbg4Archive",
+    "PbgzArchive",
     "open_archive",
     "sniff_archive",
 ]

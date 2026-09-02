@@ -174,6 +174,7 @@ _ARCHIVE_FORMAT: dict[str, ArchiveSpec] = {}  # 格式名 → 容器格式(认�
 #: 已注册作品号 → 作品名(检测到对应资源时打印; 新作品注册时在此补名字)
 GAME_TITLES = {
     "th07": "東方妖々夢 〜 Perfect Cherry Blossom",
+    "th08": "東方永夜抄 〜 Imperishable Night.",
 }
 
 
