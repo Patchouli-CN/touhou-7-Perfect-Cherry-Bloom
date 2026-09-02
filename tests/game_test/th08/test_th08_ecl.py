@@ -124,7 +124,9 @@ class _RecHost(EclHost):
         self.calls.append(("enemy", sub_id, pos, life, item_drop, score, mirror))
         return None
 
-    def spawn_familiar(self, kind, sub_id, pos, life, item_drop, score, context_args):
+    def spawn_familiar(
+        self, kind, sub_id, pos, life, item_drop, score, context_args, parent=None
+    ):
         self.calls.append(("familiar", kind, sub_id, pos, life, item_drop, score))
         return None
 

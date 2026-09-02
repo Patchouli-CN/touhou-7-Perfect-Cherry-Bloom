@@ -126,6 +126,18 @@ class GameData(msgspec.Struct, frozen=True):
     power_levels: tuple[int, ...] = ()  # 火力档位阈值
     full_power: int = 128  # 满火力值
     full_power_score_bonus: tuple[int, ...] = ()  # 满火力后小 P 递增分表
+    # ---- th08(东方永夜抄)专属数值表(th07 留默认空值) ----
+    time_orb_thresholds: tuple[tuple[int, ...], ...] = ()  # 时刻符点阈值表
+    # g_TimeRequirementParams[9][4] (GameManager.cpp:42-52): 行 = C currentStage
+    # (0-8, 含 4A/4B/6A/6B/EX), 列 = 难度 E/N/H/L
+    youkai_gauge_bounds: tuple[int, ...] = ()  # 妖率槽界 6 槽默认值
+    # g_PlayerGaugeBounds 初始化段 (Player.cpp:1607-1612):
+    # [0]人限(下限)/[1]妖限(上限)/[2]人特效阈/[3]妖特效阈/[4]人染色阈/[5]妖染色阈;
+    # 按机体的变体调整(咏唱妖梦半幅/单人封顶)在 globals 初始化时做
+    rank_table: tuple[tuple[int, int, int], ...] = ()  # 动态难度表
+    # g_RankParams[6] (GameManager.cpp:32-39): 难度 → (初始rank, minRank, maxRank)
+    point_item_values: tuple[int, ...] = ()  # 难度 → 点道具初值
+    # (GameManagerSetup.cpp:149-161: 60000/100000/200000/300000/300000)
 
 
 @dataclass(frozen=True)

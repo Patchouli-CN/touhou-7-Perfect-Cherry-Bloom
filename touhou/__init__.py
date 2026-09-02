@@ -27,6 +27,8 @@ from .games.th08 import ecl_vm as _th08_ecl_vm  # noqa: F401  (登记 th08 ECL �
 #  EclMachineTh08 + EclFileTh08)
 from .games.th08 import ecl_host as _th08_ecl_host  # noqa: F401  (登记 th08 游戏
 #  回调包: Th08GameEclHost + 关卡资源命名)
+from .games.th08 import world as _th08_world  # noqa: F401  (登记 th08 对局实现:
+#  ImperishableNight; 窗口 App 未登记 → th08 只能 headless)
 from .apis.basic import (
     BossSnapshot,
     BulletSnapshot,

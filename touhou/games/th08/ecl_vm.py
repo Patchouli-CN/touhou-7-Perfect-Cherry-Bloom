@@ -356,10 +356,11 @@ class EclMachineTh08(EclMachineBase):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # g_EclCallParameters(EclGlobals.cpp:105): C 是全局静态, 这里按机器
-        # (= 敌人)持有; 跨敌人传递(父→spawn 子)是 world 阶段接线
-        self.call_params_ints: list[int] = [0] * 4
-        self.call_params_floats: list[float] = [0.0] * 4
+        # g_EclCallParameters(EclGlobals.cpp:105): C 是全局静态(全敌人共享),
+        # 这里引用 world 的共享对(同 world 的机器读写同一份; EclWorld 字段
+        # 见 engine/ecl.py th08 专属段)
+        self.call_params_ints = self.world.ecl_call_params_ints
+        self.call_params_floats = self.world.ecl_call_params_floats
         # child 上下文块 4 槽(op135; EclManager.hpp:255-268)
         self._child_blocks: list[Optional[_ChildEclBlock]] = [None] * 4
         self._active_child_slot = -1  # 正在轮询的 child 槽(-1 = 主上下文)
@@ -538,7 +539,14 @@ class EclMachineTh08(EclMachineBase):
         if 10094 <= var_id <= 10095:
             return int(a.th08_extra_floats[var_id - 10094])
         if var_id == Th08EclVarId.PARENT_CHAIN_COUNT:
-            return 0  # 父/附着链模型是 world 阶段接线, 现恒 0
+            # CountParentChain (EclOperandsInt.cpp:125-129): 自身有链数自身,
+            # 否则有父数父的; 链在宿主侧(Th08GameEclHost.spawn_familiar 登记)
+            n = self.host.count_parent_chain(e)
+            if n == 0:
+                parent = self.host.attached_parent(e)
+                if parent is not None:
+                    n = self.host.count_parent_chain(parent)
+            return n
         if var_id == Th08EclVarId.PLAYER_IS_YOUKAI:
             # world 阶段接线: 自机妖形态(world 暂无此属性, 默认 0)
             return int(getattr(w, "player_is_youkai", 0))
@@ -675,7 +683,13 @@ class EclMachineTh08(EclMachineBase):
         if 10094 <= var_id <= 10095:
             return a.th08_extra_floats[var_id - 10094]
         if var_id == Th08EclVarId.PARENT_CHAIN_COUNT:
-            return 0.0  # world 阶段接线(同 int 读)
+            # 同 int 读 (EclOperandsInt.cpp:125-129)
+            n = self.host.count_parent_chain(e)
+            if n == 0:
+                parent = self.host.attached_parent(e)
+                if parent is not None:
+                    n = self.host.count_parent_chain(parent)
+            return float(n)
         if var_id == Th08EclVarId.PLAYER_IS_YOUKAI:
             return float(getattr(w, "player_is_youkai", 0))  # world 阶段接线
         if var_id == Th08EclVarId.SPELLCARD_CAPTURED:
@@ -912,6 +926,8 @@ class EclMachineTh08(EclMachineBase):
         name = name_bytes.split(b"\x00", 1)[0].decode("shift_jis", errors="replace")
         gui_id = instr.arg_i16(0, 0)
         spellcard_idx = instr.arg_u16(0, 1)
+        # bonus i32 @0x10 = args word1(动态符卡分的初值, Spellcard.cpp:735-736)
+        self.host.set_spellcard_bonus(instr.arg_int(1))
         # C: StartSpell 里 ClearBulletsForTransition(Spellcard.cpp:747)
         self.host.clear_bullets_for_transition()
         # C: ResetBulletRankInfluence(模板默认值, 同 th07 的交接)
@@ -1537,6 +1553,7 @@ def _op_spawn_familiar(m: EclMachineTh08, instr: EclInstr):
             m._int_arg(instr, 4),
             m._int_arg(instr, 5),
             m.current.args.clone(),
+            parent=e,  # 父链挂载(EclRunLow.inl:783-790)
         )
     m.host.play_sound(0x24)  # SOUND_FAMILIAR_SPAWN
 
@@ -1804,7 +1821,8 @@ def _op_set_death_type(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_DEATH_CALLBACK_SUB)
 def _op_set_death_callback_sub(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.death_callback_sub = instr.arg_u16(0, 0)
+    # C 字段是 i16: 0xFFFF = -1(未设置, 真实数据 ecldata1 sub50-52 在用)
+    m.enemy.death_callback_sub = instr.arg_i16(0, 0)
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_LIFE)

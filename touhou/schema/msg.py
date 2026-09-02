@@ -40,6 +40,21 @@ text.anm script 1792/1793 做 12 帧 alpha 淡入(无逐字 reveal, 本层逐字
 计数本身是近似)。故无音可接, 注释留证。
 
 本模块纯逻辑, 不碰 pygame/渲染; 输入(Z 新按下/Ctrl 按住)由调用方注入。
+
+th08(东方永夜抄)兼容(Reference/th08-ref/src/Gui.hpp:52-74/158-175,
+Gui.cpp:2178-2194 LoadMsg / :767-778 DecryptGuiMessageText):
+- 文件头/指令布局与 th07 逐字节同构(头=count i32+偏移表; 指令 time u16/
+  opcode u8/instructionSize u8/args), ``MsgFile.parse`` 直接复用;
+- 差异一: 文本逐字节 XOR 0x77(DecryptGuiMessageText) —— parse 的
+  ``text_xor`` 参数, MsgInstr.text_xor 随指令携带, dialogue/plain_text
+  视图解码时应用(th07 = 0);
+- 差异二: opcode 扩到 0-22(Gui.hpp:52-74): 15/17 立绘配置、16 说话人
+  文本、18 文本框显隐、19/20 顶/底部文本(均纯视觉或落文本行)、
+  21 二选一(GUI_MSG_SHOW_SELECTION, Gui.cpp:540-573)/22 读选项分支
+  (GUI_MSG_READ_SELECTED_MESSAGE, Gui.cpp:574-578: finalStageRoute =
+  selectedOption 并 MsgRead(selectedOption+1));
+- 差异三: 立绘 4 槽(th07 为 2) —— MsgVm 的 ``num_portraits`` 参数,
+  SWITCH 的 idx<num_portraits → 立绘。
 """
 
 from __future__ import annotations
@@ -70,32 +85,56 @@ class MsgOpcode(IntEnum):
     FADEOUT_MUSIC = 12
     ALLOW_SKIP = 13
     FADE_IN_EFFECT = 14
+    # ---- th08 新增(opcode 15-22, Gui.hpp:67-74; th07 数据中不出现) ----
+    CONFIGURE_ALL_PORTRAITS = 15  # 全立绘配置(纯视觉)
+    SHOW_SPEAKER_TEXT = 16  # 说话人文本(落对话行, dialogueLineIndex 自增)
+    CONFIGURE_PORTRAIT = 17  # 单立绘配置(纯视觉)
+    SET_TEXT_BOX_VISIBLE = 18  # 文本框显隐(纯视觉)
+    SHOW_TOP_TEXT = 19  # 顶部文本(落对话行 0)
+    SHOW_BOTTOM_TEXT = 20  # 底部文本(落对话行 1)
+    SHOW_SELECTION = 21  # 二选一(wait 式 + 选项)
+    READ_SELECTED_MESSAGE = 22  # 按选项读消息分支
 
 
 # ---- 解析 ----
 
 
 class MsgInstr(msgspec.Struct, frozen=True):
-    """一条 msg 指令。args 保留原始字节, 按 opcode 提供解析视图。"""
+    """一条 msg 指令。args 保留原始字节, 按 opcode 提供解析视图。
+
+    text_xor: 文本解码 XOR 值(th08=0x77, th07=0), parse 时随文件参数带入。
+    """
 
     time: int
     opcode: int
     args: bytes
+    text_xor: int = 0
 
     @property
     def portrait(self) -> tuple[int, int]:
         """SHOW_PORTRAIT/CHANGE_FACE: (portraitIdx, anmScriptIdx)。"""
         return struct.unpack_from("<hh", self.args, 0)
 
+    def _decode_text(self, raw: bytes) -> str:
+        """文本字节 → 字符串: XOR(th08) → NUL 截断 → Shift-JIS 容错解码。"""
+        if self.text_xor:
+            raw = bytes(b ^ self.text_xor for b in raw)
+        return raw.split(b"\x00")[0].decode("shift_jis", errors="replace")
+
     @property
     def dialogue(self) -> tuple[int, int, str]:
         """DIALOGUE/TEXT_INTRODUCE: (textColor, textLine, text)。
 
-        文本是 Shift-JIS, NUL 结尾; 坏字节容错替换不炸。
+        文本是 Shift-JIS, NUL 结尾; 坏字节容错替换不炸; th08 另有 XOR 0x77。
         """
         color, line = struct.unpack_from("<hh", self.args, 0)
-        text = self.args[4:].split(b"\x00")[0].decode("shift_jis", errors="replace")
-        return color, line, text
+        return color, line, self._decode_text(self.args[4:])
+
+    @property
+    def plain_text(self) -> str:
+        """th08 纯文本指令(SHOW_SPEAKER_TEXT/SHOW_TOP_TEXT/SHOW_BOTTOM_TEXT):
+        args 整体即加密文本(GuiMessagePlainTextArgs, Gui.hpp:121-124)。"""
+        return self._decode_text(self.args)
 
     @property
     def pause_duration(self) -> int:
@@ -124,7 +163,8 @@ class MsgFile(msgspec.Struct):
     messages: list[tuple[MsgInstr, ...]]
 
     @classmethod
-    def parse(cls, data: bytes) -> "MsgFile":
+    def parse(cls, data: bytes, *, text_xor: int = 0) -> "MsgFile":
+        """解析 msg 文件; text_xor = 文本解码 XOR 值(th08=0x77, th07=0)。"""
         if len(data) < 4:
             raise MsgParseError("文件太小, 没有 numInstrs")
         (num,) = struct.unpack_from("<i", data, 0)
@@ -141,7 +181,9 @@ class MsgFile(msgspec.Struct):
                 time, opcode, argsize = struct.unpack_from("<HBB", data, pos)
                 if pos + 4 + argsize > len(data):
                     raise MsgParseError(f"msg {idx}: 指令截断 (pos={pos})")
-                instrs.append(MsgInstr(time, opcode, data[pos + 4 : pos + 4 + argsize]))
+                instrs.append(
+                    MsgInstr(time, opcode, data[pos + 4 : pos + 4 + argsize], text_xor)
+                )
                 pos += 4 + argsize
                 if opcode == MsgOpcode.DELETE:
                     break
@@ -211,10 +253,17 @@ class MsgLineState(msgspec.Struct):
 
 
 class MsgVm:
-    """对话 VM(C GuiMsgVm + GuiImpl::RunMsg 的每帧语义)。"""
+    """对话 VM(C GuiMsgVm + GuiImpl::RunMsg 的每帧语义)。
 
-    def __init__(self, msg_file: Optional[MsgFile] = None) -> None:
+    num_portraits: 立绘槽数(th07=2, th08=4, Gui.hpp GuiMsgVm.portraits[4]);
+    SWITCH 的 idx<num_portraits → 立绘, 否则文本行 idx-num_portraits。
+    """
+
+    def __init__(
+        self, msg_file: Optional[MsgFile] = None, *, num_portraits: int = 2
+    ) -> None:
         self.msg_file = msg_file
+        self.num_portraits = num_portraits
         self.current_msg_idx = -1
         self.instr_idx = 0  # 当前指令下标(模拟 curInstr 指针)
         self.timer = 0
@@ -222,11 +271,18 @@ class MsgVm:
         self.ignore_wait_counter = 0
         self.dialogue_skippable = 1
         self.font_size = FONT_SIZE
-        self.portraits = [MsgPortraitState(), MsgPortraitState()]
+        self.portraits = [MsgPortraitState() for _ in range(num_portraits)]
         self.dialogue_lines = [MsgLineState(), MsgLineState()]
         self.intro_lines = [MsgLineState(), MsgLineState()]
         self.finished_stage = 0  # STAGERESULTS 置 1
         self.events: list[str] = []  # 透出事件: "music:idx"/"next_level" 等
+        # ---- th08 扩展(Gui.hpp GuiMsgVm 尾部字段) ----
+        self.dialogue_line_index = 0  # op16 说话人文本的落行游标
+        self.selected_option = 0  # op21 二选一的当前选项(0/1)
+        self.final_stage_route: int | None = None  # op22 写出(Gui.cpp:574-578)
+        # PAUSE 的 Z 提前结束最短停留(th08 MsgRead 置 waitThreshold=6,
+        # Gui.cpp:241; th07 恒 12)
+        self.pause_min_frames = PAUSE_MIN_FRAMES
         self._type_timer = 0
 
     # ---- C 访问器 ----
@@ -265,11 +321,12 @@ class MsgVm:
         self.ignore_wait_counter = 0
         self.dialogue_skippable = 1
         self.font_size = FONT_SIZE
-        self.portraits = [MsgPortraitState(), MsgPortraitState()]
+        self.portraits = [MsgPortraitState() for _ in range(self.num_portraits)]
         self.dialogue_lines = [MsgLineState(), MsgLineState()]
         self.intro_lines = [MsgLineState(), MsgLineState()]
         self.finished_stage = 0
         self.events = []
+        self.dialogue_line_index = 0
         self._type_timer = 0
 
     # ---- RunMsg ----
@@ -307,7 +364,7 @@ class MsgVm:
                 if self.dialogue_skippable == 0 or not skip_held:
                     if (
                         not advance_pressed
-                        or self.frames_elapsed_during_pause < PAUSE_MIN_FRAMES
+                        or self.frames_elapsed_during_pause < self.pause_min_frames
                     ):
                         if self.frames_elapsed_during_pause < cur.pause_duration:
                             self.frames_elapsed_during_pause += 1
@@ -316,10 +373,12 @@ class MsgVm:
                     # Z 提前结束 / 时长到: 落到循环底前进
             elif op == MsgOpcode.SWITCH:
                 idx, interrupt = cur.switch
-                if idx < 2:
+                if idx < self.num_portraits:
                     self.portraits[idx].pending_interrupt = interrupt
                 else:
-                    self.dialogue_lines[idx - 2].pending_interrupt = interrupt
+                    self.dialogue_lines[idx - self.num_portraits].pending_interrupt = (
+                        interrupt
+                    )
             elif op == MsgOpcode.APPEAR_ENEMY:
                 self.ignore_wait_counter += 1
             elif op == MsgOpcode.MUSIC:
@@ -345,6 +404,45 @@ class MsgVm:
             elif op == MsgOpcode.ALLOW_SKIP:
                 self.dialogue_skippable = cur.allow_skip
             # FADE_IN_EFFECT: 演出, 逻辑侧忽略
+            # ---- th08 新增(Gui.cpp RunMsg; 15/17/18 纯视觉配置, 忽略) ----
+            elif op == MsgOpcode.SHOW_SPEAKER_TEXT:
+                # Gui.cpp:486-512: 落 dialogueLines[dialogueLineIndex] 并自增
+                line_state = self.dialogue_lines[
+                    min(self.dialogue_line_index, len(self.dialogue_lines) - 1)
+                ]
+                line_state.set_text(cur.plain_text, 0)
+                self.frames_elapsed_during_pause = 0
+                self.dialogue_line_index += 1
+            elif op == MsgOpcode.SHOW_TOP_TEXT:
+                # Gui.cpp:514-525: 落对话行 0
+                self.dialogue_lines[0].set_text(cur.plain_text, 0)
+                self.frames_elapsed_during_pause = 0
+            elif op == MsgOpcode.SHOW_BOTTOM_TEXT:
+                # Gui.cpp:527-538: 落对话行 1
+                self.dialogue_lines[1].set_text(cur.plain_text, 0)
+                self.frames_elapsed_during_pause = 0
+            elif op == MsgOpcode.SHOW_SELECTION:
+                # 二选一 (Gui.cpp:540-573): wait 式停留; Z 新按下(停满 60 帧)
+                # 提前确认, 否则停满 args.wait.frames 自然前进; 上下键改
+                # selected_option 是输入侧职责(headless 由上层直写字段)。
+                if (
+                    not advance_pressed
+                    or self.frames_elapsed_during_pause < 60
+                ):
+                    if self.frames_elapsed_during_pause < cur.pause_duration:
+                        self.frames_elapsed_during_pause += 1
+                        self._post_step()
+                        return True  # 停在该指令
+            elif op == MsgOpcode.READ_SELECTED_MESSAGE:
+                # Gui.cpp:574-578: finalStageRoute=selectedOption,
+                # MsgRead(selectedOption+1) 后 continue(新消息当帧继续跑);
+                # 越界时 MsgRead 无操作, 原地 continue 会死循环, 按普通前进兜底
+                self.final_stage_route = self.selected_option
+                prev_idx = self.current_msg_idx
+                self.read(self.selected_option + 1)
+                if self.current_msg_idx != prev_idx:
+                    cur = self.cur
+                    continue
             self.instr_idx += 1
             cur = self.cur
         self.timer += 1

@@ -785,6 +785,9 @@ class EclEnemyState(msgspec.Struct):
     extra_vm_fixed_offset: int = 0  # op182: flags2 extraVmFixedOffset
     no_damage_during_stop: int = 0  # op183: flags1 noDamageDuringStop
     difficulty_mask_override: int = 0  # eclDifficultyMaskOverride (EclRun.cpp:67-74)
+    # 使魔父链: linkedChildCount(EclRunLow.inl:788-790; 链本体在 th08 宿主侧,
+    # 喂 VM 变量 10096, EclOperandsInt.cpp:125-129)
+    linked_child_count: int = 0
 
     def clamp_pos(self) -> None:
         """Enemy::ClampPos。"""
@@ -857,6 +860,20 @@ class EclWorld(msgspec.Struct):
     # 时间轴 op13/14 的事件槽 (EnemyManager.timelineEventSlots[4], EnemyTimeline.cpp:253-282)
     timeline_event_slots: list[int] = msgspec.field(default_factory=lambda: [-1] * 4)
     opcode163_value: int = 0  # op163: EnemyManager.opcode163Value (EclRunHigh.inl:425)
+    # th08: g_EclCallParameters(EclGlobals.cpp:105) —— C 是全局静态(全敌人共享,
+    # sub 调用时拷入新上下文, EclDependencies.cpp:485-487), 这里按 world 共享
+    # (同一 world 的全部 EclMachineTh08 引用同一对列表)
+    ecl_call_params_ints: list[int] = msgspec.field(default_factory=lambda: [0] * 4)
+    ecl_call_params_floats: list[float] = msgspec.field(
+        default_factory=lambda: [0.0] * 4
+    )
+    # th08 world 快照(变量 10097-10100 的读源, 每帧由宿主 frame_update 同步):
+    # 10097 自机妖形态(EclOperandsInt.cpp:138)/10098 时刻符点 Last Spell 状态
+    # (:139-144)/10099 符卡取得状态(:145-147)/10100 符卡计时(:148)
+    player_is_youkai: int = 0
+    last_spell_orb_status: int = 0
+    spellcard_capture_status: int = 0
+    spellcard_timer_frames: int = 0
 
     @property
     def difficulty_mask(self) -> int:
@@ -1013,10 +1030,12 @@ class EclHost:
         item_drop: int,
         score: int,
         context_args: EclContextArgs,
+        parent: Optional[EclEnemyState] = None,
     ) -> EclEnemy | None:
         """th08 op90-92 使魔生成(含附着链登记, EclRunLow.inl:737-929)。
 
-        kind = opcode(90 定点 / 91 父偏移 / 92 继承父位置); 默认无操作。
+        kind = opcode(90 定点 / 91 父偏移 / 92 继承父位置); parent = 调用方
+        敌人(父链挂载用); 默认无操作。
         """
         return None
 
@@ -1063,6 +1082,20 @@ class EclHost:
     def set_last_spell_flags(self) -> None:
         """th08 op176: Last Spell 的 GameManager 标志位操作(EclRunHigh.inl:902-919)。"""
         pass
+
+    def set_spellcard_bonus(self, bonus: int) -> None:
+        """th08 op122: 符卡 bonus(EclSpellCardInstructionArgs.bonus @0x10,
+        EclDependencies.cpp:18-36)在 begin_spellcard 前传递; 默认无操作。"""
+        pass
+
+    def count_parent_chain(self, enemy: EclEnemyState) -> int:
+        """th08: CountParentChain(使魔父链节点数, EclOperandsInt.cpp:125-129
+        的 10096 变量读源); 默认无链(0)。"""
+        return 0
+
+    def attached_parent(self, enemy: EclEnemyState) -> Optional[EclEnemyState]:
+        """th08: HasAttachedEnemy → parentEnemy(同 10096 判定); 默认无父(None)。"""
+        return None
 
 
 # ---- 时间轴(EnemyManager::RunEclTimeline) ----
