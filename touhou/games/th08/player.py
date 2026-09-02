@@ -12,9 +12,10 @@ engine/player_base.py(PlayerBase); 本模块是 th08 专属:
   (Player.cpp:186-196); 回调语义逐条见 _run_spawn_cb/_run_update_cb 注释;
 - 死亡结算: UpdateDeathAndRespawn (Player.cpp:1277-1369): power -16/归 0,
   掉 1 大 P+5 小 P(咲夜/蕾米系 shotType 2/8/9 且有弹时追加 1 B),
-  无残机掉 5 个 FULL_POWER; 决死窗(死亡倒计时)= sht deathbombWindowFrames
-  (Player.hpp:22-56 @0x8; Die() 的 bombs×6+达标7/符卡×2/灵梦系×9/5 公式
-  是后续阶段(单 B)的工作, 本层先用 sht 值)。
+  无残机掉 5 个 FULL_POWER; 决死窗(死亡倒计时)= Die() 的动态公式
+  (bombs×6+符点达标7, 封顶 15; 符卡战 ×2 封顶 30; 灵梦系 0/4/5 ×9/5,
+  Player.cpp:535-557; 无弹 =2, :589), sht deathbombWindowFrames
+  (Player.hpp:22-56 @0x8) 只作炸弹惩罚封顶(Player.cpp:1260-1262)。
 
 纯逻辑模块: 副作用(events/发声)透出给上层(world)接线。
 """
@@ -163,6 +164,21 @@ class Th08Player(PlayerBase[DeathContext]):
         # (tailPosition0/1; 索敌由上层 targeting 写回)
         self.bomb_active = False
         self.dialog_active = False
+        # Die() 决死窗公式的输入(每帧由 world 同步, Player.cpp:535-557)
+        self.ctx_bombs = 0  # GetBombsRemaining()
+        self.ctx_time_orb_ready = False  # GetTimeOrbs() >= 阈值
+        self.ctx_spellcard_active = False  # g_Spellcard.IsActive()
+        # 决死冻结(deathbombFreezeActive, Player.cpp:585): 冻结自机弹推进
+        # (UpdateShots 提前返回, Player.cpp:3105-3108)
+        self.freeze_shots = False
+        # 妖率计射击坡道/回中延迟 (Player.cpp:898-935 的
+        # shootingGaugeChangeRampTimer/gaugeShiftDelayTimer)
+        self.gauge_ramp = 0
+        self.gauge_shift_delay = 0
+        # 时刻符点妖率抑制 (timeOrbGaugeChangeSuppressionTimer,
+        # EnemyManager.cpp:341 使魔链死亡置 50; 抑制期收符点不改妖率,
+        # ItemManager.cpp:633)
+        self.time_orb_gauge_suppression = 0
         # 随机数注入点(确定性): rand_float(r) 返回 [0, r)
         self.rand_float: Callable[[float], float] = lambda r: 0.0
 
@@ -208,6 +224,25 @@ class Th08Player(PlayerBase[DeathContext]):
         self.events.append(
             PlayerEvent(PlayerEventKind.GRAZE, value=GRAZE_SCORE_NORMAL)
         )
+
+    # ---- 死亡/决死窗(th08: Die, Player.cpp:512-592) ----
+    def die(self) -> None:
+        super().die()
+        # 决死窗动态公式 (Player.cpp:535-557): 有弹时 bombs×6(+符点达标 7),
+        # 封顶 15; 符卡战 ×2 封顶 30; 灵梦系(shotType 0/4/5) ×9/5;
+        # 无弹 = 2 (Player.cpp:589)。ctx_* 由 world 每帧同步。
+        if self.ctx_bombs >= 1:
+            window = self.ctx_bombs * 6
+            if self.ctx_time_orb_ready:
+                window += 7
+            window = min(window, 15)
+            if self.ctx_spellcard_active:
+                window = min(window * 2, 30)
+            if self.shot_type in (0, 4, 5):  # 灵梦系(咏唱/单人灵梦/紫)
+                window = window * 9 // 5
+            self.respawn_timer = window
+        else:
+            self.respawn_timer = 2
 
     # ---- 死亡结算(th08: UpdateDeathAndRespawn 决死窗耗尽分支) ----
     def _settle_death(self, ctx: DeathContext | None) -> DeathSettle:
@@ -358,6 +393,9 @@ class Th08Player(PlayerBase[DeathContext]):
 
     # ---- 活弹推进(UpdateShots) ----
     def _update_shots(self) -> None:
+        if self.freeze_shots:
+            # 决死冻结: UpdateShots 提前返回 (Player.cpp:3105-3108)
+            return
         for bullet in self.bullet_pool:
             if bullet.bullet_state == 0:
                 continue

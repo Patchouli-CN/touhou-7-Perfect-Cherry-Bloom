@@ -17,19 +17,27 @@ th08 专属(出处 Reference/th08-ref/src/, 各方法注释标行号):
 - 妖率计: 收集/擦弹/死亡联动(ItemManager.cpp:634-636/Player.cpp:483-484/
   :534 SetYoukaiGauge(0)); 槽界按机体(Player.cpp:1607-1639);
 - 决死: world._try_bomb 的 DEAD→INVULNERABLE 模式照 th07 world.py:1377-1385;
-  决死窗公式(bombs×6+达标7/符卡×2/灵梦系×9/5, Player.cpp:535-557)与
-  Last Spell/时刻结局/换关分支精修是后续阶段(单 B)的工作。
+  决死窗 = Die() 动态公式(bombs×6+达标7/符卡×2/灵梦系×9/5,
+  Player.cpp:535-557, Th08Player.die), 决死耗 2 弹(:1224-1234);
+  符卡战中被弹 → 决死冻结(deathbombFreezeActive, Player.cpp:584-585):
+  ECL/敌人/符卡计时/自机弹冻结, 敌弹/道具照常;
+- 时刻结局: 过面时刻增量 = 符点达标?1:2(面1-5, GetClockTimeIncrement,
+  GameManager.cpp:1379-1470; 6A/6B=0, EX=4), STAGERESULTS 时入账
+  (Gui.cpp:652-653); 非终面换关时时刻 ≥12 → Bad Ending
+  (GameManager.cpp:342-348); 结局文件 end{队}{a/b/c}.end
+  (Ending.cpp:13-21/:567-577: a=bad, b=6A 通关, c=6B 通关)。
 
 本类是 plain class, 满足 touhou/types.py 的 GameEngine 协议(无基类)。
 """
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from ...engine.bullets import BulletWorld
-from ...engine.ecl import EclWorld
-from ...engine.ending import EndingData
+from ...engine.ecl import EclEnemyState, EclWorld
+from ...engine.ending import EndingData, parse_end, parse_end_music, parse_end_ops
 from ...engine.enemies import EclEnemy, EnemyHost, Targeting, settle_damage
 from ...engine.events import EventBus
 from ...engine.lasers import LaserWorld
@@ -51,11 +59,12 @@ from .bomb import (
     Th08Bomb,
     try_start_bomb,
 )
-from .boss import Th08Boss
+from .boss import TIMEOUT_SPELL_SCORE_LIMIT, Th08Boss
 from .crypt import try_decrypt_from_table
 from .data import (
     CHARACTER_SHT,
     MSG_FILES,
+    STAGE_CLEAR_BONUSES,
     STAGE_ECL_FILES,
     STAGE_STD_FILES,
     TH08_DATA,
@@ -90,6 +99,7 @@ from .player import (
     PlayerState,
     Th08Player,
 )
+from .results import RunStats, clear_percent, rating
 
 from ...logger import logger as log
 
@@ -242,6 +252,12 @@ class ImperishableNight:
         self.initial_lives = initial_lives
         self._death_pos: Vec2 | None = None
         self._score_milestone = 0
+        # 决死冻结 (GameManager.flags.deathbombFreezeActive, Player.cpp:585):
+        # 符卡战中被弹且决死窗开启时置位, 离开 DEAD 即清(:1206/:1291)
+        self._deathbomb_freeze = False
+        # 上一张符卡捕获结果 (Spellcard WasCaptured; 喂变量 10099 的非活动期)
+        self._last_spellcard_captured = False
+        self._ending_bad = False  # 本局结局是否 Bad Ending(时刻到顶)
 
         # ---- ECL 关卡脚本 ----
         self.ecl_file: EclFileTh08 | None = None
@@ -250,7 +266,7 @@ class ImperishableNight:
         self.ecl_timelines: list[Th08TimelineRunner] = []
         self.msg_file: MsgFile | None = None
         self.msg_vm: MsgVm | None = None
-        self._boss_ecl_state = None
+        self._boss_ecl_state: EclEnemyState | None = None
         self._boss_ecl_enemy: EclEnemy | None = None
         self._rand_spawn_idx = 0  # C enemyDropCounter (itemDrop==-1 每 3 掉 1)
         self._rand_table_idx = 0  # C enemyDropScheduleIndex
@@ -304,6 +320,9 @@ class ImperishableNight:
             current_stage=self.stage_no,
             player_shottype=self.character,
         )
+        # 时刻跨关连续(clockTime 在 GameManager.globals, 不随关重建;
+        # 换关时把旧时钟带进新宿主)
+        prev_clock = self.ecl_host.clock if self.ecl_host is not None else None
         self.ecl_host = Th08GameEclHost(
             self.ecl_file,
             self.ecl_world,
@@ -314,6 +333,8 @@ class ImperishableNight:
             ecl_machine_cls=EclMachineTh08,
             extra=self.difficulty >= 4,
         )
+        if prev_clock is not None:
+            self.ecl_host.clock = prev_clock
         self.ecl_host.sound = self.sounds
         self.ecl_host.on_set_boss = self._ecl_on_set_boss
         self.ecl_host.on_begin_spellcard = self._ecl_on_begin_spellcard
@@ -322,6 +343,8 @@ class ImperishableNight:
         self.ecl_host.on_set_power = lambda v: setattr(
             self.globals, "current_power", float(v)
         )
+        # 击坠拆链奖励 (DetachEnemyChain(1), EnemyManager.cpp:229-345)
+        self.ecl_host.on_chain_kill = lambda e: self._detach_chain_rewards(e.state)
         # 对话系统: msg 文件按 (关, 机体) 表取 (Gui.cpp:2098 LoadMsg);
         # 文本 XOR 0x77, 立绘 4 槽; 缺资源则不留 VM(不停轴)
         self.msg_file = None
@@ -355,21 +378,24 @@ class ImperishableNight:
         w = self.ecl_world
         assert w is not None
         # 变量 10098: 时刻符点 Last Spell 状态 (EclOperandsInt.cpp:139-144):
-        # 当前+符卡待给+场上 ≥ 阈值 → 2(符卡待给 pendingTimeOrbs 是单 B 接线)
+        # 当前 + 符卡待给(Spellcard.pendingTimeOrbs) + 场上 ≥ 阈值 → 2
         g = self.globals
         on_field = sum(1 for it in self.items.alive() if it.type == ItemType.TIME)
+        pending = self.boss.pending_time_orbs if self.boss is not None else 0
         w.last_spell_orb_status = (
             2
-            if g.current_time_orbs + on_field >= g.last_spell_time_orb_threshold
+            if g.current_time_orbs + pending + on_field
+            >= g.last_spell_time_orb_threshold
             else 0
         )
-        if self.boss is not None and self.boss.is_active:
-            w.spellcard_capture_status = int(self.boss.is_capturing)
-            w.spellcard_timer_frames = self.boss.timer
+        # 变量 10099/10100 (EclOperandsInt.cpp:145-148):
+        # IsActive() ? IsCaptureValid() : WasCaptured(); GetTimerFrames = 剩余帧
+        boss = self.boss
+        if boss is not None and boss.is_active:
+            w.spellcard_capture_status = int(boss.is_capturing)
+            w.spellcard_timer_frames = boss.time_remaining
         else:
-            w.spellcard_capture_status = int(
-                self.boss is not None and self.boss.spellcard_idx >= 0
-            )
+            w.spellcard_capture_status = int(self._last_spellcard_captured)
             w.spellcard_timer_frames = 0
         h.frame_update(
             player_pos=self.player.pos,
@@ -386,7 +412,7 @@ class ImperishableNight:
             tl.step()
 
     # ---- ECL Boss/符卡桥接(Th08Boss 只记账, 阶段/超时切换由 ECL 驱动) ----
-    def _ecl_on_set_boss(self, idx: int, st) -> None:
+    def _ecl_on_set_boss(self, idx: int, st: EclEnemyState | None) -> None:
         if st is None:
             if self._boss_ecl_state is not None and self._boss_ecl_state.boss_id == idx:
                 if self.boss and self.boss.is_active:
@@ -408,7 +434,9 @@ class ImperishableNight:
         assert self.ecl_host is not None
         self._boss_ecl_enemy = self.ecl_host.enemy_by_state.get(id(st))
 
-    def _ecl_on_begin_spellcard(self, st, gui_id: int, idx: int, name: str) -> None:
+    def _ecl_on_begin_spellcard(
+        self, st: EclEnemyState, gui_id: int, idx: int, name: str
+    ) -> None:
         if self._boss_ecl_state is not st:
             self._ecl_on_set_boss(st.boss_id if st.boss_id >= 0 else 0, st)
         boss = self.boss
@@ -426,6 +454,7 @@ class ImperishableNight:
             timeout,
             timeout_sub=max(st.timer_callback_sub, 0),
             bonus=max(self.ecl_host.pending_spellcard_bonus, 0),
+            timeout_spell=bool(st.is_survival_spellcard),
         )
         self._catk_idx = idx
         self.sounds.play(SE_SPELL_DECLARE)  # 符卡宣告(cut-in 演出是 view 侧)
@@ -435,21 +464,25 @@ class ImperishableNight:
             self.ecl_host.pending_spellcard_bonus, timeout // 60, self.frame,
         )
 
-    def _ecl_on_end_spellcard(self, st) -> None:
+    def _ecl_on_end_spellcard(self, st: EclEnemyState) -> None:
         if self.boss is not None and self._boss_ecl_state is st:
             self._apply_spellcard_end(self.boss.end_spellcard())
 
-    def _ecl_on_spellcard_timeout(self, st) -> None:
+    def _ecl_on_spellcard_timeout(self, st: EclEnemyState) -> None:
         """ECL timer callback 触发的符卡超时: 捕获失败 + 清弹(无道具)。
 
         (PrepareSpellcardForTimerCallback 清 CAPTURE_VALID,
         EnemyManager.cpp:675-680; RemoveAllBullets(4) = despawn 无道具、
         激光不豁免, :626-627; boss 在场且自机 ALIVE → 自机无敌 70 帧,
-        :630-633)"""
-        if st.is_survival_spellcard:
-            return
+        :630-633 —— 生存符超时也有, 在 timeoutSpell 分支外)"""
         boss = self.boss
         if boss is None or self._boss_ecl_state is not st:
+            return
+        if self.player.state == PlayerState.ALIVE:
+            self.player.state = PlayerState.INVULNERABLE
+            self.player.invuln = max(self.player.invuln, 70)
+        if st.is_survival_spellcard:
+            # 生存符: 不失捕获/不清弹 (EnemyManager.cpp:626-628)
             return
         boss.capture_score = 0
         boss.is_capturing = False
@@ -457,9 +490,6 @@ class ImperishableNight:
             boss.is_active += 1  # 2 = 超时失败
         self.bullets.clear()
         self.lasers.remove_all(spawn_items=False, skip_flag4=False)
-        if self.player.state == PlayerState.ALIVE:
-            self.player.state = PlayerState.INVULNERABLE
-            self.player.invuln = max(self.player.invuln, 70)
 
     # ---- 兼容属性(实际存储在 self.globals) ----
     @property
@@ -549,10 +579,18 @@ class ImperishableNight:
             )
         if r.time_orbs:
             g.add_time_orbs(r.time_orbs)
+        if r.bonus_progress and self.boss is not None and self.boss.is_active:
+            # 符卡 bonusProgress 加分 (Spellcard.AddBonusProgress,
+            # Spellcard.cpp:1243-1257; 时刻符点收集 +8000)
+            self.boss.add_bonus_progress(r.bonus_progress)
         if r.gauge_delta:
             # AddToYoukaiGauge: 炸弹中不加 (GameManager.cpp:1312-1315 的
-            # isInUse && !forceUpdate 门控)
-            if not self.bomb.is_in_use:
+            # isInUse && !forceUpdate 门控); 时刻符点妖率抑制期也不加
+            # (timeOrbGaugeChangeSuppressionTimer, ItemManager.cpp:633)
+            if (
+                not self.bomb.is_in_use
+                and self.player.time_orb_gauge_suppression == 0
+            ):
                 g.add_to_youkai_gauge(r.gauge_delta)
         if r.subrank > 0:
             g.increase_subrank(r.subrank)
@@ -684,6 +722,13 @@ class ImperishableNight:
         if was_bomb_in_use and self.bomb.invulnerable:
             self.player.state = PlayerState.INVULNERABLE
         if was_bomb_in_use:
+            # 炸弹中妖率逐帧偏移 (Player.cpp:1170-1172): focus 弹(variant&1)
+            # +26000/duration, 否则 -; forceUpdate=1(炸弹中照常加)
+            if self.bomb.callback_variant < 4 and self.bomb.duration > 0:
+                d_gauge = 26000 // self.bomb.duration
+                g.add_to_youkai_gauge(
+                    d_gauge if self.bomb.callback_variant & 1 else -d_gauge
+                )
             self._apply_bomb_boxes()
             for ev in self.bomb.events:
                 if ev == EVENT_REMOVE_ALL_ITEMS:
@@ -691,6 +736,16 @@ class ImperishableNight:
             self.bomb.events.clear()
 
         # ---- 玩家步进 ----
+        # Die() 决死窗公式的输入快照 (Player.cpp:535-557 的读取点)
+        self.player.ctx_bombs = int(g.bombs_remaining)
+        self.player.ctx_time_orb_ready = (
+            g.current_time_orbs >= g.last_spell_time_orb_threshold
+        )
+        self.player.ctx_spellcard_active = self._spellcard_active()
+        # 决死冻结中自机弹停更 (UpdateShots 提前返回, Player.cpp:3105-3108)
+        self.player.freeze_shots = (
+            self._deathbomb_freeze and self.player.state == PlayerState.DEAD
+        )
         death_ctx = DeathContext(
             lives=int(g.lives_remaining),
             shot_type=self.character,
@@ -702,15 +757,26 @@ class ImperishableNight:
         # 决死窗倒数中每帧时刻符点 -15 (Player.cpp:1282-1284)
         if self.player.state == PlayerState.DEAD:
             g.add_time_orbs(-15)
+        if self.player.time_orb_gauge_suppression > 0:
+            self.player.time_orb_gauge_suppression -= 1
 
-        self._step_stage()
+        # ---- 妖率计: 射击坡道/停火回中 (Player.cpp:893-935) ----
+        self._tick_youkai_gauge(msg_active)
+
+        # 决死冻结 (deathbombFreezeActive): ECL/敌人/符卡计时冻结
+        # (EnemyManagerUpdate.cpp:87/Spellcard.cpp:1268), 敌弹/道具/激光照常
+        freeze = self.player.freeze_shots
+        if not freeze:
+            self._step_stage()
         self._step_msg(advance=advance, skip=skip)
-        self.host.step(self.bullets, rng=self.rng)
+        if not freeze:
+            self.host.step(self.bullets, rng=self.rng)
 
         # 敌人体术判定(炸弹中跳过, 同 th07)
         if not self.bomb.is_in_use and self.host.contact_hits(self.player):
             self._death_pos = self.player.pos
             g.youkai_gauge = 0  # Die() → SetYoukaiGauge(0) (Player.cpp:534)
+            self._on_player_died()
             self.lasers.clear()
 
         # 自机弹打敌人
@@ -736,7 +802,8 @@ class ImperishableNight:
             self._kill_reward(e, counter)
             counter += 1
 
-        self._tick_boss()
+        if not freeze:
+            self._tick_boss()  # 冻结中符卡计时/衰减停 (Spellcard.cpp:1268)
         self.player.position_of_last_enemy_hit = (
             self.targeting.position_of_last_enemy_hit
         )
@@ -759,6 +826,7 @@ class ImperishableNight:
             if kr == KillResult.DEATH:
                 self._death_pos = self.player.pos
                 g.youkai_gauge = 0  # Die() → SetYoukaiGauge(0)
+                self._on_player_died()
                 self.lasers.clear()
                 break
 
@@ -783,6 +851,7 @@ class ImperishableNight:
                 self._death_pos = self.player.pos
                 g.youkai_gauge = 0
                 self.player.die()
+                self._on_player_died()
             self.lasers.clear()
 
         # ---- 玩家事件消费 ----
@@ -808,16 +877,7 @@ class ImperishableNight:
             and self._stage_cleared()
         ):
             log.debug("关卡 {} 通过 (frame={})", self.stage_no, self.frame)
-            if self.stage_no < 8:
-                self._pending_next_level = True
-            else:
-                # 8=6B(终面)/9=EX: 通关直接总结算(结局分支是单 B 的工作)
-                self.cleared = True
-                log.debug(
-                    "通关 → 总结算 (frame={}, score={})",
-                    self.frame, g.gui_score,
-                )
-                self.result = self.final_result(cleared=True)
+            self._advance_or_ending()
 
         self._drain_frame_events()
 
@@ -847,37 +907,135 @@ class ImperishableNight:
         )
 
     # ---- STAGERESULTS 过关结算 / NEXT_LEVEL 换关 (Gui.cpp RunMsg) ----
+    def _clock_increment(self) -> int:
+        """GetClockTimeIncrement (GameManager.cpp:1379-1470): 面 1-5
+        (stage_no 1-6) 符点达标 +1 否则 +2; 6A/6B +0; EX +4。"""
+        if self.stage_no <= 6:
+            g = self.globals
+            return 1 if g.current_time_orbs >= g.last_spell_time_orb_threshold else 2
+        if self.stage_no <= 8:
+            return 0
+        return 4
+
     def _on_stage_results(self) -> None:
-        """msg STAGERESULTS 指令: 快照本关计数(精确的面板/奖励计算是
-        单 B 的结算工作; 本期只留快照供 view/测试消费)。"""
+        """msg STAGERESULTS 指令 (Gui.cpp:645-660 快照 + :1032-1087 奖励)。
+
+        时刻增量在此入账 (Gui.cpp:652-653 AddToClockTime, 增量按当前面
+        符点达标算); 奖励(代码值): Clear=g_GuiStageClearBonuses[stage]
+        + Graze*50 + Point*5000 + 时刻符点*100; 6A/6B 追加
+        残机*2500000 + 炸弹*500000; 6B 再追加 (12−时刻)*2000000;
+        难度修正 Easy*0.5/Hard*1.2/Lunatic*1.5/Extra*2;
+        初始残机(lifeCount) 3→*0.5 4→*0.2 5→*0.1 6→*0.05。
+        AddScore ×10 入账(每次内部 //10, 合计 = bonus, :1084-1086)。
+        """
         g = self.globals
+        clock = self.ecl_host.clock if self.ecl_host is not None else None
+        clock_start = clock.units if clock is not None else 0
+        inc = self._clock_increment()
+        if clock is not None:
+            for _ in range(inc):
+                clock.advance()  # AddToClockTime (Gui.cpp:653; 表盘封顶 12)
+        snap = {
+            "power": int(g.current_power),
+            "point_items": g.point_items_collected_this_stage,
+            "graze": g.graze_in_stage,
+            "time_orbs": g.current_time_orbs,
+            "lives": int(g.lives_remaining),
+            "bombs": int(g.bombs_remaining),
+            "clock_start": clock_start,
+            "clock_increment": inc,
+        }
+        bonus = (
+            STAGE_CLEAR_BONUSES[min(self.stage_no - 1, len(STAGE_CLEAR_BONUSES) - 1)]
+            + snap["graze"] * 50
+            + snap["point_items"] * 5000
+            + snap["time_orbs"] * 100
+        )
+        survivor = self.stage_no >= 7  # 6A/6B: 残机/炸弹奖 (Gui.cpp:1039-1042)
+        if survivor:
+            bonus += snap["lives"] * 2500000 + snap["bombs"] * 500000
+        if self.stage_no == 8 and clock is not None:
+            # 6B: 剩余夜刻奖 (Gui.cpp:1043-1044)
+            bonus += 2000000 * (12 - clock.units)
+        d = self.difficulty
+        rank_line = (
+            "Easy Rank    *0.5",
+            "Normal Rank  *1.0",
+            "Hard Rank    *1.2",
+            "Lunatic Rank *1.5",
+            "Extra Rank   *2.0",
+        )[min(d, 4)]
+        if d == 0:
+            bonus //= 2
+        elif d == 2:
+            bonus = bonus * 12 // 10
+        elif d == 3:
+            bonus = bonus * 15 // 10
+        elif d >= 4:
+            bonus <<= 1
+        # lifeCount 惩罚 (Gui.cpp:1053-1077): 简化 —— 固定 3(Extra=2 不罚)
+        penalty_line = None
+        if d < 4:
+            bonus = bonus * 5 // 10
+            penalty_line = "Player Penalty*0.5"
+        for _ in range(10):
+            g.add_score(bonus)
+        # 面板行(显示值, Gui::OnDraw stageClear 段 :1737-1755)
+        lines = [
+            ("Clear", STAGE_CLEAR_BONUSES[min(self.stage_no - 1, 8)]),
+            ("Point", snap["point_items"] * 5000),
+            ("Graze", snap["graze"] * 50),
+            ("Time", snap["time_orbs"] * 100),
+        ]
+        if survivor:
+            lines.append(("Player", snap["lives"] * 2500000))
+            lines.append(("Bomb", snap["bombs"] * 500000))
         self.stage_results = {
             "stage": self.stage_no,
             "all_clear": self.stage_no >= 7,
-            "snapshot": {
-                "power": int(g.current_power),
-                "point_items": g.point_items_collected_this_stage,
-                "graze": g.graze_in_stage,
-                "time_orbs": g.current_time_orbs,
-                "lives": int(g.lives_remaining),
-                "bombs": int(g.bombs_remaining),
-            },
+            "lines": lines,
+            "rank_line": rank_line,
+            "penalty_line": penalty_line,
+            "total": bonus,
+            "snapshot": snap,
         }
 
     def _on_next_level(self) -> None:
-        """msg NEXT_LEVEL 指令: 转场 → 次帧帧首换关/总结算。"""
+        """msg NEXT_LEVEL 指令: 转场 → 次帧帧首换关/结局/总结算。"""
         if (
             self._pending_next_level
             or self.result is not None
             or self.ending is not None
         ):
             return
-        if self.stage_no < 8:
-            self._pending_next_level = True
+        self._advance_or_ending()
+
+    def _advance_or_ending(self) -> None:
+        """过关去向 (GameManager 链回调, GameManager.cpp:313-374):
+        非终面(stage_no 1-6 = 1-5 面): 时刻 ≥12 → Bad Ending
+        (gameCleared=0 → 结局, :342-348), 否则换关;
+        7/8(6A/6B) → 结局(gameCleared=1, :368-372);
+        9(EX) → 直接总结算(difficulty>=4 分支, :357-362)。"""
+        if self.stage_no <= 6:
+            clock = self.ecl_host.clock if self.ecl_host is not None else None
+            if clock is not None and clock.units >= 12:
+                log.debug(
+                    "时刻 ≥12 → Bad Ending (frame={}, stage={}, clock={})",
+                    self.frame, self.stage_no, clock.units,
+                )
+                self._enter_ending(bad=True)
+            else:
+                self._pending_next_level = True
+        elif self.stage_no <= 8:
+            log.debug(
+                "终面通关 → 结局 (frame={}, stage={}, score={})",
+                self.frame, self.stage_no, self.globals.gui_score,
+            )
+            self._enter_ending(bad=False)
         else:
             self.cleared = True
             log.debug(
-                "通关 → 总结算 (frame={}, score={})",
+                "通关(EX) → 总结算 (frame={}, score={})",
                 self.frame, self.globals.gui_score,
             )
             self.result = self.final_result(cleared=True)
@@ -896,8 +1054,8 @@ class ImperishableNight:
         """换关 (GameManager AddedCallback 公共路径; 重建清单照 th07)。
 
         时刻符点换关清零 (GameManager.cpp:878 currentTimeOrbs=0);
-        过面时刻增量(达标?1:2, GetClockTimeIncrement :1379-1470)与
-        ≥12 的 Bad Ending 判定 (:342-348)是单 B 的工作。
+        过面时刻增量已在 STAGERESULTS 入账(_on_stage_results,
+        Gui.cpp:652-653); ≥12 的 Bad Ending 在 _advance_or_ending 判定。
         """
         g = self.globals
         log.debug(
@@ -923,6 +1081,8 @@ class ImperishableNight:
         self._rand_spawn_idx = 0
         self._rand_table_idx = 0
         self._death_pos = None
+        self._deathbomb_freeze = False
+        self._last_spellcard_captured = False  # Spellcard 换关重建
         # 玩家/炸弹重建 → SPAWNING 出生点
         self.player = Th08Player(
             shot_data=self.shot_data,
@@ -935,21 +1095,53 @@ class ImperishableNight:
         self.bomb = Th08Bomb(shot_type=self.character)
         self.enter_stage(self._next_stage_no())
 
-    # ---- 结局(终面通关; 时刻判定替换 th07 numRetries 是单 B 的工作) ----
-    def _enter_ending(self) -> None:
-        """(占位) th08 结局 = 时刻 ≥12 → Bad Ending (GameManager.cpp:342-348);
-        资源/分支是单 B 工作, 本期直接总结算。"""
-        self.globals.snap_gui_score()
-        self.cleared = True
-        self.result = self.final_result(cleared=True)
+    # ---- 结局(终面通关/时刻到顶) ----
+    def _enter_ending(self, *, bad: bool) -> None:
+        """进结局 (curState=9)。结局文件 g_EndingFiles (Ending.cpp:13-21/
+        :567-577): gameCleared=0(时刻到顶) → a(bad); gameCleared=1 且
+        currentStage==6B → c, 否则(6A 通关) → b; 文件按机体队
+        (0-3 组号, 单人归队) 取 end{NN}{a/b/c}.end。
+        资源缺失退化为通用通关画面(同 th07)。"""
+        g = self.globals
+        g.snap_gui_score()  # NEXT_LEVEL: guiScore 对齐真实分
+        self.stage_results = None
+        self._ending_bad = bad
+        team = self.character if self.character < 4 else (self.character - 4) // 2
+        if bad:
+            variant = "a"
+        elif self.stage_no == 8:  # 6B 击破
+            variant = "c"
+        else:  # 6A 击破(gameCleared 但非 6B)
+            variant = "b"
+        path = f"end{team:02d}{variant}.end"
+        log.debug(
+            "进结局: {} (frame={}, bad={}, score={})",
+            path, self.frame, bad, g.gui_score,
+        )
+        try:
+            data = try_decrypt_from_table(self.archive.load(path))
+            self.ending = EndingData(
+                character=self.character,
+                bad=bad,
+                path=path,
+                segments=parse_end(data),
+                music=parse_end_music(data),
+                ops=parse_end_ops(data),
+            )
+        except (KeyError, ValueError, OSError) as e:
+            log.warning("结局资源缺失, 用通用通关画面: {}", e)
+            self.ending = EndingData.generic(self.character)
 
     def finish_ending(self) -> None:
-        """结局看完 → 总结算(本期结局占位, 直接幂等收尾)。"""
+        """结局看完(view 确认) → 总结算 (Ending 结束 → ResultScreen)。
+        Bad Ending 按 gameCleared=0 结算(GameManager.cpp:344)。"""
         if self.ending is None:
             return
+        bad = self._ending_bad
         self.ending = None
-        self.cleared = True
-        self.result = self.final_result(cleared=True)
+        self.cleared = not bad
+        log.debug("结局结束 → 总结算 (score={}, bad={})", self.globals.gui_score, bad)
+        self.result = self.final_result(cleared=not bad)
 
     @property
     def continue_available(self) -> bool:
@@ -989,6 +1181,7 @@ class ImperishableNight:
         g.current_time_orbs = 0
         g.youkai_gauge = 0
         self._score_milestone = 0
+        self._deathbomb_freeze = False
         self.game_over = False
         self.result = None
         self._result_cache = None
@@ -1003,9 +1196,10 @@ class ImperishableNight:
 
     def _try_bomb(self) -> None:
         """炸弹触发; 成功后把透出事件接回 globals/boss。
-        决死B (deathbomb): 中弹后的决死窗(respawnTimer 倒数, 初值 = sht
-        deathbombWindowFrames) 内按 B → 消耗一枚 bomb 代替丢残机;
-        DEAD→INVULNERABLE 翻转照 th07 world.py:1377-1385。"""
+        决死B (deathbomb): 中弹后的决死窗(respawnTimer 倒数, 初值 = Die()
+        动态公式, Th08Player.die / Player.cpp:535-557) 内按 B → 消耗 2 枚
+        bomb(不足全扣)代替丢残机; DEAD→INVULNERABLE 翻转照 th07
+        world.py:1377-1385。"""
         g = self.globals
         deathbomb = self.player.state == PlayerState.DEAD
         res = try_start_bomb(
@@ -1022,9 +1216,13 @@ class ImperishableNight:
         if not res.started:
             return
         if deathbomb:
-            # 决死变体记账(callback_variant 2/3, bomb.start 已按普通跑;
-            # 变体的行为差是逐机体移植(单 B+)的工作)
-            self.bomb.callback_variant += 2
+            # 决死变体: callbackVariant = (1−focusMode)+2 (Player.cpp:1208-1213)
+            self.bomb.callback_variant = (1 - int(self.player.focus)) + 2
+            # 决死耗 2 弹, 不足则全扣 (:1224-1234); 决死冻结解除
+            # (flags &= ~0x400, :1206)
+            if g.bombs_remaining - 1 > 0:
+                g.bombs_remaining -= 1
+            self._deathbomb_freeze = False
         log.debug(
             "bomb 触发{} (frame={}, character={}, focus={}, 剩余炸弹={})",
             "(决死)" if deathbomb else "",
@@ -1045,6 +1243,58 @@ class ImperishableNight:
 
     def _bomb_box_hit(self, pos: Vec2, full_size: tuple[float, float]) -> bool:
         return self.bomb.hits(pos, Vec2(full_size[0] / 2, full_size[1] / 2))
+
+    def _on_player_died(self) -> None:
+        """被弹公共记账: 符卡战中且决死窗成立(bombs>=1) → 决死冻结
+        (deathbombFreezeActive, Player.cpp:584-585; 窗内 Spellcard/
+        敌人/自机弹冻结, 决死成功(:1206)或窗耗尽(:1291)时解除)。"""
+        if self._spellcard_active() and self.globals.bombs_remaining >= 1:
+            self._deathbomb_freeze = True
+
+    def _tick_youkai_gauge(self, msg_active: bool) -> None:
+        """妖率计的射击坡道与停火回中 (Player.cpp:893-935)。
+
+        射击中: gaugeShiftDelay>0 先倒数, 否则坡道量(ramp>300 → 21,
+        否则 ramp/15)按形态加正(妖)/减负(人), ramp 逐帧累;
+        停火: delay<30 只累 delay(≥4 时坡道清零), ≥30 后按槽区回中
+        (-5/-3/-2/+2/+3/+5, |gauge|≤9 直接归 0)。
+        门控: 对话中/炸弹中/非 ALIVE 不动(:893-895)。"""
+        g = self.globals
+        p = self.player
+        if (
+            msg_active
+            or self.bomb.is_in_use
+            or p.state in (PlayerState.DEAD, PlayerState.SPAWNING)
+        ):
+            return
+        if p._firing:
+            if p.gauge_shift_delay > 0:
+                p.gauge_shift_delay -= 1
+            else:
+                delta = 21 if p.gauge_ramp > 300 else p.gauge_ramp // 15
+                g.add_to_youkai_gauge(delta if p.focus else -delta)
+                p.gauge_ramp += 1
+        else:
+            if p.gauge_shift_delay >= 4:
+                p.gauge_ramp = 0
+            if p.gauge_shift_delay >= 30:
+                gauge = g.youkai_gauge
+                if abs(gauge) <= 9:
+                    g.youkai_gauge = 0  # SetYoukaiGauge(0) (:922)
+                elif g.gauge_is_extremely_youkai():
+                    g.add_to_youkai_gauge(-5)
+                elif g.gauge_is_moderately_youkai():
+                    g.add_to_youkai_gauge(-3)
+                elif gauge > 0:
+                    g.add_to_youkai_gauge(-2)
+                elif not g.gauge_is_moderately_human():
+                    g.add_to_youkai_gauge(2)
+                elif not g.gauge_is_extremely_human():
+                    g.add_to_youkai_gauge(3)
+                else:
+                    g.add_to_youkai_gauge(5)
+            else:
+                p.gauge_shift_delay += 1
 
     def _spawn_point_star(self, pos: Vec2) -> None:
         """弹消星道具, 出生即吸附 (RemoveAllBullets 的 SpawnItem(…, 1))。"""
@@ -1123,6 +1373,11 @@ class ImperishableNight:
         boss.max_life = max(bar_st.max_life, 1)
         boss.invincibility_timer = st.invincibility_timer
         boss.is_survival_spellcard = bool(st.is_survival_spellcard)
+        if st.is_survival_spellcard:
+            # op155 直写 g_Spellcard.scoreLimit (EclRunHigh.inl:830)
+            boss.score_limit = TIMEOUT_SPELL_SCORE_LIMIT
+        if self.ecl_host is not None:
+            boss.bonus_updates_disabled = self.ecl_host.bonus_updates_disabled
         boss.tick()
         e = self._boss_ecl_enemy
         if e is None or not e.alive:
@@ -1135,7 +1390,7 @@ class ImperishableNight:
     def _apply_spellcard_end(self, res: dict) -> None:
         """EndSpellcard 透出事件入账 (Spellcard::EndSpell, Spellcard.cpp:999-):
         非超时 → DespawnBullets(8000,1)+KillAllNonBossEnemies 清弹清敌累计分;
-        捕获 → 得分/计数/横幅(捕获的 pendingTimeOrbs 时刻符点奖励是单 B)。"""
+        捕获 → 得分/计数/横幅 + pendingTimeOrbs 时刻符点奖入账。"""
         if not res["ended"]:
             return
         self.sounds.play(SE_SPELLCARD_END)
@@ -1157,6 +1412,10 @@ class ImperishableNight:
                     self.globals.spell_cards_captured
                 )  # ex24 发布值
             self.globals.show_spellcard_bonus(res["score"])
+            if res["pending_time_orbs"]:
+                # 捕获的时刻符点奖 (Spellcard.cpp:763-766 AddTimeOrbs)
+                self.globals.add_time_orbs(res["pending_time_orbs"])
+        self._last_spellcard_captured = bool(res["captured"])
         self._catk_idx = None
         if res["despawn_bullets"]:
             removed = self._despawn_bullets_bonus()
@@ -1208,17 +1467,118 @@ class ImperishableNight:
         self.bullets.clear()
         self.lasers.remove_all(spawn_items=False, skip_flag4=True)
 
+    # ---- 使魔链死亡掉符点 ----
+    def _cancel_region_items(
+        self, pos: Vec2, radius: float, item_type: ItemType | None
+    ) -> None:
+        """CreateCircleCancelRegion 的结算近似 (Player.cpp:1782-1810):
+        半径内敌弹转道具(吸附); item_type=None ↔ C 的 ITEM_RESERVED_9
+        (纯消弹不掉落)。半径取末帧值(初值 32 + growth×lifetime = 48)。"""
+        r2 = radius * radius
+        for b in self.bullets.alive():
+            if b.spawn_state:
+                continue
+            dx = b.pos.x - pos.x
+            dy = b.pos.y - pos.y
+            if dx * dx + dy * dy <= r2:
+                if item_type is not None:
+                    self.items.spawn(
+                        b.pos, item_type, power=self.power, state=STATE_ATTRACT
+                    )
+                b.dead = True
+
+    def _detach_chain_rewards(self, st) -> None:
+        """DetachEnemyChain(awardRewards=1) 的奖励段 (EnemyManager.cpp:229-345)。
+
+        被击坠的敌人是链上子机: 妖率 -gauge/12, 符点妖率抑制 50 帧,
+        自身掉 1 个吸附时刻符点, 掉落清零(:332-345);
+        是链父(有子链): 每个子机散掉 itemCount 个时刻符点(上升态,
+        数量按机体类: 单妖 n≥10?26:2n+6 / 单人 n≥4?40:6n+16 /
+        咏唱组 n≥8?26:2n+10, :262-268)+48px 消弹圈(父是 boss → 转
+        时刻符点, 否则纯消弹, :270-280), 无 boss 或符卡中再掉 1 小点
+        (:289-293); 父自身掉 2×子链数 个吸附时刻符点 + 48px 消弹圈
+        (:309-330)。弹字(CreateTimePopup)是 view 侧, 不接。
+        """
+        h = self.ecl_host
+        assert h is not None
+        g = self.globals
+        p = self.player
+        # 自身是子机 (:332-345)
+        if h.attached_parent(st) is not None:
+            if not self.bomb.is_in_use:
+                g.add_to_youkai_gauge(-g.youkai_gauge // 12)  # :335
+            p.gauge_ramp = 0
+            p.gauge_shift_delay = 30
+            p.time_orb_gauge_suppression = 50  # :341
+            self.items.spawn(
+                Vec2(st.pos.x, st.pos.y),
+                ItemType.TIME,
+                power=self.power,
+                state=STATE_ATTRACT,
+            )
+            st.power_or_point_item_drop_count = 0
+            st.point_item_drop_count = 0
+            st.item_drop = -2
+        n = h.count_parent_chain(st)
+        if n == 0:
+            return
+        children = h.detach_chain(st)
+        c = self.character
+        if c in (5, 7, 9, 11):  # IsSoloYoukai (GameManager.hpp:194-196)
+            item_count = 26 if n >= 10 else n * 2 + 6
+        elif c in (4, 6, 8, 10):  # IsSoloHuman (:189-192)
+            item_count = 40 if n >= 4 else n * 6 + 16
+        else:  # 咏唱组
+            item_count = 26 if n >= 8 else n * 2 + 10
+        for child in children:
+            cpos = Vec2(child.pos.x + child.pos_offset.x,
+                        child.pos.y + child.pos_offset.y)
+            # 消弹圈 (32+2×8=48px): 父是 boss → 弹转时刻符点 (:262-264)
+            self._cancel_region_items(
+                cpos, 48.0, ItemType.TIME if st.is_boss else None
+            )
+            for _ in range(item_count):
+                # FromAngleMagnitude(±π 随机角, [0, itemCount×2) 随机半径)
+                ang = (self.rng.unit() * 2.0 - 1.0) * math.pi
+                rad = self.rng.unit() * item_count * 2.0
+                self.items.spawn(
+                    Vec2(cpos.x + math.cos(ang) * rad,
+                         cpos.y + math.sin(ang) * rad),
+                    ItemType.TIME,
+                    power=self.power,
+                )
+            if self.boss is None or self._spellcard_active():
+                # itemDropType=8 → DropItems(0) 掉 1 小点 (:289-293)
+                self.items.spawn(cpos, ItemType.POINT_SMALL, power=self.power)
+        # 父自身: 2×子链数 吸附时刻符点(128px 散布) + 消弹圈 (:309-330)
+        ppos = Vec2(st.pos.x + st.pos_offset.x, st.pos.y + st.pos_offset.y)
+        for _ in range(2 * n):
+            ang = (self.rng.unit() * 2.0 - 1.0) * math.pi
+            rad = self.rng.unit() * 128.0
+            self.items.spawn(
+                Vec2(ppos.x + math.cos(ang) * rad, ppos.y + math.sin(ang) * rad),
+                ItemType.TIME,
+                power=self.power,
+                state=STATE_ATTRACT,
+            )
+        self._cancel_region_items(ppos, 48.0, ItemType.TIME)
+        p.time_orb_gauge_suppression = 0  # :327
+
     def _kill_reward(self, e, counter: int) -> None:
         """击杀入账: 得分 + 掉落 + 击坠音 (EnemyManager 死亡分支 +
         Enemy::DropItems(0), EnemyManager.cpp:743-800)。
 
-        使魔链死亡的时刻符点掉星 (EnemyManager.cpp:270-350 段) 是
-        后续阶段(单 B 妖率计/使魔全联动)的工作, 本期只掉 DropItems 部分。
+        使魔链死亡掉时刻符点经宿主 on_chain_kill 钩子(在 kill→拆链前触发,
+        见 _detach_chain_rewards, EnemyManager.cpp:229-345); 击坠妖率 ±200
+        (EnemyManagerUpdate.cpp:483-486) 在此入账。
         """
         self.sounds.play(SE_ENEMY_DEAD_A + counter % 2)  # 两档音量交替
         g = self.globals
         if isinstance(e, EclEnemy):
             st = e.state
+            if not self.bomb.is_in_use:
+                # 击坠妖率: focus(妖) +200, 否则 -200 (EnemyManagerUpdate.cpp:483-486)
+                g.add_to_youkai_gauge(200 if self.player.focus else -200)
             if not e._kill_no_score:  # 仅 death_type==2 无 AddScore (同 th07)
                 g.add_score(st.score)
             d = st.item_drop
@@ -1276,6 +1636,8 @@ class ImperishableNight:
             if k == PlayerEventKind.DEATH_SETTLE:
                 assert isinstance(ev.data, DeathSettle)
                 pos = self._death_pos or self.player.pos
+                # 决死窗耗尽 → 决死冻结解除 (flags &= ~0x400, Player.cpp:1291)
+                self._deathbomb_freeze = False
                 log.debug(
                     "玩家死亡 (frame={}, pos=({:.1f},{:.1f}), power {}→{}, 残机={})",
                     self.frame, pos.x, pos.y,
@@ -1303,7 +1665,7 @@ class ImperishableNight:
                      else GRAZE_SCORE_NORMAL) * 10
                 )
                 g.increase_subrank(GRAZE_SUBRANK)
-                if self.player.is_youkai:
+                if self.player.is_youkai and not self.bomb.is_in_use:
                     g.add_to_youkai_gauge(GRAZE_GAUGE_YOUKAI)  # Player.cpp:483-484
                 # 极限妖且有 boss: 擦弹出时刻符点 (Player.cpp:486-495)
                 if (
@@ -1361,9 +1723,10 @@ class ImperishableNight:
         slow_percent: float = 0.0,
         name: str | None = None,
     ) -> dict:
-        """结算: 汇总 globals → 入榜 + 写 store(内存)。
+        """结算: 汇总 globals → RunStats + 评级 + 入榜 + 写 store(内存)。
 
-        幂等: 一局只结算一次。th08 的评级/结局差分是单 B 的工作。
+        评级照 th08 ResultScreen.cpp:2153-2290(games/th08/results.py);
+        slow_percent 固定 60fps 下恒 0, 参数仅留接口。幂等: 一局只结算一次。
         """
         if self._result_cache is not None:
             return self._result_cache
@@ -1371,6 +1734,24 @@ class ImperishableNight:
             name = self.store.last_name
         g = self.globals
         g.snap_gui_score()
+        st = RunStats(
+            score=g.score,
+            difficulty=self.difficulty,
+            deaths=g.deaths,
+            bombs_used=g.bombs_used,
+            retries=g.num_retries,
+            spellcards_captured=g.spell_cards_captured,
+            graze_total=g.graze_in_total,
+            point_items_collected=g.point_items_collected,
+            cleared=cleared,
+            clear_percent=(
+                1.0
+                if cleared
+                else clear_percent(self.frame / 60.0, extra=self.difficulty >= 4)
+            ),
+            play_time_frames=self.frame,
+        )
+        rank_value = rating(st, slow_percent=slow_percent)
         rec = make_highscore_record(
             g.score,
             self.character,
@@ -1394,8 +1775,11 @@ class ImperishableNight:
         )
         self._result_cache = {
             "score": g.score,
+            "rating": round(rank_value, 1),
             "rank": pos,
             "cleared": cleared,
+            "clear_percent": st.clear_percent * 100.0,
+            "bad_ending": self._ending_bad,
             "difficulty": self.difficulty,
             "character": self.character,
             "stage": self.stage_no,

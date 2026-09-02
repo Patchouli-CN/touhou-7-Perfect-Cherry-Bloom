@@ -59,10 +59,10 @@ from ...utils import (
 )
 from .ecl_file import EclFileTh08
 
-# 人妖门控的 transformFlags 位 (BulletManager.hpp; DispatchShotInstruction
+# 人妖门控的 transformFlags 位 (BulletManager.hpp:147-148; DispatchShotInstruction
 # 检查, EclDependencies.cpp:697-702)
-_BULLET_TRANSFORM_ONLY_WHEN_PLAYER_YOUKAI = 0x100
-_BULLET_TRANSFORM_ONLY_WHEN_PLAYER_HUMAN = 0x200
+_BULLET_TRANSFORM_ONLY_WHEN_PLAYER_YOUKAI = 0x8000
+_BULLET_TRANSFORM_ONLY_WHEN_PLAYER_HUMAN = 0x10000
 # 弹幕发射音标志位 (BulletManager.hpp:141; op113 与 th07 SET_BULLET_SOUND 同值)
 _BULLET_TRANSFORM_PLAY_SPAWN_SOUND = 0x200
 
@@ -548,16 +548,16 @@ class EclMachineTh08(EclMachineBase):
                     n = self.host.count_parent_chain(parent)
             return n
         if var_id == Th08EclVarId.PLAYER_IS_YOUKAI:
-            # world 阶段接线: 自机妖形态(world 暂无此属性, 默认 0)
+            # 自机妖形态(world 每帧经 host.frame_update 同步 player_is_youkai)
             return int(getattr(w, "player_is_youkai", 0))
         if var_id == Th08EclVarId.LAST_SPELL_ORBS:
-            # world 阶段接线: 时刻符点 Last Spell 状态(默认 0)
+            # 时刻符点 Last Spell 状态(world._step_ecl 每帧发布)
             return int(getattr(w, "last_spell_orb_status", 0))
         if var_id == Th08EclVarId.SPELLCARD_CAPTURED:
-            # world 阶段接线: 符卡取得状态(默认 0)
+            # 符卡取得状态(world._step_ecl 发布: 活动中=捕获有效, 否则=上一张结果)
             return int(getattr(w, "spellcard_capture_status", 0))
         if var_id == Th08EclVarId.SPELLCARD_TIMER:
-            # world 阶段接线: 符卡计时(默认 0)
+            # 符卡剩余帧(world._step_ecl 发布 boss.time_remaining)
             return int(getattr(w, "spellcard_timer_frames", 0))
         return var_id  # C default: 原样返回
 
@@ -1912,7 +1912,8 @@ def _op_bind_timer_callback_to_death(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_TIMEOUT_SPELL)
 def _op_set_timeout_spell(m: EclMachineTh08, instr: EclInstr):
-    # timeoutSpell(生存符); g_Spellcard.scoreLimit=99999990 是计分侧, world 阶段
+    # timeoutSpell(生存符); g_Spellcard.scoreLimit=99999990 由 world 每帧
+    # 同步到 boss.score_limit(_tick_boss, EclRunHigh.inl:830)
     m.enemy.is_survival_spellcard = instr.arg_bytes(0)[0]
 
 

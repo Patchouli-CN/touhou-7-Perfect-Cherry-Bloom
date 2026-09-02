@@ -34,7 +34,7 @@ games/th07/ecl_host.py 模式丰满:
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Callable, Optional
 
 from ...engine.ecl import (
     EclContext,
@@ -121,6 +121,8 @@ class Th08GameEclHost(EclHost):
         self.night_blindness_radius = 0.0  # ex0: nightBlindnessRadius
         self.current_spellcard_number = -1  # ex19: GameManager.currentSpellCardNumber
         self.spellcards_captured = 0  # ex24: globals->spellcardsCaptured
+        self.bonus_updates_disabled = 0  # op184: Spellcard BONUS_UPDATES_DISABLED
+        # (world 每帧同步到 boss.bonus_updates_disabled)
         self.scripted_update_freeze = 0  # ex26: GameManager.scriptedUpdateFreeze
         self.screen_effect_counter = 0  # ex30: g_ScreenEffectCounter
         # ---- 宿主侧运行状态 ----
@@ -134,15 +136,20 @@ class Th08GameEclHost(EclHost):
         self.boss_life_markers = 0
         self.enemy_by_state: dict[int, EclEnemy] = {}
         # 使魔父链(id(state) 键; on_enemy_gone 清理):
-        # _attach_next: 链尾指针链, _attach_parent: 子 → 父
+        # _attach_next: 链尾指针链, _attach_parent: 子 → 父;
+        # _attach_inherit_pos: op92 位继承子机(detach 时 positionOffset=父位置)
         self._attach_next: dict[int, EclEnemyState] = {}
         self._attach_parent: dict[int, EclEnemyState] = {}
+        self._attach_inherit_pos: set[int] = set()
         # ---- 事件透出(world 接线; 均为可选) ----
         self.on_set_boss: SetBossHook | None = None
         self.on_begin_spellcard: BeginSpellcardHook | None = None
         self.on_end_spellcard: EndSpellcardHook | None = None
         self.on_spellcard_timeout: EndSpellcardHook | None = None
         self.on_set_power: IntHook | None = None
+        # 击坠(kill)时的使魔链奖励回调 (DetachEnemyChain(1), world 接线;
+        # 在 on_enemy_gone 拆链前触发)
+        self.on_chain_kill: Callable[[EclEnemy], None] | None = None
         self.pending_spellcard_bonus = 0  # op122 的 bonus(world 在
         # on_begin_spellcard 里取走; VM 经 set_spellcard_bonus 传递)
         self.sound: SoundQueue | None = None
@@ -179,6 +186,29 @@ class Th08GameEclHost(EclHost):
         self.power = power
         self.frozen = frozen
         self.bomb_in_use = bomb_in_use
+        self.update_familiar_alignment()
+
+    def update_familiar_alignment(self) -> None:
+        """Enemy::UpdateYoukaiAlignment (EnemyManager.cpp:869-902; 使魔
+        (linkedChild) 每帧在 RunEcl 前调用, EnemyManagerUpdate.cpp:153-154):
+        youkaiAligned ← 自机 IsYoukai 跟随, drawGroup 妖 0/人 2,
+        eclDifficultyMaskOverride 妖 64/人 32; 形态翻转时音效 40(→妖)/
+        39(→人), 对齐特效 interrupt 2/1 是 view 侧(EclRunLow.inl:747-770)。
+        """
+        if self.enemies is None:
+            return
+        youkai = self.world.player_is_youkai
+        for sid in list(self._attach_parent):
+            e = self.enemy_by_state.get(sid)
+            if e is None:
+                continue
+            st = e.state
+            if st.youkai_aligned != youkai:
+                # 形态翻转 (:871-896)
+                self._play_sound(40 if youkai else 39)
+            st.youkai_aligned = youkai
+            st.draw_group = 0 if youkai else 2
+            st.difficulty_mask_override = 64 if youkai else 32
 
     # ---- 弹幕 ----
     def spawn_bullet_pattern(self, props: EnemyBulletShooter) -> None:
@@ -359,10 +389,13 @@ class Th08GameEclHost(EclHost):
         child = e.state
         child.youkai_aligned = int(getattr(self.world, "player_is_youkai", 0))
         child.draw_group = 0 if child.youkai_aligned else 2  # (v?-1:0)&-2)+2
+        child.difficulty_mask_override = 64 if child.youkai_aligned else 32
+        # (UpdateYoukaiAlignment 每帧跟随, EnemyManager.cpp:901)
         child.has_contact_hitbox = 0
         child.has_no_collision = 1
         if kind == 92:  # 继承父位置: positionOffset = parent->position
             child.pos_offset = parent.pos.copy()
+            self._attach_inherit_pos.add(id(child))
         # 链尾挂载
         tail = parent
         while id(tail) in self._attach_next:
@@ -385,11 +418,42 @@ class Th08GameEclHost(EclHost):
         """HasAttachedEnemy → parentEnemy (EclOperandsInt.cpp:125-129 用)。"""
         return self._attach_parent.get(id(st))
 
+    def detach_chain(self, st: EclEnemyState) -> list[EclEnemyState]:
+        """DetachEnemyChain 的拆链段 (EnemyManager.cpp:229-264):
+        把 st 的子链从头至尾摘下(清双向链指针), op92 位继承的子机
+        (spawn_familiar kind==92)positionOffset = st.pos (:243-246)。
+        返回摘下的子机(顺序 = 链序); 奖励掉落在 world._kill_reward 结算。
+        """
+        children: list[EclEnemyState] = []
+        cur = st
+        while id(cur) in self._attach_next:
+            child = self._attach_next.pop(id(cur))
+            self._attach_parent.pop(id(child), None)
+            if id(child) in self._attach_inherit_pos:
+                child.pos_offset = cur.pos.copy()  # 继承父位置 (:244-245)
+            child.has_contact_hitbox = 0
+            children.append(child)
+            cur = child
+        st.linked_child_count = 0
+        return children
+
+    def set_bonus_updates_disabled(self, v: int) -> None:
+        """op184 (EclRunHigh.inl:972): Spellcard.SetBonusUpdatesDisabled。
+        宿主暂存, world 每帧同步到 boss.bonus_updates_disabled。"""
+        self.bonus_updates_disabled = v
+
     def on_enemy_gone(self, e: EclEnemy) -> None:
-        """EclEnemy despawn/击坠时回调: 清登记/父链, boss 槽联动。"""
+        """EclEnemy despawn/击坠时回调: 清登记/父链, boss 槽联动。
+
+        击坠(kill)且带使魔链 → 先触发 on_chain_kill (DetachEnemyChain(1)
+        的奖励段, EnemyManager.cpp:229-345; despawn 等价 DetachEnemyChain(0),
+        只拆链不奖励)。"""
+        if e.died_by_kill and self.on_chain_kill is not None:
+            self.on_chain_kill(e)
         st = e.state
         self.enemy_by_state.pop(id(st), None)
         self._attach_next.pop(id(st), None)
+        self._attach_inherit_pos.discard(id(st))
         parent = self._attach_parent.pop(id(st), None)
         if parent is not None and parent.linked_child_count > 0:
             parent.linked_child_count -= 1

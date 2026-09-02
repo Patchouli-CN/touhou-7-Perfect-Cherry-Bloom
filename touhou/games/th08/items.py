@@ -76,6 +76,7 @@ class CollectResult(CollectResultBase):
     point_items_collected: int = 0
     time_orbs: int = 0  # 时刻符点增量(AddTimeOrbs)
     gauge_delta: int = 0  # 妖率计增量(AddToYoukaiGauge)
+    bonus_progress: int = 0  # 符卡 bonusProgress 增量(Spellcard.AddBonusProgress)
     subrank: int = 0
     reached_full_power: bool = False
     # 得分弹字: (显示数值(代码值口径, -1=PowerUp 字形), ARGB 颜色, 槽位)
@@ -329,7 +330,10 @@ class ItemWorld(ItemWorldBase[Item, GameContext]):
                     code = 100
             r.score = code // 10
             r.time_orbs = 1
-            # 妖率计 ±111 (ItemManager.cpp:634-636: focus=妖 +111, 否则 -111)
+            # 符卡 bonusProgress +8000 (ItemManager.cpp:631)
+            r.bonus_progress = 8000
+            # 妖率计 ±111 (ItemManager.cpp:634-636: focus=妖 +111, 否则 -111;
+            # timeOrbGaugeChangeSuppressionTimer 抑制期不加是上层职责)
             r.gauge_delta = 111 if ctx.focus else -111
             r.popups.append(
                 (

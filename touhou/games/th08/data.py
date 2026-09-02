@@ -21,7 +21,7 @@
 - bomb_params 留空: th08 炸弹为回调驱动(g_PlayerBombCallbacksByShotType,
   Player.cpp:79), 无 th07 式首帧参数表;
 - stage_count=6 为近似: th08 实际 9 关含 4A/4B/6A/6B 分支(ScoreDat.hpp:71-85),
-  分支按机体决定(GameManager.cpp:1483-1505), 精确分支语义留后续阶段。
+  分支按机体决定(GameManager.cpp:1483-1505, world._STAGE4_BRANCH 实装)。
 """
 
 from __future__ import annotations
@@ -141,6 +141,12 @@ RANK_TABLE = (
 )
 # 难度 → 点道具初值 pointItemValue (GameManagerSetup.cpp:149-161)
 POINT_ITEM_VALUES = (60000, 100000, 200000, 300000, 300000)
+# 过关 Clear 奖励 g_GuiStageClearBonuses[9] (Gui.cpp:32, DIFFABLE 数组 ——
+# 值驻留二进制数据段, 源码未转写; 采用通行文档值), 下标 = C currentStage
+STAGE_CLEAR_BONUSES = (
+    1000000, 1500000, 2000000, 2500000, 2500000, 3000000, 6666666, 66666666,
+    10000000,
+)
 
 # ---- 关卡资源文件名表(下标 = C currentStage 0-8: 1/2/3/4A/4B/5/6A/6B/EX) ----
 # g_StageStdFiles (Background.cpp:99-101)

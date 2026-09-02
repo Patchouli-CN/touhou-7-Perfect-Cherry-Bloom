@@ -152,6 +152,10 @@ class Th08Globals(GlobalsBase):
         """GaugeIsModeratelyYoukai (GameManager.hpp:219-222)。"""
         return self.youkai_gauge >= self.gauge_bounds[5]
 
+    def gauge_is_moderately_human(self) -> bool:
+        """GaugeIsModeratelyHuman (GameManager.hpp:211-214)。"""
+        return self.youkai_gauge <= self.gauge_bounds[4]
+
     # ---- 时刻符点 ----
     def add_time_orbs(self, amount: int) -> None:
         """GameManager::AddTimeOrbs (GameManager.cpp:200-218):
