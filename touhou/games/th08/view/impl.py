@@ -6,10 +6,12 @@ Quit to Title + 二次确认)、GameOver 续关菜单、通关/GameOver 结算�
 
 标题主菜单已原作化(A 期): 9 项名单/title01.anm 成对 sprite/置灰锁定/
 title00.png 背景/70 帧白淡入/底部帮助行, 见本包 title_flow.py(纯逻辑)与
-title_view.py(渲染)。一期遗留范围: Music Room/Replay/Option/Result 浏览/
-Practice/Spell Practice 画面(菜单项给"未实装"提示)、对话立绘、符卡宣言、
-结局画面(world 出 ending 时直接 finish_ending 跳总结算)、录像录制/播放、
-入榜名字输入(结算直接存档回标题)。
+title_view.py(渲染)。难度/机体/Extra 选择已原作化(B2 期): select00.png
+背景 + title01.anm 难度项/头像/名牌 vm + 通关标记, 见 title_flow.py
+(CharacterFlowTh08/completion_mark_sprite)与 select_view.py。
+一期遗留范围: Music Room/Replay/Option/Result 浏览/Practice/Spell Practice
+画面(菜单项给"未实装"提示)、对话立绘、符卡宣言、结局画面(world 出 ending
+时直接 finish_ending 跳总结算)、录像录制/播放、入榜名字输入(结算直接存档回标题)。
 
 渲染/输入采集委托 Renderer 后端(协议见 engine/render/__init__.py);
 默认后端是本包 pygame_backend.PygameTh08Renderer(自持, 不进全局
@@ -23,6 +25,8 @@ register_renderer —— "pygame" 名被 th07 占用), 测试可注入实例。
 from __future__ import annotations
 
 import time
+
+from typing import TYPE_CHECKING
 
 from ....logger import logger as log
 
@@ -41,15 +45,27 @@ from ...th07.view.screens import (
     Screen,
 )
 from ..crypt import try_decrypt_from_table
-from ..progress import TITLE_BGM_INDEX, load_score_store, unlock_bgm
+from ..progress import (
+    NUM_TEAMS,
+    TITLE_BGM_INDEX,
+    is_extra_unlocked_for_character,
+    is_extra_unlocked_with_all_teams,
+    load_score_store,
+    unlock_bgm,
+)
 from ..sound import SE, SE_FILES, SE_VOLUMES
 from .pygame_backend import PygameTh08Renderer
 from .title_flow import (
     CURSOR_FROM_GAME,
     CURSOR_FROM_RESULT,
+    CharacterFlowTh08,
     TitleFlowTh08,
+    completion_mark_sprite,
     unlock_flags,
 )
+
+if TYPE_CHECKING:
+    from ....engine.score_store import ScoreStore
 
 # 标题画面 BGM (TitleScreen.cpp:869/1036/3796: LoadMusic(8,"bgm/th08_01.mid"))
 _TITLE_BGM = "th08_01.mid"
@@ -148,13 +164,23 @@ class GameApp:
         self._main_difficulties = self._difficulties[:main_n]
         self._extra_stages = list(gd.extra_stages) if gd is not None else ["Extra"]
         self._diff = MenuCursor(self._main_difficulties, index=1)
-        self._char = MenuCursor(self._characters, index=0)
+        # 机体选择 flow(:1601-1854): menuLength 规则(12/4)由
+        # _reload_title_unlocks 按存档重建 items; 初始先给全表
+        self._char_flow = CharacterFlowTh08(
+            cursor=MenuCursor(list(self._characters), index=0)
+        )
         self._extra_mode = False  # Extra Start 流: 选 Extra → 选机体
         self._extra_stage = MenuCursor(self._extra_stages, index=0)
+        # 难度/机体/Extra 屏的进屏帧计数(渲染用; frame==0 = 进场,
+        # 对照原作 Init 的 SetInterruptArray 时机)
+        self._menu_sub_frame = 0
+        self._last_menu_screen = self._screen
         # score.json 落盘位置(与 world.py 同一来源, score_path 可覆盖, 测试用)
         if score_path is None:
             score_path = DEFAULT_SCORE_PATH
         self._score_path = score_path
+        # 标题系画面的 store 快照(_reload_title_unlocks 填, 进标题才重读)
+        self._title_store: ScoreStore | None = None
         # 进标题重读 score.json 的解锁态(ActualAddedCallback 每次进标题
         # 重开 score.dat, TitleScreen.cpp:3664-3675); 启动即标题, 构造时先读一次
         self._reload_title_unlocks()
@@ -263,15 +289,30 @@ class GameApp:
 
     # ---- 难度/机体/Extra 菜单 ----
     def _run_menu(self, actions) -> None:
+        if self._screen != self._last_menu_screen:
+            self._last_menu_screen = self._screen
+            self._menu_sub_frame = 0
+        frame = self._menu_sub_frame
+        self._menu_sub_frame += 1
         if self._screen == Screen.DIFFICULTY:
             self._renderer.render_difficulty(
-                self._diff.index, items=self._main_difficulties
+                self._diff.index, items=self._main_difficulties, frame=frame
             )
         elif self._screen == Screen.CHARACTER:
-            self._renderer.render_character(self._char.index, items=self._characters)
-        else:  # Screen.EXTRA_LEVEL
+            # 通关标记只画主 CharacterSelect(OnDraw :3594-3596), Extra 变体不画
+            mark = None
+            if not self._extra_mode and self._title_store is not None:
+                mark = completion_mark_sprite(
+                    self._title_store,
+                    self._char_flow.cursor.index,
+                    self._char_flow.difficulty,
+                )
+            self._renderer.render_character(
+                self._char_flow, completion=mark, frame=frame
+            )
+        else:  # Screen.EXTRA_LEVEL = 原作的 DifficultySelectExtra 单项画面
             self._renderer.render_extra(
-                self._extra_stage.index, items=self._extra_stages
+                self._extra_stage.index, items=self._extra_stages, frame=frame
             )
         for act in actions:
             self._on_menu(act)
@@ -295,20 +336,48 @@ class GameApp:
         self._enter_main_menu()
 
     def _reload_title_unlocks(self) -> None:
-        """重读 score.json 更新 Extra/Spell Practice 解锁态(置灰/跳过依据,
-        判定语义见 progress.is_extra_unlocked/is_spell_practice_unlocked);
-        标题曲播放即解锁 Music Room 0 号曲(TitleScreen.cpp:293
-        PlayMusic(8, 0) → Supervisor.cpp:1579 置位), 有变化才落盘。"""
+        """重读 score.json 更新标题系画面的存档快照: Extra/Spell Practice
+        解锁态(置灰/跳过依据, 判定语义见 progress 的 5 个判定函数)、
+        机体选择 menuLength(:1604/:1618, 全 4 组 Extra 解锁 → 12 项否则 4 项)
+        与 Extra 流的逐机体解锁表(:1641-1648 跳过用); 标题曲播放即解锁
+        Music Room 0 号曲(TitleScreen.cpp:293 PlayMusic(8, 0) →
+        Supervisor.cpp:1579 置位), 有变化才落盘。
+        对照 ActualAddedCallback: 只在进标题时重开 score.dat
+        (TitleScreen.cpp:3664-3675), 子画面间不每帧读盘。"""
         store = load_score_store(self._score_path)
+        self._title_store = store
         self._flow.extra_unlocked, self._flow.spell_practice_unlocked = unlock_flags(
             store
         )
+        # menuLength = IsExtraUnlockedWithAllTeams ? 12 : 4(TitleScreen.cpp:1604)
+        n = len(self._characters)
+        if not is_extra_unlocked_with_all_teams(store):
+            n = min(n, NUM_TEAMS)
+        flow = self._char_flow
+        flow.cursor.items = list(self._characters[:n])
+        flow.extra_unlocked = [
+            is_extra_unlocked_for_character(store, c) for c in range(n)
+        ]
+        flow.clamp_cursor()  # :1698-1701
         if not store.plst["bgmUnlocked"][TITLE_BGM_INDEX]:
             unlock_bgm(store, TITLE_BGM_INDEX)
             try:
                 store.save(self._score_path)
             except OSError:
                 pass  # 写盘失败不炸(容错同 score_store)
+
+    def _enter_character(self, extra: bool) -> None:
+        """进机体选择(OnUpdateCharacterSelect Init :1616-1648): 变体/难度
+        (Extra 流 = 4, :1516)记入 flow, 光标钳制(:1698-1701), Extra 流
+        顺向跳过锁定机体(:1641-1648)。初始光标 = 上次选择(原作 =
+        g_GameManager.shotType 持久, :1616; 这里 flow.cursor 持续在屏间保留)。"""
+        flow = self._char_flow
+        flow.extra = extra
+        flow.difficulty = 4 if extra else self._diff_index(self._diff.current)
+        flow.clamp_cursor()
+        if extra:
+            flow.skip_locked_forward()
+        self._screen = Screen.CHARACTER
 
     def _on_menu(self, action: MenuAction) -> None:
         if self._screen == Screen.MAIN_MENU:
@@ -328,22 +397,22 @@ class GameApp:
                 self._renderer.play_menu_se("select")
             elif action == MenuAction.CONFIRM:
                 self._renderer.play_menu_se("ok")
-                self._screen = Screen.CHARACTER
+                self._enter_character(extra=False)
             elif action == MenuAction.BACK:
                 self._renderer.play_menu_se("cancel")
                 self._enter_main_menu()
         elif self._screen == Screen.CHARACTER:
-            # 上下移动光标(th08 无 th07 的 ±2 A/B 分组语义 ——
-            # 机体名单 12 项按队/单人纵列)
+            # 上下/左右都移光标(一期超集; 原作只认 LEFT/RIGHT,
+            # MoveCursorHorizontal :3171-3205), Extra 流跳过锁定机体
             if action in (MenuAction.UP, MenuAction.LEFT):
-                self._char.move(-1)
+                self._char_flow.move(-1)
                 self._renderer.play_menu_se("select")
             elif action in (MenuAction.DOWN, MenuAction.RIGHT):
-                self._char.move(1)
+                self._char_flow.move(1)
                 self._renderer.play_menu_se("select")
             elif action == MenuAction.CONFIRM:
                 self._renderer.play_menu_se("ok")
-                log.trace("选定角色: {}", self._char.current)
+                log.trace("选定角色: {}", self._char_flow.cursor.current)
                 if self._extra_mode:
                     # Extra Start: 选完机体直接进 EX 面
                     self._start_game(extra=True)
@@ -357,15 +426,13 @@ class GameApp:
                 else:
                     self._screen = Screen.DIFFICULTY
         elif self._screen == Screen.EXTRA_LEVEL:
-            if action == MenuAction.UP:
-                self._extra_stage.move(-1)
-                self._renderer.play_menu_se("select")
-            elif action == MenuAction.DOWN:
-                self._extra_stage.move(1)
+            # DifficultySelectExtra(:1433-1444): 单项画面, UP/DOWN 只播音效
+            # (MoveCursorVertical(1) 回绕到 0, :1493-1494 不重发贴图)
+            if action in (MenuAction.UP, MenuAction.DOWN):
                 self._renderer.play_menu_se("select")
             elif action == MenuAction.CONFIRM:
                 self._renderer.play_menu_se("ok")
-                self._screen = Screen.CHARACTER
+                self._enter_character(extra=True)
             elif action == MenuAction.BACK:
                 self._renderer.play_menu_se("cancel")
                 self._extra_mode = False
@@ -400,7 +467,9 @@ class GameApp:
     # ---- 开局 ----
     def _start_game(self, extra: bool = False, seed: int | None = None) -> None:
         t0 = time.time()
-        ch = self._char.current or (self._characters[0] if self._characters else "")
+        ch = self._char_flow.cursor.current or (
+            self._characters[0] if self._characters else ""
+        )
         ch_idx = self._char_index(ch)
         if extra:
             dif_idx = 4  # Extra 固定 DIFF_EXTRA (ScoreDat.hpp:44-52)

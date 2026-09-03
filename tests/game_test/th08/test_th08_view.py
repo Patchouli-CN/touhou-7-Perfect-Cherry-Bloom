@@ -60,14 +60,14 @@ class StubRenderer:
             ("title", flow.cursor.index, frame, show_unimplemented, fade_frame)
         )
 
-    def render_difficulty(self, cursor, *, items=()):
-        self.calls.append(("difficulty", cursor))
+    def render_difficulty(self, cursor, *, items=(), frame=0):
+        self.calls.append(("difficulty", cursor, frame))
 
-    def render_character(self, cursor, *, items=()):
-        self.calls.append(("character", cursor))
+    def render_character(self, flow, *, completion=None, frame=0):
+        self.calls.append(("character", flow.cursor.index, completion, frame))
 
-    def render_extra(self, cursor, *, items=()):
-        self.calls.append(("extra", cursor))
+    def render_extra(self, cursor, *, items=(), frame=0):
+        self.calls.append(("extra", cursor, frame))
 
     def begin_game(self, game, *, character):
         self.calls.append(("begin_game", character))

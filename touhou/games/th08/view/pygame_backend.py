@@ -4,9 +4,10 @@
 games/th08/view/impl.py 直接实例化, 第三后端出现时再抽象。)
 
 与 th07 后端 (games/th07/view/pygame_backend.py) 的差异:
-- 标题主菜单是原作版贴图渲染(本包 title_view.TitleView: title01.anm
-  菜单 vm + title00.png 背景 + 白淡入/帮助行), 加载失败回退文字菜单;
-  难度/机体/Extra 菜单仍是文字渲染占位(贴图版二期);
+- 标题主菜单 + 难度/机体/Extra 选择是原作版贴图渲染(本包
+  title_view.TitleView: title01.anm 菜单 vm + title00.png 背景 + 白淡入/
+  帮助行; select_view.DifficultySelectView/CharacterSelectView:
+  select00.png 背景 + 难度项/头像/名牌 vm + 通关标记), 加载失败回退文字菜单;
 - 结算/暂停/续关覆盖层同样是文字版; 对话立绘/结局/弹字二期;
 - 菜单 SE 自带小三件套(se_ok00/se_cancel00/se_select00, th08-ref
   SoundPlayer.hpp SoundIdx: SOUND_SELECT=10/BACK=11/MOVE_MENU=12),
@@ -33,8 +34,9 @@ from ....engine.view.shake_view import ScreenShake
 from ...th07.view.screens import MenuAction, Screen
 from ..crypt import try_decrypt_from_table
 from .hud_view import HudView
+from .select_view import CharacterSelectView, DifficultySelectView
 from .sprite_view import GAME_H, GAME_W, GAME_X, GAME_Y, WIN_H, WIN_W, GameView
-from .title_flow import TITLE_MENU_ITEMS, TitleFlowTh08
+from .title_flow import CharacterFlowTh08, TITLE_MENU_ITEMS, TitleFlowTh08
 from .title_view import TitleView
 
 TITLE_W, TITLE_H = 640, 480
@@ -120,6 +122,10 @@ class PygameTh08Renderer:
         # 标题画面贴图视图(懒加载; 无数据/损坏回退文字菜单)
         self._title_view: TitleView | None = None
         self._title_view_broken = False
+        # 难度/机体选择贴图视图(懒加载; 无数据/损坏回退文字菜单)
+        self._difficulty_view: DifficultySelectView | None = None
+        self._character_view: CharacterSelectView | None = None
+        self._select_view_broken = False
         # 输入映射(set_keymap 重建)
         self._action_codes: dict[str, list[int]] = {}
         self._menu_keys: dict[int, MenuAction] = {}
@@ -306,20 +312,64 @@ class PygameTh08Renderer:
         )
         self._blit_scaled(surf)
 
-    def render_difficulty(self, cursor: int, *, items=()) -> None:
+    def render_difficulty(self, cursor: int, *, items=(), frame: int = 0) -> None:
+        """难度选择: 原作版贴图渲染(select_view), 失败/无数据回退文字菜单。"""
+        view = self._ensure_select_views()[0]
+        if view is not None:
+            try:
+                self._blit_scaled(view.render(False, cursor, frame))
+                return
+            except Exception:
+                log.exception("难度选择画面渲染异常(本帧降级为文字菜单)")
         surf = pygame.Surface((TITLE_W, TITLE_H))
         self._draw_menu_list(surf, "Select Difficulty", items, cursor)
         self._blit_scaled(surf)
 
-    def render_character(self, cursor: int, *, items=()) -> None:
+    def render_character(
+        self, flow: CharacterFlowTh08, *, completion: int | None = None, frame: int = 0
+    ) -> None:
+        """机体选择: 原作版贴图渲染(select_view), 失败/无数据回退文字菜单。"""
+        view = self._ensure_select_views()[1]
+        if view is not None:
+            try:
+                self._blit_scaled(view.render(flow, completion, frame))
+                return
+            except Exception:
+                log.exception("机体选择画面渲染异常(本帧降级为文字菜单)")
         surf = pygame.Surface((TITLE_W, TITLE_H))
-        self._draw_menu_list(surf, "Select Character", items, cursor)
+        self._draw_menu_list(
+            surf, "Select Character", flow.cursor.items, flow.cursor.index
+        )
         self._blit_scaled(surf)
 
-    def render_extra(self, cursor: int, *, items=()) -> None:
+    def render_extra(self, cursor: int, *, items=(), frame: int = 0) -> None:
+        """Extra Start 流: 原作的 DifficultySelectExtra 单项画面(同一视图)。"""
+        view = self._ensure_select_views()[0]
+        if view is not None:
+            try:
+                self._blit_scaled(view.render(True, cursor, frame))
+                return
+            except Exception:
+                log.exception("Extra 难度画面渲染异常(本帧降级为文字菜单)")
         surf = pygame.Surface((TITLE_W, TITLE_H))
         self._draw_menu_list(surf, "Extra Start", items, cursor)
         self._blit_scaled(surf)
+
+    def _ensure_select_views(
+        self,
+    ) -> "tuple[DifficultySelectView | None, CharacterSelectView | None]":
+        """难度/机体选择贴图视图(懒加载一次; 失败永久回退文字菜单, 不逐帧
+        重试 —— 同 _ensure_title_view 口径)。两视图同源资源, 一起建。"""
+        if self._difficulty_view is None and not self._select_view_broken:
+            try:
+                self._difficulty_view = DifficultySelectView(self._data_path)
+                self._character_view = CharacterSelectView(self._data_path)
+            except Exception as e:
+                log.warning("难度/机体选择贴图视图加载失败, 回退文字菜单: {}", e)
+                self._difficulty_view = None
+                self._character_view = None
+                self._select_view_broken = True
+        return self._difficulty_view, self._character_view
 
     # ---- 对局场景 ----
     def begin_game(self, game, *, character: int) -> None:
