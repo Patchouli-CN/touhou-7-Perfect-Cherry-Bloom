@@ -81,6 +81,10 @@ class _TitleScriptBank(AnmScriptBank):
 
 
 def _load_font(size: int):
+    # 字体模块可能已被 pygame.quit() 关掉(如后端 close 后重建/测试串台),
+    # 守卫口径同 hud_view.py:460
+    if not pygame.font.get_init():
+        pygame.font.init()
     for name in ("Microsoft YaHei", "SimHei", "SimSun", None):
         try:
             return pygame.font.SysFont(name, size)
