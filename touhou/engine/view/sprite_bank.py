@@ -5,19 +5,21 @@ Surface, 附带链式 entry 偏移表(LoadAnms: max(sprite id, script id)+1 累�
 与旋转/翻转变换缓存。th07 的布局常量与 GameView(战斗画面渲染)在
 games/th07/view/sprite_view.py; 本模块不 import 任何作品包。
 
-AnmFile 解码走 schema.anm.parse_cached 的进程级缓存: 每个视图各持一个
-SpriteBank(各自开包), 同一 anm 的纹理解码全进程只做一次 (BUGS.md 增量#3)。
+AnmFile 解码按作品走注册表(get_game(game).anm.format 鸭子接口: parse_cached/
+parse_scripts), 经格式类的进程级缓存: 每个视图各持一个 SpriteBank(各自开包),
+同一 anm 的纹理解码全进程只做一次 (BUGS.md 增量#3)。v3(th08)的外链纹理由
+格式类的 ``make_texture_loader`` 工厂(可选鸭子方法)接本实例的封包注入。
 """
 
-import struct
-import time
 from pathlib import Path
+import time
 
 import numpy as np
 import pygame
 
 from ...logger import logger as log
-from ...schema.anm import AnmFile, parse_cached
+from ...registry import get_game
+from ...schema.anm import AnmFile, AnmInstr, TextureLoader
 from ...schema.archive import ArchiveBase, open_archive
 
 # anm 加载超过该耗时打 DEBUG 日志(卡顿定位用, BUGS.md 增量#3)
@@ -41,51 +43,47 @@ def _sprite_rgba(anm: AnmFile, sprite_id: int, entry: int) -> tuple[int, int, by
     return spr.w, spr.h, tex[ys][:, xs].tobytes()
 
 
-def _parse_first_sprites(data: bytes) -> list[dict[int, int]]:
-    """按 entry 解析 script 表: [{script_id: 首条 SET_ACTIVE_SPRITE 的 sprite id}]。
+def _first_sprites(
+    per_entry_scripts: list[dict[int, list[AnmInstr]]],
+) -> list[dict[int, int]]:
+    """各脚本代表帧的 sprite id: [{script_id: 首段最后一条 SET_ACTIVE_SPRITE 的 id}]。
 
-    AnmRawEntry: 64 字节头 + spriteOffsets[numSprites] + (id, offset)[numScripts];
+    吃格式类 parse_scripts 的结果(原是 struct 直扫脚本表的私有重扫, 已收编)。
     指令 AnmRawInstr(i16 opcode, u16 size, i16 time, u16 flags, args...),
     opcode 3 = ANM_SET_ACTIVE_SPRITE (AnmManager.hpp)。
     """
     out: list[dict[int, int]] = []
-    offset = 0
-    while True:
-        num_sprites, num_scripts = struct.unpack_from("<2i", data, offset)
-        table = offset + 64 + num_sprites * 4
-        scripts: dict[int, int] = {}
-        for i in range(num_scripts):
-            sid, soff = struct.unpack_from("<2i", data, table + i * 8)
-            p = offset + soff
+    for scripts in per_entry_scripts:
+        first: dict[int, int] = {}
+        for sid, instrs in scripts.items():
             last = -1
-            for _ in range(64):  # 代表帧: 看脚本开头一段
-                opcode, size, _time = struct.unpack_from("<hHh", data, p)
+            for ins in instrs[:64]:  # 代表帧: 看脚本开头一段
                 # EXIT*/JUMP/DEC_JUMP: 脚本段结束/回跳, 停止扫描
-                if opcode in (-1, 1, 2, 4, 5):
+                if ins.opcode in (-1, 1, 2, 4, 5):
                     break
-                if opcode == 3:
+                if ins.opcode == 3:
                     # 记录最后一个 set-sprite: 出场特效(如妖精的漩涡帧)
                     # 在脚本开头, 代表帧取后面的本体帧
-                    last = struct.unpack_from("<i", data, p + 8)[0]
-                if size <= 0:
-                    break
-                p += size
+                    last = ins.args_i[0]
             if last >= 0:
-                scripts[sid] = last
-        out.append(scripts)
-        next_offset = struct.unpack_from("<i", data, offset + 56)[0]
-        if next_offset == 0:
-            break
-        offset += next_offset
+                first[sid] = last
+        out.append(first)
     return out
 
 
 class SpriteBank:
-    """anm sprite 缓存: 懒加载数据包, 按 (anm, entry, id) 缓存 Surface。"""
+    """anm sprite 缓存: 懒加载数据包, 按 (anm, entry, id) 缓存 Surface。
 
-    def __init__(self, data_path: str | Path) -> None:
+    ``game`` 决定 anm 解析走哪部作品的注册格式(get_game(game).anm.format);
+    默认 "th07", 既有调用方行为不变。
+    """
+
+    def __init__(self, data_path: str | Path, *, game: str = "th07") -> None:
         self._data_path = Path(data_path)
+        self._game = game
         self._arc: ArchiveBase | None = None
+        self._tex_loader: TextureLoader | None = None
+        self._tex_loader_ready = False
         self._anms: dict[str, AnmFile] = {}
         self._raws: dict[str, bytes] = {}
         self._first: dict[str, list[dict[int, int]]] = {}
@@ -99,6 +97,21 @@ class SpriteBank:
         if self._arc is None:
             self._arc = open_archive(self._data_path)
         return self._arc
+
+    def _anm_format(self) -> type[AnmFile]:
+        spec = get_game(self._game).anm
+        assert spec is not None, f"{self._game} 未注册 ANM 维度"
+        return spec.format
+
+    def _texture_loader(self) -> TextureLoader | None:
+        """外链纹理 loader: 格式类声明了 make_texture_loader 工厂才接(可选鸭子方法)。"""
+        if not self._tex_loader_ready:
+            factory = getattr(self._anm_format(), "make_texture_loader", None)
+            self._tex_loader = (
+                factory(self._archive()) if factory is not None else None
+            )
+            self._tex_loader_ready = True
+        return self._tex_loader
 
     def _load(self, name: str) -> bool:
         if name in self._anms:
@@ -114,9 +127,12 @@ class SpriteBank:
                 continue
         if raw is None:
             return False
-        self._anms[name] = parse_cached(raw)
+        fmt = self._anm_format()
+        self._anms[name] = fmt.parse_cached(
+            raw, texture_loader=self._texture_loader(), cache_tag=self._game
+        )
         self._raws[name] = raw
-        self._first[name] = _parse_first_sprites(raw)
+        self._first[name] = _first_sprites(fmt.parse_scripts(raw))
         # 链式 entry 偏移(LoadAnms: max(sprite id, script id)+1 累加)
         offs, cur = [], 0
         for entry, scripts in zip(self._anms[name].entries, self._first[name]):
@@ -138,6 +154,12 @@ class SpriteBank:
         if not self._load(name):
             return None
         return self._raws[name]
+
+    def anm(self, name: str) -> AnmFile | None:
+        """解析后的 AnmFile(公开面, 替代过去的 _anms 私读); 不存在返回 None。"""
+        if not self._load(name):
+            return None
+        return self._anms[name]
 
     def sprite(
         self, name: str, sprite_id: int, entry: int = 0

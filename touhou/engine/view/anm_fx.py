@@ -26,7 +26,6 @@ import random
 import numpy as np
 import pygame
 
-from ...schema.anm import parse_scripts
 from .anm_vm import AnmVm, ScriptRef, chain_offsets, reset_and_run
 
 # EffectManager.cpp g_EffectMapping 子集: effectId → (anm 全局 script id, 粒子物理)
@@ -58,10 +57,13 @@ class AnmScriptBank:
         self._spr_loc: dict[int, tuple[int, int]] = {}  # key → (entry, 局部 id)
         raw = bank.raw(name)
         self.ok = raw is not None
-        if not self.ok:
+        if raw is None:
             return
-        anm = bank._anms[name]
-        per_entry = parse_scripts(raw)
+        # anm 走 SpriteBank 公开面(注册表解析结果); 脚本表用同一份 raw 经
+        # 格式类的 parse_scripts(anm 对象自带的类即注册格式类, 鸭子接口)
+        anm = bank.anm(name)
+        assert anm is not None
+        per_entry = anm.parse_scripts(raw)
         for ei, (entry, escr, off) in enumerate(
             zip(anm.entries, per_entry, chain_offsets(anm, per_entry))
         ):

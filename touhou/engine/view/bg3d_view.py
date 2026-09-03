@@ -38,7 +38,8 @@ import numpy as np
 import pygame
 
 from ...logger import logger as log
-from ...schema.anm import AnmFile, parse_cached, parse_scripts
+from ...registry import get_game
+from ...schema.anm import TextureLoader
 from ...schema.stage import Stage
 from ..render.d3dx_render import GAME_H, GAME_W, D3DXLikeRender
 from .anm_vm import AnmVm, ScriptRef, SpriteTex, chain_offsets, reset_and_run
@@ -170,10 +171,26 @@ class StageScene:
     # ---- 资源表 ----
     @classmethod
     def load(
-        cls, archive, stage_no: int, render_scale: float = 0.45
+        cls,
+        archive,
+        stage_no: int,
+        render_scale: float = 0.45,
+        *,
+        game: str = "th07",
     ) -> "StageScene | None":
-        """从资源包加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。"""
+        """从资源包加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。
+
+        anm 解析按 ``game`` 走注册表(get_game(game).anm.format); 外链纹理
+        loader 由格式类的 make_texture_loader 工厂(可选鸭子方法)提供。
+        """
         t0 = time.perf_counter()
+        spec = get_game(game).anm
+        assert spec is not None, f"{game} 未注册 ANM 维度"
+        fmt = spec.format
+        loader_factory = getattr(fmt, "make_texture_loader", None)
+        tex_loader: TextureLoader | None = (
+            loader_factory(archive) if loader_factory is not None else None
+        )
         try:
             std_raw = None
             for key in (f"stage{stage_no}.std", f"data/stage{stage_no}.std"):
@@ -206,8 +223,10 @@ class StageScene:
                 if name == names[0]:
                     return None
                 break
-            anm = parse_cached(raw)  # 进程级缓存 (BUGS.md 增量#3)
-            per_entry_scripts = parse_scripts(raw)
+            anm = fmt.parse_cached(  # 进程级缓存 (BUGS.md 增量#3)
+                raw, texture_loader=tex_loader, cache_tag=game
+            )
+            per_entry_scripts = fmt.parse_scripts(raw)
             for entry, escr, off in zip(
                 anm.entries, per_entry_scripts, chain_offsets(anm, per_entry_scripts)
             ):

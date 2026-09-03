@@ -45,6 +45,15 @@ def test_th08_archive_format_registered() -> None:
     assert "th08" in registered_games()
 
 
+def test_th08_anm_registered() -> None:
+    """th08 的 ANM 维度(单 A): Th08AnmFile + version 3。"""
+    from touhou.games.th08.anm import Th08AnmFile
+
+    spec = get_game("th08")
+    assert spec.anm is not None
+    assert spec.anm.format is Th08AnmFile and spec.anm.version == 3
+
+
 def test_th08_ecl_registered() -> None:
     """th08 的 ECL 维度(阶段 2 单 A): 占位 VM + th08 文件格式类。"""
     from touhou.games.th08.ecl_file import EclFileTh08
