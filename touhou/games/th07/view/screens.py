@@ -123,6 +123,8 @@ class MenuAction(IntEnum):
     BACK = 4
     LEFT = 5  # Option 菜单左右调值
     RIGHT = 6
+    SKIP = 7  # th08 Music Room 的 SKIP 键(淡出; TH_BUTTON_SKIP, Global.hpp:157)
+    RESET = 8  # th08 Music Room 的 RESET 键(重播; 固定 R 键, Global.cpp:802)
 
 
 class Screen(IntEnum):

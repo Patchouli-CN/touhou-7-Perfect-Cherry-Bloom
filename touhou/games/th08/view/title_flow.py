@@ -92,6 +92,7 @@ CURSOR_ON_BOOT = 0  # 启动(默认分支 :3695-3696)
 CURSOR_FROM_GAME = 1  # 游戏中途 Quit to Title 回来(:3684-3687; 原作条件
 # 实为 difficulty>=EXTRA ? 1 : 0, 这里按 A 期规格简化为退出即 1)
 CURSOR_FROM_RESULT = 5  # 结算回来(ResultScreen → Result 项, :3689-3690)
+CURSOR_FROM_MUSIC_ROOM = ITEM_MUSIC_ROOM  # Music Room 回来(:3692-3693)
 
 # 通关标记 sprite 号(TitleCompletionStatus.inl:24-52; 贴图内容实测:
 # 145=FinalB 決戦可能 / 146=FinalA,B クリア / 147=Final 選択可能 /
@@ -642,6 +643,7 @@ class KeyConfigFlowTh08(msgspec.Struct):
 
 __all__ = [
     "CURSOR_FROM_GAME",
+    "CURSOR_FROM_MUSIC_ROOM",
     "CURSOR_FROM_RESULT",
     "CURSOR_ON_BOOT",
     "CharacterFlowTh08",

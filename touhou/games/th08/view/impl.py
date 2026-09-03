@@ -12,7 +12,10 @@ title_view.py(渲染)。难度/机体/Extra 选择已原作化(B2 期): select00
 Option/KeyConfig 已原作化(C 期): OptionFlowTh08/KeyConfigFlowTh08(本包
 title_flow.py) + option_view.py 贴图渲染(行标签/残机档/音量数字 vm +
 键名绘字), Graphic/SlowMode 等无引擎对应物的行置灰锁定(偏离注明)。
-一期遗留范围: Music Room/Replay/Result 浏览/Practice/Spell Practice
+Music Room 已原作化(C 期第 2 片): music_flow.MusicRoomFlowTh08(纯逻辑:
+10 行滚动窗口/解锁隐藏/SKIP 淡出/RESET 重播) + music_view.MusicRoomView
+(music.jpg 背景 + music00.anm 主装饰 vm + 曲名/简介直接绘字)。
+一期遗留范围: Replay/Result 浏览/Practice/Spell Practice
 画面(菜单项给"未实装"提示)、对话立绘、符卡宣言、结局画面(world 出 ending
 时直接 finish_ending 跳总结算)、录像录制/播放、入榜名字输入(结算直接存档回标题)。
 
@@ -57,9 +60,11 @@ from ..progress import (
     unlock_bgm,
 )
 from ..sound import SE, SE_FILES, SE_VOLUMES
+from .music_flow import MusicRoomFlowTh08, load_tracks
 from .pygame_backend import PygameTh08Renderer
 from .title_flow import (
     CURSOR_FROM_GAME,
+    CURSOR_FROM_MUSIC_ROOM,
     CURSOR_FROM_RESULT,
     ITEM_OPTION,
     OPTION_ROW_KEYCONFIG,
@@ -108,7 +113,6 @@ _UNSUPPORTED_ACTIONS = (
     "practice",
     "replay",
     "result",
-    "music_room",
 )
 
 
@@ -162,6 +166,8 @@ class GameApp:
         # Option/KeyConfig 画面 flow(C 期; 共享 config 实例, 改值即时生效)
         self._option_flow = OptionFlowTh08(config=self._config)
         self._keyconfig_flow = KeyConfigFlowTh08(config=self._config)
+        # Music Room flow(C 期第 2 片; 进画面才建, 每进一次重读曲目表/解锁快照)
+        self._music_flow: MusicRoomFlowTh08 | None = None
         self._title_fade = 0  # 进标题的白淡入帧计数(_TITLE_FADE_FRAMES 封顶)
         # 名单/面数: 作品数据表(game_data, 经 TouhouWorld 从 GameSpec.data 传入)
         # 优先; 缺省回落注册表 th08 表
@@ -265,6 +271,8 @@ class GameApp:
                 self._run_option(inp)
             elif self._screen == Screen.KEY_CONFIG:
                 self._run_keyconfig(inp)
+            elif self._screen == Screen.MUSIC_ROOM:
+                self._run_music_room(inp)
             elif self._screen == Screen.RESULT:
                 self._run_result(inp.menu_actions)
             else:  # playing
@@ -526,6 +534,73 @@ class GameApp:
             self._rebuild_keymap()
             self._save_config()
 
+    # ---- Music Room(MusicRoom.cpp RegisterChain :245 / OnUpdate :270) ----
+    def _enter_music_room(self) -> None:
+        """进 Music Room(AddedCallback :392): 解析 musiccmt.txt 曲目表 +
+        从存档快照拷 bgmUnlocked(:528; 当次会话内不刷新, 曲名贴字原作就是
+        进场烘焙)。标题曲不停(标题 → MusicRoom 分支无 StopAudio,
+        TitleScreen.cpp:569-572), 选曲才切。"""
+        tracks = load_tracks(self._data_path)
+        unlocked: list[bool] = []
+        store = self._title_store
+        bgm = store.plst.get("bgmUnlocked") if store is not None else None
+        if isinstance(bgm, list):
+            unlocked = [
+                bool(bgm[i]) if i < len(bgm) else False for i in range(len(tracks))
+            ]
+        self._music_flow = MusicRoomFlowTh08(tracks=list(tracks), unlocked=unlocked)
+        self._screen = Screen.MUSIC_ROOM
+
+    def _leave_music_room(self) -> None:
+        """回标题主菜单: 初始光标 6 = Music Room 项(wantedState2 规则,
+        TitleScreen.cpp:3692-3693) + 重读解锁态(本作播曲可能刚解锁新曲)。"""
+        self._enter_title_scene(CURSOR_FROM_MUSIC_ROOM)
+
+    def _play_music_room_track(self, index: int) -> None:
+        """播 Music Room 曲目: 走 SoundPlayer.play_music(WAV 模式自动
+        .mid→.wav, 对照 PlayAudio Supervisor.cpp:1601); 播曲即置位解锁
+        (Supervisor.cpp:1617/:1632)并落盘(写盘失败不炸)。"""
+        flow = self._music_flow
+        if flow is None or not 0 <= index < len(flow.tracks):
+            return
+        self._sound.ensure_loaded()
+        self._sound.play_music(flow.tracks[index].file_name)
+        store = self._title_store
+        bgm = store.plst.get("bgmUnlocked") if store is not None else None
+        if isinstance(bgm, list) and 0 <= index < len(bgm) and not bgm[index]:
+            unlock_bgm(store, index)
+            try:
+                store.save(self._score_path)
+            except OSError:
+                pass
+
+    def _run_music_room(self, inp: FrameInput) -> None:
+        """Music Room 一帧: 渲染 → 菜单键(进场 8 帧不受理, flow 内门控;
+        移动/播放/淡出原作均无菜单 SE, ProcessInput 全文无 PlaySoundByIdx)。"""
+        flow = self._music_flow
+        if flow is None:  # 防御(正常 _enter_music_room 已建)
+            self._enter_main_menu()
+            return
+        if self._last_menu_screen != Screen.MUSIC_ROOM:
+            self._last_menu_screen = Screen.MUSIC_ROOM
+            self._menu_sub_frame = 0
+        frame = self._menu_sub_frame
+        self._menu_sub_frame += 1
+        self._renderer.render_music_room(flow, frame)
+        for act in inp.menu_actions:
+            r = flow.handle(act)
+            if not r:
+                continue
+            action = r["action"]
+            if action in ("play", "replay"):
+                self._play_music_room_track(r["index"])
+            elif action == "fadeout":
+                self._sound.fadeout_music(8.0)  # FadeOutMusic(8.0), :229
+            elif action == "quit":
+                self._leave_music_room()
+                return
+        flow.tick_frame()
+
     def _on_menu(self, action: MenuAction) -> None:
         if self._screen == Screen.MAIN_MENU:
             if action in (MenuAction.UP, MenuAction.DOWN):
@@ -639,6 +714,10 @@ class GameApp:
             # → Option 设置页(:565-570 case TITLE_MENU_ITEM_OPTION)
             self._renderer.play_menu_se("ok")
             self._enter_option()
+        elif act == "music_room":
+            # → Music Room(:569-572 case TITLE_MENU_ITEM_START_MUSIC_ROOM)
+            self._renderer.play_menu_se("ok")
+            self._enter_music_room()
         elif act in _UNSUPPORTED_ACTIONS:
             # 一期未实装(见模块 docstring): 提示后留在主菜单
             self._renderer.play_menu_se("cancel")

@@ -75,6 +75,9 @@ class StubRenderer:
     def render_keyconfig(self, flow, *, frame=0):
         self.calls.append(("keyconfig", flow.cursor.index, frame))
 
+    def render_music_room(self, flow, frame=0):
+        self.calls.append(("music_room", flow.cursor, frame))
+
     def begin_game(self, game, *, character):
         self.calls.append(("begin_game", character))
 
@@ -183,10 +186,10 @@ def test_stub_renderer_full_scene_flow(tmp_path) -> None:
 
 
 def test_stub_renderer_pause_and_unsupported_items(tmp_path) -> None:
-    """暂停面板渲染落到后端; 未实装菜单项(Music Room 等)给提示不跳转。"""
+    """暂停面板渲染落到后端; 未实装菜单项(Replay 等)给提示不跳转。"""
     app, stub = _stub_app(tmp_path)
-    # Music Room(th08 9 项名单下标 6; 一期未实装) → 留在主菜单 + 未实装提示计时
-    app._flow.cursor.index = 6
+    # Replay(th08 9 项名单下标 4; 一期未实装) → 留在主菜单 + 未实装提示计时
+    app._flow.cursor.index = 4
     app._run_title_menu((MenuAction.CONFIRM,))
     assert app._screen == Screen.MAIN_MENU
     assert app._unimplemented_timer > 0

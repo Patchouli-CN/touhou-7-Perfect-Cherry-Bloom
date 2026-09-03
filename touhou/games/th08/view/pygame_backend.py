@@ -9,7 +9,8 @@ games/th08/view/impl.py 直接实例化, 第三后端出现时再抽象。)
   帮助行; select_view.DifficultySelectView/CharacterSelectView:
   select00.png 背景 + 难度项/头像/名牌 vm + 通关标记;
   option_view.OptionView/KeyConfigView: title01.anm 行标签/残机档/音量数字
-  vm + 键名绘字), 加载失败回退文字菜单;
+  vm + 键名绘字; Music Room 是 music_view.MusicRoomView: music.jpg 背景 +
+  music00.anm 主装饰 vm + 曲名/简介直接绘字), 加载失败回退文字菜单;
 - 结算/暂停/续关覆盖层同样是文字版; 对话立绘/结局/弹字二期;
 - 菜单 SE 自带小三件套(se_ok00/se_cancel00/se_select00, th08-ref
   SoundPlayer.hpp SoundIdx: SOUND_SELECT=10/BACK=11/MOVE_MENU=12),
@@ -36,6 +37,8 @@ from ....engine.view.shake_view import ScreenShake
 from ...th07.view.screens import MenuAction, Screen
 from ..crypt import try_decrypt_from_table
 from .hud_view import HudView
+from .music_flow import MusicRoomFlowTh08
+from .music_view import MusicRoomView
 from .option_view import KeyConfigView, OptionView
 from .select_view import CharacterSelectView, DifficultySelectView
 from .sprite_view import GAME_H, GAME_W, GAME_X, GAME_Y, WIN_H, WIN_W, GameView
@@ -56,6 +59,8 @@ _DEFAULT_CAPTION = "東方永夜抄 ～ Imperishable Night. ver 1.00d"
 
 # 菜单基础键(硬编码, 防锁死): 方向/WASD 导航 + Enter 确认 + Esc 返回。
 # 确认/返回另外跟随 keymap 的 shoot/bomb, 见 set_keymap。
+# R 键 = Music Room 的 RESET(重播当前曲; TH_BUTTON_RESET 固定 DIK_R,
+# th08-ref Global.cpp:802); 其余画面不认这个动作, 各 flow 自然忽略。
 _BASE_MENU_KEYS = {
     pygame.K_UP: MenuAction.UP,
     pygame.K_w: MenuAction.UP,
@@ -67,6 +72,7 @@ _BASE_MENU_KEYS = {
     pygame.K_d: MenuAction.RIGHT,
     pygame.K_RETURN: MenuAction.CONFIRM,  # Enter 硬编码保留(防锁死)
     pygame.K_ESCAPE: MenuAction.BACK,  # Esc 菜单语义不动
+    pygame.K_r: MenuAction.RESET,
 }
 
 # 手写 config.json 的键名别名(pygame 规范名格式)
@@ -145,6 +151,9 @@ class PygameTh08Renderer:
         self._option_view: OptionView | None = None
         self._keyconfig_view: KeyConfigView | None = None
         self._option_view_broken = False
+        # Music Room 贴图视图(懒加载; 无数据/损坏回退文字菜单)
+        self._music_view: MusicRoomView | None = None
+        self._music_view_broken = False
         # 输入映射(set_keymap 重建)
         self._action_codes: dict[str, list[int]] = {}
         self._menu_keys: dict[int, MenuAction] = {}
@@ -235,6 +244,10 @@ class PygameTh08Renderer:
             m.setdefault(c, MenuAction.BACK)
         for c in codes.get("shoot", []):
             m.setdefault(c, MenuAction.CONFIRM)
+        for c in codes.get("skip", []):
+            # skip 键(Ctrl) = Music Room 的 SKIP(TH_BUTTON_SKIP 淡出,
+            # MusicRoom.cpp:228-230); 其余画面不认, 各 flow 自然忽略
+            m.setdefault(c, MenuAction.SKIP)
         self._menu_keys = m
 
     def held_actions(self, pressed) -> frozenset[str]:
@@ -460,6 +473,38 @@ class PygameTh08Renderer:
         hint = "<press a key>" if flow.capturing is not None else ""
         surf = pygame.Surface((TITLE_W, TITLE_H))
         self._draw_menu_list(surf, "KeyConfig", items, flow.cursor.index, hint=hint)
+        self._blit_scaled(surf)
+
+    # ---- Music Room(music_view 贴图渲染; 失败回退文字列表) ----
+    def _ensure_music_view(self) -> "MusicRoomView | None":
+        """Music Room 贴图视图(懒加载一次; 失败永久回退文字菜单,
+        同 _ensure_title_view 口径)。"""
+        if self._music_view is None and not self._music_view_broken:
+            try:
+                self._music_view = MusicRoomView(self._data_path)
+            except Exception as e:
+                log.warning("Music Room 贴图视图加载失败, 回退文字菜单: {}", e)
+                self._music_view_broken = True
+        return self._music_view
+
+    def render_music_room(self, flow: MusicRoomFlowTh08, frame: int = 0) -> None:
+        """Music Room: 原作版渲染(music_view), 失败/无数据回退文字列表。"""
+        view = self._ensure_music_view()
+        if view is not None:
+            try:
+                self._blit_scaled(view.render(flow, frame))
+                return
+            except Exception:
+                log.exception("Music Room 渲染异常(本帧降级为文字列表)")
+        surf = pygame.Surface((TITLE_W, TITLE_H))
+        n = len(flow.tracks)
+        items = [
+            flow.display_title(i)
+            for i in range(flow.listing_offset, min(flow.listing_offset + 10, n))
+        ]
+        self._draw_menu_list(
+            surf, "Music Room", items, flow.cursor - flow.listing_offset
+        )
         self._blit_scaled(surf)
 
     # ---- 对局场景 ----
