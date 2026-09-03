@@ -55,8 +55,10 @@ class StubRenderer:
     def poll_input(self, *, capturing: bool = False) -> FrameInput:
         return FrameInput()
 
-    def render_title(self, cursor, frame, *, show_unimplemented=False, items=()):
-        self.calls.append(("title", cursor, frame, show_unimplemented))
+    def render_title(self, flow, frame, *, show_unimplemented=False, fade_frame=None):
+        self.calls.append(
+            ("title", flow.cursor.index, frame, show_unimplemented, fade_frame)
+        )
 
     def render_difficulty(self, cursor, *, items=()):
         self.calls.append(("difficulty", cursor))
@@ -177,8 +179,8 @@ def test_stub_renderer_full_scene_flow(tmp_path) -> None:
 def test_stub_renderer_pause_and_unsupported_items(tmp_path) -> None:
     """暂停面板渲染落到后端; 一期未实装菜单项(Option 等)给提示不跳转。"""
     app, stub = _stub_app(tmp_path)
-    # Option(一期不实装) → 留在主菜单 + 未实装提示计时
-    app._flow.cursor.index = 6  # "Option"
+    # Option(th08 9 项名单下标 7; 未实装) → 留在主菜单 + 未实装提示计时
+    app._flow.cursor.index = 7
     app._run_title_menu((MenuAction.CONFIRM,))
     assert app._screen == Screen.MAIN_MENU
     assert app._unimplemented_timer > 0
@@ -210,6 +212,7 @@ def test_real_backend_smoke(tmp_path) -> None:
     且渲染不炸(_bg3d_broken 不置位)。
     """
     from touhou.games.th08.view import PygameTh08Renderer
+    from touhou.games.th08.view.title_flow import TitleFlowTh08
     from touhou.games.th08.world import ImperishableNight
     from touhou.paths import DEFAULT_DATA_PATHS
 
@@ -217,7 +220,11 @@ def test_real_backend_smoke(tmp_path) -> None:
     renderer = PygameTh08Renderer(dp)
     renderer.open(scale=1)
     try:
-        renderer.render_title(0, 0, items=["开始游戏", "退出"])
+        # 标题(原作版贴图渲染): 跑过整个 70 帧白淡入 + 菜单入场演出
+        flow = TitleFlowTh08()
+        for i in range(90):
+            renderer.render_title(flow, i, fade_frame=i)
+        assert renderer._title_view is not None  # 贴图视图加载成功(未回退文字)
         game = ImperishableNight(data_path=dp, character=0, difficulty=1, seed=1)
         renderer.begin_game(game, character=0)
         for _ in range(200):

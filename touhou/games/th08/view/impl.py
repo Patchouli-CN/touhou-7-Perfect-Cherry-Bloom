@@ -4,16 +4,20 @@
 选机体 → 进入游戏(本篇 6 面 + Extra=9); 游戏内 Esc 暂停(Resume/Retry/
 Quit to Title + 二次确认)、GameOver 续关菜单、通关/GameOver 结算。
 
-一期范围(计划书"明确不做"): Music Room/Replay/Option/Player Data/
-Practice 画面(菜单项给"未实装"提示)、对话立绘、符卡宣言、结局画面
-(world 出 ending 时直接 finish_ending 跳总结算)、录像录制/播放、
+标题主菜单已原作化(A 期): 9 项名单/title01.anm 成对 sprite/置灰锁定/
+title00.png 背景/70 帧白淡入/底部帮助行, 见本包 title_flow.py(纯逻辑)与
+title_view.py(渲染)。一期遗留范围: Music Room/Replay/Option/Result 浏览/
+Practice/Spell Practice 画面(菜单项给"未实装"提示)、对话立绘、符卡宣言、
+结局画面(world 出 ending 时直接 finish_ending 跳总结算)、录像录制/播放、
 入榜名字输入(结算直接存档回标题)。
 
 渲染/输入采集委托 Renderer 后端(协议见 engine/render/__init__.py);
 默认后端是本包 pygame_backend.PygameTh08Renderer(自持, 不进全局
 register_renderer —— "pygame" 名被 th07 占用), 测试可注入实例。
-菜单纯逻辑复用 games/th07/view/screens.py(作品无关 flow); 名单/面数经
-``game_data`` 参数(registry.GameData, TH08_DATA)。
+主菜单 flow 是本包 title_flow.TitleFlowTh08(th08 的 9 项名单);
+暂停/续关菜单复用 games/th07/view/screens.py 的作品无关零件
+(MenuCursor/MenuAction/Screen); 名单/面数经 ``game_data`` 参数
+(registry.GameData, TH08_DATA)。
 """
 
 from __future__ import annotations
@@ -26,21 +30,26 @@ from ....apis.basic import Game
 from ....registry import GameData, get_game, register_app
 from ....engine.config import DEFAULT_CONFIG_PATH, GameConfig
 from ....engine.render import FrameInput, Renderer
+from ....engine.score_store import ScoreStore
 from ....engine.view.sound_player import SoundPlayer
 from ....engine.view.sprite_bank import SpriteBank
 from ....paths import DEFAULT_SCORE_PATH, resolve_data_path
 from ...th07.view.screens import (
-    MAIN_MENU_ITEMS,
     PAUSE_CONFIRM_ITEMS,
     PAUSE_ITEMS,
     MenuAction,
     MenuCursor,
     Screen,
-    TitleFlow,
 )
 from ..crypt import try_decrypt_from_table
 from ..sound import SE, SE_FILES, SE_VOLUMES
 from .pygame_backend import PygameTh08Renderer
+from .title_flow import (
+    CURSOR_FROM_GAME,
+    CURSOR_FROM_RESULT,
+    TitleFlowTh08,
+    unlock_flags,
+)
 
 # 标题画面 BGM (TitleScreen.cpp:869/1036/3796: LoadMusic(8,"bgm/th08_01.mid"))
 _TITLE_BGM = "th08_01.mid"
@@ -50,6 +59,9 @@ _RESULT_BGM = "init.mid"
 _EXTRA_STAGE_NO = 9
 
 _UNIMPLEMENTED_HINT_FRAMES = 90
+
+# 进标题的 70 帧白淡入(TitleScreen.cpp:3800-3807 注册 SCREEN_EFFECT_FULL_FADE_IN)
+_TITLE_FADE_FRAMES = 70
 
 # 菜单空转预热清单(同 th07 _WARMUP_ANMS 的意图; 机体 anm 全预载:
 # 开局选择未定; 菜单停留期间摊到每帧一项)
@@ -67,8 +79,15 @@ _WARMUP_ANMS = (
     "player03.anm",
 )
 
-# 一期不实装的菜单项(选中给提示; 见模块 docstring 的一期范围)
-_UNSUPPORTED_ACTIONS = ("practice", "player_data", "music_room", "replay", "option")
+# 主菜单未实装的子系统(选中给提示; 见模块 docstring 的一期遗留范围)
+_UNSUPPORTED_ACTIONS = (
+    "spell_practice",
+    "practice",
+    "replay",
+    "result",
+    "music_room",
+    "option",
+)
 
 
 @register_app("th08")
@@ -114,9 +133,11 @@ class GameApp:
         self._config_path = config_path
         self._config = GameConfig.load(config_path)
         self._scale = scale if scale is not None else self._config.window_scale
-        # 启动直接显示标题主菜单
+        # 启动直接显示标题主菜单(初始光标 0 = Start,
+        # TitleScreen.cpp:3695-3696 wantedState2 默认分支)
         self._screen = Screen.MAIN_MENU
-        self._flow = TitleFlow()
+        self._flow = TitleFlowTh08()
+        self._title_fade = 0  # 进标题的白淡入帧计数(_TITLE_FADE_FRAMES 封顶)
         # 名单/面数: 作品数据表(game_data, 经 TouhouWorld 从 GameSpec.data 传入)
         # 优先; 缺省回落注册表 th08 表
         gd = game_data if game_data is not None else get_game("th08").data
@@ -134,6 +155,9 @@ class GameApp:
         if score_path is None:
             score_path = DEFAULT_SCORE_PATH
         self._score_path = score_path
+        # 进标题重读 score.json 的解锁态(ActualAddedCallback 每次进标题
+        # 重开 score.dat, TitleScreen.cpp:3664-3675); 启动即标题, 构造时先读一次
+        self._reload_title_unlocks()
         self._result_saved = False
         self._menu_frame = 0
         self._unimplemented_timer = 0
@@ -221,17 +245,19 @@ class GameApp:
             self._warmup_bank = SpriteBank(self._data_path, game="th08")
         self._warmup_bank.has(self._warmup.pop(0))
 
-    # ---- 标题主菜单(名单复用 th07 screens 的 8 项; 一期未实装项给提示) ----
+    # ---- 标题主菜单(th08 自持 9 项 flow; 未实装子系统给提示) ----
     def _run_title_menu(self, actions) -> None:
         self._menu_frame += 1
         if self._unimplemented_timer > 0:
             self._unimplemented_timer -= 1
+        fade = self._title_fade if self._title_fade < _TITLE_FADE_FRAMES else None
         self._renderer.render_title(
-            self._flow.cursor.index,
+            self._flow,
             self._menu_frame,
             show_unimplemented=self._unimplemented_timer > 0,
-            items=MAIN_MENU_ITEMS,
+            fade_frame=fade,
         )
+        self._title_fade = min(self._title_fade + 1, _TITLE_FADE_FRAMES)
         for act in actions:
             self._on_menu(act)
 
@@ -255,6 +281,25 @@ class GameApp:
         log.debug("切屏 → 标题主菜单")
         self._screen = Screen.MAIN_MENU
         self._sound.play_music(_TITLE_BGM)
+
+    def _enter_title_scene(self, cursor: int) -> None:
+        """跨场景进标题(游戏中退出/结算回来): 初始光标 + 重读解锁态 +
+        70 帧白淡入。对照 ActualAddedCallback: 重开 score.dat
+        (TitleScreen.cpp:3664-3675) + wantedState2 定初始光标(:3682-3698)
+        + TitleSetupThread 注册白淡入(:3800-3807)。
+        标题内子画面往返(难度/机体 BACK)不走这里 —— 光标保留不重置。
+        """
+        self._flow.cursor.index = cursor
+        self._reload_title_unlocks()
+        self._title_fade = 0
+        self._enter_main_menu()
+
+    def _reload_title_unlocks(self) -> None:
+        """重读 score.json 更新 Extra/Spell Practice 解锁态(置灰/跳过依据)。"""
+        store = ScoreStore.load(self._score_path)
+        self._flow.extra_unlocked, self._flow.spell_practice_unlocked = unlock_flags(
+            store
+        )
 
     def _on_menu(self, action: MenuAction) -> None:
         if self._screen == Screen.MAIN_MENU:
@@ -616,13 +661,15 @@ class GameApp:
         self._start_game(extra=self._run_extra)
 
     def _quit_to_title(self) -> None:
-        """暂停菜单 Quit to Title: 弃局回标题主菜单。"""
+        """暂停菜单 Quit to Title: 弃局回标题主菜单(初始光标 1, 见
+        title_flow.CURSOR_FROM_GAME; TitleScreen.cpp:3684-3687)。"""
         self._paused = False
         self._pause_confirm = None
         self._sound.unpause_music()
         self._in_continue = False
         self._game = None
-        self._enter_main_menu()  # 游戏/标题窗口同为 640x480×scale, 无需 resize
+        # 游戏/标题窗口同为 640x480×scale, 无需 resize
+        self._enter_title_scene(CURSOR_FROM_GAME)
 
     def _play_se(self, idx: int) -> None:
         """游戏内 SE(SoundPlayer 已加载的表); 未加载/无声卡静音跳过。"""
@@ -655,7 +702,8 @@ class GameApp:
             self._result_saved = True
         self._renderer.play_menu_se("ok")
         self._game = None
-        self._enter_main_menu()
+        # 结算回来初始光标 5 = Result 项(TitleScreen.cpp:3689-3690)
+        self._enter_title_scene(CURSOR_FROM_RESULT)
 
     def _run_result(self, actions) -> None:
         self._menu_frame += 1

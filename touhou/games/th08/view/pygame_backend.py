@@ -4,8 +4,9 @@
 games/th08/view/impl.py 直接实例化, 第三后端出现时再抽象。)
 
 与 th07 后端 (games/th07/view/pygame_backend.py) 的差异:
-- 菜单场景(标题/难度/机体/Extra)是文字渲染占位(th08 的 title01.anm
-  贴图菜单二期); 对局场景走本包 sprite_view.GameView + hud_view.HudView;
+- 标题主菜单是原作版贴图渲染(本包 title_view.TitleView: title01.anm
+  菜单 vm + title00.png 背景 + 白淡入/帮助行), 加载失败回退文字菜单;
+  难度/机体/Extra 菜单仍是文字渲染占位(贴图版二期);
 - 结算/暂停/续关覆盖层同样是文字版; 对话立绘/结局/弹字二期;
 - 菜单 SE 自带小三件套(se_ok00/se_cancel00/se_select00, th08-ref
   SoundPlayer.hpp SoundIdx: SOUND_SELECT=10/BACK=11/MOVE_MENU=12),
@@ -33,6 +34,8 @@ from ...th07.view.screens import MenuAction, Screen
 from ..crypt import try_decrypt_from_table
 from .hud_view import HudView
 from .sprite_view import GAME_H, GAME_W, GAME_X, GAME_Y, WIN_H, WIN_W, GameView
+from .title_flow import TITLE_MENU_ITEMS, TitleFlowTh08
+from .title_view import TitleView
 
 TITLE_W, TITLE_H = 640, 480
 
@@ -114,6 +117,9 @@ class PygameTh08Renderer:
         # 对局场景渲染器(begin_game 按机体/关卡建)
         self._game_view: GameView | None = None
         self._hud_view: HudView | None = None
+        # 标题画面贴图视图(懒加载; 无数据/损坏回退文字菜单)
+        self._title_view: TitleView | None = None
+        self._title_view_broken = False
         # 输入映射(set_keymap 重建)
         self._action_codes: dict[str, list[int]] = {}
         self._menu_keys: dict[int, MenuAction] = {}
@@ -259,14 +265,44 @@ class PygameTh08Renderer:
         scr = self._target()
         scr.blit(pygame.transform.scale(surf, scr.get_size()), (0, 0))
 
-    # ---- 菜单系场景(文字占位) ----
+    # ---- 菜单系场景 ----
+    def _ensure_title_view(self) -> "TitleView | None":
+        """标题贴图视图(懒加载一次; 失败永久回退文字菜单, 不逐帧重试)。"""
+        if self._title_view is None and not self._title_view_broken:
+            try:
+                self._title_view = TitleView(self._data_path)
+            except Exception as e:
+                log.warning("标题贴图视图加载失败, 回退文字菜单: {}", e)
+                self._title_view_broken = True
+        return self._title_view
+
     def render_title(
-        self, cursor: int, frame: int, *, show_unimplemented: bool = False, items=()
+        self,
+        flow: TitleFlowTh08,
+        frame: int,
+        *,
+        show_unimplemented: bool = False,
+        fade_frame: "int | None" = None,
     ) -> None:
+        """标题主菜单: 原作版贴图渲染(title_view), 失败/无数据回退文字菜单。"""
+        view = self._ensure_title_view()
+        if view is not None:
+            try:
+                surf = view.render(
+                    flow, show_unimplemented=show_unimplemented, fade_frame=fade_frame
+                )
+                self._blit_scaled(surf)
+                return
+            except Exception:
+                log.exception("标题画面渲染异常(本帧降级为文字菜单)")
         surf = pygame.Surface((TITLE_W, TITLE_H))
         hint = "(未实装 — 二期)" if show_unimplemented else ""
         self._draw_menu_list(
-            surf, "東方永夜抄 ～ Imperishable Night", items, cursor, hint=hint
+            surf,
+            "東方永夜抄 ～ Imperishable Night",
+            TITLE_MENU_ITEMS,
+            flow.cursor.index,
+            hint=hint,
         )
         self._blit_scaled(surf)
 
