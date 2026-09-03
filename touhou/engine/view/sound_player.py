@@ -18,6 +18,8 @@
   原版仅 WAV 音源暂停(MIDI 走 mci 不暂停), pause_music/unpause_music
   同此门控; pygame 2.6 实测暂停时 get_busy()=False, 轮询须跳过暂停态,
   否则误判"播完"回卷并解除暂停。
+- 作品参数化(th08 注入): SE 表/thbgm 头校验作品 id/条目内层解密钩子,
+  见 SoundPlayer.__init__ docstring; 默认全部 th07, 行为不变。
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from __future__ import annotations
 import io
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pygame
 
@@ -32,7 +35,16 @@ from ...exceptions import ThbgmFormatError
 from ...logger import logger as log
 from ...schema.archive import ArchiveBase, open_archive
 from ...schema.sound import SE_FILES, SE_VOLUMES
-from ...schema.thbgm import ThbgmTrack, build_wav, check_thbgm_header, parse_fmt
+from ...schema.thbgm import (
+    THBGM_GAME_ID,
+    ThbgmTrack,
+    build_wav,
+    check_thbgm_header,
+    parse_fmt,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _db_to_gain(db_hundredths: int) -> float:
@@ -41,14 +53,31 @@ def _db_to_gain(db_hundredths: int) -> float:
 
 
 class SoundPlayer:
-    """游戏内 SE/BGM 播放器。资源懒加载(首次 ensure_loaded 才开包)。"""
+    """游戏内 SE/BGM 播放器。资源懒加载(首次 ensure_loaded 才开包)。
+
+    作品参数(默认 = th07 表, 行为不变; th08 由 games/th08/view 注入):
+    ``se_files``/``se_volumes`` = SE 索引 → wav 名 / 音量(schema/sound.py
+    的表); ``thbgm_game_id`` = thbgm.dat 头校验的作品 id(th07=0x700,
+    th08=0x800); ``decrypt`` = 条目内层解密钩子(th08 的 edz, 明文透传)。
+    """
 
     def __init__(
-        self, data_path: str | Path, bgm_path: str | Path | None = None
+        self,
+        data_path: str | Path,
+        bgm_path: str | Path | None = None,
+        *,
+        se_files: dict | None = None,
+        se_volumes: dict | None = None,
+        thbgm_game_id: int = THBGM_GAME_ID,
+        decrypt: "Callable[[bytes], bytes] | None" = None,
     ) -> None:
         self._data_path = Path(data_path)
         # 显式 thbgm.dat 路径(WorldData.bgm_dat); None = 与 th07.dat 同目录推导
         self._bgm_path_override = Path(bgm_path) if bgm_path else None
+        self._se_files = se_files if se_files is not None else SE_FILES
+        self._se_volumes = se_volumes if se_volumes is not None else SE_VOLUMES
+        self._thbgm_game_id = thbgm_game_id
+        self._decrypt = decrypt
         self._loaded = False
         self._enabled = False
         self._archive: ArchiveBase | None = None
@@ -100,11 +129,14 @@ class SoundPlayer:
         try:
             arc = open_archive(self._data_path)
             loaded: dict[str, bytes] = {}
-            for idx, name in SE_FILES.items():
+            for idx, name in self._se_files.items():
                 if name not in loaded:
-                    loaded[name] = arc.load(name)
+                    data = arc.load(name)
+                    if self._decrypt is not None:
+                        data = self._decrypt(data)
+                    loaded[name] = data
                 snd = pygame.mixer.Sound(file=io.BytesIO(loaded[name]))
-                snd.set_volume(_db_to_gain(SE_VOLUMES[idx]) * self._se_volume)
+                snd.set_volume(_db_to_gain(self._se_volumes[idx]) * self._se_volume)
                 self.sounds[int(idx)] = snd
         except (OSError, KeyError, pygame.error) as e:
             log.warning("音效资源加载失败, 静音运行: {}", e)
@@ -122,14 +154,17 @@ class SoundPlayer:
     def _setup_thbgm(self, arc: ArchiveBase) -> None:
         """探测 thbgm.dat + 解析 thbgm.fmt; 任一失败则留空, 走 MIDI 回退。"""
         thbgm_path = self._bgm_path_override or self._data_path.with_name("thbgm.dat")
-        if not check_thbgm_header(thbgm_path):
+        if not check_thbgm_header(thbgm_path, self._thbgm_game_id):
             return
         try:
             # C++ LoadFmt("bgm/thbgm.fmt") (Supervisor.cpp:732);
             # FileSystem 会去掉目录前缀, 实包内条目名为 "thbgm.fmt"
             for key in ("bgm/thbgm.fmt", "thbgm.fmt"):
                 if key in arc:
-                    self._thbgm_tracks = parse_fmt(arc.load(key))
+                    data = arc.load(key)
+                    if self._decrypt is not None:
+                        data = self._decrypt(data)
+                    self._thbgm_tracks = parse_fmt(data)
                     break
         except (OSError, KeyError, ValueError) as e:
             log.warning("thbgm.fmt 解析失败, BGM 回退 MIDI: {}", e)
@@ -204,11 +239,11 @@ class SoundPlayer:
             pass
 
     def set_se_volume(self, v: float) -> None:
-        """SE 主音量: 在各 SE 独立音量(SE_VOLUMES)基础上整体缩放。"""
+        """SE 主音量: 在各 SE 独立音量(se_volumes)基础上整体缩放。"""
         self._se_volume = max(0.0, min(1.0, float(v)))
         for idx, snd in self.sounds.items():
             try:
-                snd.set_volume(_db_to_gain(SE_VOLUMES[idx]) * self._se_volume)  # type: ignore
+                snd.set_volume(_db_to_gain(self._se_volumes[idx]) * self._se_volume)  # type: ignore
             except (pygame.error, KeyError):
                 pass
 
@@ -252,6 +287,8 @@ class SoundPlayer:
     def _play_midi(self, name: str) -> None:
         try:
             data = self._archive.load(name)  # type: ignore
+            if self._decrypt is not None:
+                data = self._decrypt(data)
             pygame.mixer.music.load(io.BytesIO(data))
             pygame.mixer.music.set_volume(self._bgm_volume)
             pygame.mixer.music.play(-1)

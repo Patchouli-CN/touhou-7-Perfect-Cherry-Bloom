@@ -212,6 +212,12 @@ class AnmFile:
     #: 期望的 anm version(entry 头校验, AnmManager.cpp:2457; th07=2, th08=3)
     _EXPECTED_VERSION = 2
 
+    #: 扁平序号布局(th08): 脚本/精灵按装载序扁平数组寻址, 文件里存的 id
+    #: 被 C++ 忽略(th08-ref AnmManager.cpp:2388-2389/2620-2624,
+    #: SetSprite/ExecuteAnmIdx 的实参直接当数组下标, AnmManager.hpp:460-490)。
+    #: False(th07) = 存的 id 即编号, 链式偏移按 max(id)+1 累加。
+    ANM_FLAT_LAYOUT = False
+
     # 版本无关, 提到类上让注册表消费方只认格式类一个入口
     parse_scripts = staticmethod(parse_scripts)
 
@@ -333,4 +339,3 @@ class AnmFile:
             src = ((spr.y + row) * e.tex_width + spr.x) * 4
             out[row * spr.w * 4 : (row + 1) * spr.w * 4] = e.rgba[src : src + spr.w * 4]
         return spr.w, spr.h, bytes(out)
-

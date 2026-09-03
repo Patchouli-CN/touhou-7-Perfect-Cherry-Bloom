@@ -25,7 +25,7 @@ import numpy as np
 from PIL import Image
 
 from ...registry import register_anm
-from ...schema.anm import AnmFile, TextureLoader
+from ...schema.anm import AnmFile, AnmInstr, TextureLoader, parse_scripts
 from ...schema.archive import ArchiveBase
 from .crypt import try_decrypt_from_table
 
@@ -35,6 +35,24 @@ class Th08AnmFile(AnmFile):
     """anm v3 解析类; 与 v2 的差异只有版本号(机制继承 schema.anm.AnmFile)。"""
 
     _EXPECTED_VERSION = 3
+    ANM_FLAT_LAYOUT = True
+
+    @staticmethod
+    def parse_scripts(data: bytes) -> list[dict[int, list[AnmInstr]]]:
+        """v3 脚本表: 键 = entry 内装载序号(0 起)。
+
+        C++ 把脚本装进扁平数组按装载序寻址, 文件里存的 id 被忽略
+        (AnmManager.cpp:2389 + 2620-2624; 实装数据里存的 id 是工具链
+        残留 —— front.anm/etama.anm 等存在负 id)。
+        """
+        return [dict(enumerate(scripts.values())) for scripts in parse_scripts(data)]
+
+    @classmethod
+    def decrypt_entry(cls, data: bytes) -> bytes:
+        """封包条目的 edz 内层解密(FileSystem::OpenFile 的
+        TryDecryptFromTable, Global.cpp:901-927); 明文条目透传。
+        引擎消费点(SpriteBank/StageScene)按鸭子接口调用本钩子。"""
+        return try_decrypt_from_table(data)
 
     @classmethod
     def make_texture_loader(cls, archive: ArchiveBase) -> TextureLoader:

@@ -24,13 +24,20 @@ from .games.th07 import mods as _th07_mods  # noqa: F401  (登记 th07 mod 能�
 #  提供者 Th07Mods)
 from .games.th08 import data as _th08_data  # noqa: F401  (登记 th08 数值表)
 from .games.th08 import anm as _th08_anm  # noqa: F401  (登记 th08 ANM v3:
+
 #  Th08AnmFile)
 from .games.th08 import ecl_vm as _th08_ecl_vm  # noqa: F401  (登记 th08 ECL 维度:
+
 #  EclMachineTh08 + EclFileTh08)
 from .games.th08 import ecl_host as _th08_ecl_host  # noqa: F401  (登记 th08 游戏
+
 #  回调包: Th08GameEclHost + 关卡资源命名)
 from .games.th08 import world as _th08_world  # noqa: F401  (登记 th08 对局实现:
-#  ImperishableNight; 窗口 App 未登记 → th08 只能 headless)
+
+#  ImperishableNight)
+from .games.th08 import view as _th08_view  # noqa: F401  (登记 th08 窗口 App:
+
+#  GameApp; pygame 后端自持不进 renderer 注册表)
 from .apis.basic import (
     BossSnapshot,
     BulletSnapshot,

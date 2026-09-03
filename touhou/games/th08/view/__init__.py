@@ -1,0 +1,22 @@
+"""th08 表现层 —— 贴着 th08 画的 view 模块(应用壳/贴图渲染/pygame 后端)。
+
+最小可用窗口版(一期): 标题→难度→机体→打一面, GameView(敌机/弹幕/自机/
+背景) + HUD(时刻表盘/妖率计/右栏基础行) + BGM/SE。对话立绘/符卡宣言/
+结局/MusicRoom/Replay/Option/录像 留二期(见 impl.py 模块 docstring)。
+
+- ``anm_vm``: AnmVmTh08(th08 指令集差集, 对照 th08-ref AnmManager.cpp
+  ExecuteScript; 基类是 engine/view/anm_vm.py 的 AnmVm)
+- ``impl``: GameApp 应用壳(@register_app("th08"); 不 import pygame)
+- ``pygame_backend``: PygameTh08Renderer —— 自持, 不进 register_renderer
+  ("pygame" 全局名被 th07 占用)
+- ``sprite_view`` / ``hud_view``: 战斗画面(GameView)与右栏 HUD
+
+依赖方向: 本包 → games/th08(逻辑层)/games/th07 view 的纯逻辑 screens →
+engine(view/render/config/…), 反向禁止。
+"""
+
+from .anm_vm import AnmVmTh08
+from .impl import GameApp
+from .pygame_backend import PygameTh08Renderer
+
+__all__ = ["AnmVmTh08", "GameApp", "PygameTh08Renderer"]

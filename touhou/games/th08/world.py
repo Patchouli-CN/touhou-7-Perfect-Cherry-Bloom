@@ -123,10 +123,18 @@ _NEXT_STAGE_PLAIN = {1: 2, 2: 3, 4: 6, 5: 6, 7: 8}
 # 3 面 → 4A/4B 按机体 (GameManager.cpp:1483-1505): 灵梦系/妖梦系 → 4B,
 # 魔理沙系/咲夜系 → 4A
 _STAGE4_BRANCH = {
-    0: 5, 4: 5, 5: 5,  # ReimuYukari/Reimu/Yukari → STAGE4B
-    1: 4, 6: 4, 7: 4,  # MarisaAlice/Marisa/Alice → STAGE4A
-    2: 4, 8: 4, 9: 4,  # SakuyaRemilia/Sakuya/Remilia → STAGE4A
-    3: 5, 10: 5, 11: 5,  # YoumuYuyuko/Youmu/Yuyuko → STAGE4B
+    0: 5,
+    4: 5,
+    5: 5,  # ReimuYukari/Reimu/Yukari → STAGE4B
+    1: 4,
+    6: 4,
+    7: 4,  # MarisaAlice/Marisa/Alice → STAGE4A
+    2: 4,
+    8: 4,
+    9: 4,  # SakuyaRemilia/Sakuya/Remilia → STAGE4A
+    3: 5,
+    10: 5,
+    11: 5,  # YoumuYuyuko/Youmu/Yuyuko → STAGE4B
 }
 
 
@@ -173,7 +181,9 @@ class ImperishableNight:
         # 条目带 "edz" 内层加密, crypt.py 解)
         sht_map = self.data.character_sht or CHARACTER_SHT
         n_unf, n_foc = sht_map.get(character, sht_map[0])
-        self.shot_data = parse_sht_th08(try_decrypt_from_table(self.archive.load(n_unf)))
+        self.shot_data = parse_sht_th08(
+            try_decrypt_from_table(self.archive.load(n_unf))
+        )
         self.shot_data_focus = parse_sht_th08(
             try_decrypt_from_table(self.archive.load(n_foc))
         )
@@ -197,7 +207,9 @@ class ImperishableNight:
         self._ecl_seed = 0 if seed is None else ((self.seed ^ 0x3C7) & 0xFFFF)
         self.rng = Rng(self.seed)
         self._inject_player_rng()
-        self.items.rng_float = lambda r: self.rng.in_range(0.0, r)  # 时刻符点出生速度随机
+        self.items.rng_float = lambda r: self.rng.in_range(
+            0.0, r
+        )  # 时刻符点出生速度随机
         self.targeting = Targeting()
 
         # 成绩持久化(内存库; th08 catk 是另一格式, 本期按 0 张符卡建库)
@@ -217,7 +229,8 @@ class ImperishableNight:
         self._catk_idx: int | None = None
 
         # ---- 音效/BGM/震屏事件(帧末快照, 播放层消费) ----
-        self.sounds = SoundQueue()
+        # SE 表 46 槽 (th08-ref SoundPlayer.cpp:20-29; 表见 games/th08/sound.py)
+        self.sounds = SoundQueue(table_size=46)
         self.frame_sounds: list[int] = []
         self.bgm_events: list[tuple] = []
         self.frame_shakes: list[tuple[int, int, int]] = []
@@ -278,8 +291,9 @@ class ImperishableNight:
     def _init_gauge_bounds(self) -> None:
         """妖率槽界按机体变体 (Player.cpp:1613-1639): 咏唱妖梦(3)/妖梦单人(10)
         半幅; 单人人类妖侧封顶 2000; 单人妖怪人侧封底 -2000。"""
-        base = list(self.data.youkai_gauge_bounds or (-10000, 10000, -8000, 8000,
-                                                      -2000, 2000))
+        base = list(
+            self.data.youkai_gauge_bounds or (-10000, 10000, -8000, 8000, -2000, 2000)
+        )
         c = self.character
         if c == 3:
             base[0], base[2], base[4] = -5000, -3000, -2000
@@ -432,7 +446,11 @@ class ImperishableNight:
         b.set_life(max(st.life, 1))
         log.debug(
             "Boss 出场: boss_id={} stage={} pos=({:.1f},{:.1f}) (frame={})",
-            idx, self.stage_no, st.pos.x, st.pos.y, self.frame,
+            idx,
+            self.stage_no,
+            st.pos.x,
+            st.pos.y,
+            self.frame,
         )
         self.boss = b
         self._boss_ecl_state = st
@@ -465,8 +483,12 @@ class ImperishableNight:
         self.sounds.play(SE_SPELL_DECLARE)  # 符卡宣告(cut-in 演出是 view 侧)
         log.debug(
             "符卡宣言: #{} {} (stage={}, bonus={}, 时限={}s) (frame={})",
-            idx, name, self.stage_no,
-            self.ecl_host.pending_spellcard_bonus, timeout // 60, self.frame,
+            idx,
+            name,
+            self.stage_no,
+            self.ecl_host.pending_spellcard_bonus,
+            timeout // 60,
+            self.frame,
         )
 
     def _ecl_on_end_spellcard(self, st: EclEnemyState) -> None:
@@ -559,9 +581,7 @@ class ImperishableNight:
             point_item_extends_so_far=g.point_item_extends_so_far,
             next_point_item_extend_threshold=g.next_point_item_extend_threshold,
             gauge_extremely_human=g.gauge_is_extremely_human(),
-            time_orb_ready=(
-                g.current_time_orbs >= g.last_spell_time_orb_threshold
-            ),
+            time_orb_ready=(g.current_time_orbs >= g.last_spell_time_orb_threshold),
             spellcard_active=self._spellcard_active(),
             poc_y=self.shot_data.poc_y,
             item_collect_speed=self.shot_data.item_collect_speed,
@@ -592,10 +612,7 @@ class ImperishableNight:
             # AddToYoukaiGauge: 炸弹中不加 (GameManager.cpp:1312-1315 的
             # isInUse && !forceUpdate 门控); 时刻符点妖率抑制期也不加
             # (timeOrbGaugeChangeSuppressionTimer, ItemManager.cpp:633)
-            if (
-                not self.bomb.is_in_use
-                and self.player.time_orb_gauge_suppression == 0
-            ):
+            if not self.bomb.is_in_use and self.player.time_orb_gauge_suppression == 0:
                 g.add_to_youkai_gauge(r.gauge_delta)
         if r.subrank > 0:
             g.increase_subrank(r.subrank)
@@ -633,8 +650,10 @@ class ImperishableNight:
         self.stage = self._read_stage(stage_no)
         log.debug(
             "进关: stage={} 「{}」 BGM={} (frame={})",
-            stage_no, self.stage.title.strip(),
-            next((n for n in self.stage.bgm_names if n), ""), self.frame,
+            stage_no,
+            self.stage.title.strip(),
+            next((n for n in self.stage.bgm_names if n), ""),
+            self.frame,
         )
         self._load_ecl()
 
@@ -688,7 +707,8 @@ class ImperishableNight:
             if self.result is None and not self.continue_available:
                 log.debug(
                     "GameOver → 结算 (frame={}, score={})",
-                    self.frame, self.globals.gui_score,
+                    self.frame,
+                    self.globals.gui_score,
                 )
                 self.result = self.final_result(cleared=False)
             self._drain_frame_events()
@@ -871,7 +891,10 @@ class ImperishableNight:
             self._score_milestone = milestone
             log.debug(
                 "score 突破 {}000万 (frame={}, stage={}, score={})",
-                milestone, self.frame, self.stage_no, g.gui_score,
+                milestone,
+                self.frame,
+                self.stage_no,
+                g.gui_score,
             )
 
         # 通关判定(尾王击破 + timeline 完; 正常路径由 msg NEXT_LEVEL 先行)
@@ -1026,7 +1049,9 @@ class ImperishableNight:
             if clock is not None and clock.units >= 12:
                 log.debug(
                     "时刻 ≥12 → Bad Ending (frame={}, stage={}, clock={})",
-                    self.frame, self.stage_no, clock.units,
+                    self.frame,
+                    self.stage_no,
+                    clock.units,
                 )
                 self._enter_ending(bad=True)
             else:
@@ -1034,14 +1059,17 @@ class ImperishableNight:
         elif self.stage_no <= 8:
             log.debug(
                 "终面通关 → 结局 (frame={}, stage={}, score={})",
-                self.frame, self.stage_no, self.globals.gui_score,
+                self.frame,
+                self.stage_no,
+                self.globals.gui_score,
             )
             self._enter_ending(bad=False)
         else:
             self.cleared = True
             log.debug(
                 "通关(EX) → 总结算 (frame={}, score={})",
-                self.frame, self.globals.gui_score,
+                self.frame,
+                self.globals.gui_score,
             )
             self.result = self.final_result(cleared=True)
 
@@ -1065,7 +1093,10 @@ class ImperishableNight:
         g = self.globals
         log.debug(
             "换关: stage {} → {} (frame={}, score={})",
-            self.stage_no, self._next_stage_no(), self.frame, g.gui_score,
+            self.stage_no,
+            self._next_stage_no(),
+            self.frame,
+            g.gui_score,
         )
         g.gui_score = g.score
         g.gui_score_difference = 0
@@ -1121,7 +1152,10 @@ class ImperishableNight:
         path = f"end{team:02d}{variant}.end"
         log.debug(
             "进结局: {} (frame={}, bad={}, score={})",
-            path, self.frame, bad, g.gui_score,
+            path,
+            self.frame,
+            bad,
+            g.gui_score,
         )
         try:
             data = try_decrypt_from_table(self.archive.load(path))
@@ -1231,7 +1265,10 @@ class ImperishableNight:
         log.debug(
             "bomb 触发{} (frame={}, character={}, focus={}, 剩余炸弹={})",
             "(决死)" if deathbomb else "",
-            self.frame, self.character, self.player.focus, g.bombs_remaining - 1,
+            self.frame,
+            self.character,
+            self.player.focus,
+            g.bombs_remaining - 1,
         )
         self.sounds.play(BOMB_SE)
         g.bombs_used += res.bombs_used_delta
@@ -1403,7 +1440,9 @@ class ImperishableNight:
         if res["captured"]:
             log.debug(
                 "符卡捕获: {} (frame={}, 分数={})",
-                name, self.frame, res["score"] // 10,
+                name,
+                self.frame,
+                res["score"] // 10,
             )
         elif res["timed_out"]:
             log.debug("符卡超时: {} (frame={})", name, self.frame)
@@ -1536,19 +1575,17 @@ class ImperishableNight:
         else:  # 咏唱组
             item_count = 26 if n >= 8 else n * 2 + 10
         for child in children:
-            cpos = Vec2(child.pos.x + child.pos_offset.x,
-                        child.pos.y + child.pos_offset.y)
-            # 消弹圈 (32+2×8=48px): 父是 boss → 弹转时刻符点 (:262-264)
-            self._cancel_region_items(
-                cpos, 48.0, ItemType.TIME if st.is_boss else None
+            cpos = Vec2(
+                child.pos.x + child.pos_offset.x, child.pos.y + child.pos_offset.y
             )
+            # 消弹圈 (32+2×8=48px): 父是 boss → 弹转时刻符点 (:262-264)
+            self._cancel_region_items(cpos, 48.0, ItemType.TIME if st.is_boss else None)
             for _ in range(item_count):
                 # FromAngleMagnitude(±π 随机角, [0, itemCount×2) 随机半径)
                 ang = (self.rng.unit() * 2.0 - 1.0) * math.pi
                 rad = self.rng.unit() * item_count * 2.0
                 self.items.spawn(
-                    Vec2(cpos.x + math.cos(ang) * rad,
-                         cpos.y + math.sin(ang) * rad),
+                    Vec2(cpos.x + math.cos(ang) * rad, cpos.y + math.sin(ang) * rad),
                     ItemType.TIME,
                     power=self.power,
                 )
@@ -1608,9 +1645,7 @@ class ImperishableNight:
                 )
                 self.items.spawn(
                     pos,
-                    ItemType.POWER_SMALL
-                    if self.power < FULL_POWER
-                    else ItemType.POINT,
+                    ItemType.POWER_SMALL if self.power < FULL_POWER else ItemType.POINT,
                     power=self.power,
                 )
             for _ in range(st.point_item_drop_count):
@@ -1645,8 +1680,12 @@ class ImperishableNight:
                 self._deathbomb_freeze = False
                 log.debug(
                     "玩家死亡 (frame={}, pos=({:.1f},{:.1f}), power {}→{}, 残机={})",
-                    self.frame, pos.x, pos.y,
-                    int(g.current_power), int(ev.data.new_power), g.lives_remaining,
+                    self.frame,
+                    pos.x,
+                    pos.y,
+                    int(g.current_power),
+                    int(ev.data.new_power),
+                    g.lives_remaining,
                 )
                 self._apply_death_settle(ev.data)
             elif k == PlayerEventKind.RESPAWNED:
@@ -1665,9 +1704,12 @@ class ImperishableNight:
                 g.graze_in_total = min(GRAZE_TOTAL_CAP, g.graze_in_total + 1)
                 # 擦弹分: 中度妖 4000 否则 2000 (Player.cpp:482-485 段)
                 g.add_score(
-                    (GRAZE_SCORE_MODERATE_YOUKAI
-                     if g.gauge_is_moderately_youkai()
-                     else GRAZE_SCORE_NORMAL) * 10
+                    (
+                        GRAZE_SCORE_MODERATE_YOUKAI
+                        if g.gauge_is_moderately_youkai()
+                        else GRAZE_SCORE_NORMAL
+                    )
+                    * 10
                 )
                 g.increase_subrank(GRAZE_SUBRANK)
                 if self.player.is_youkai and not self.bomb.is_in_use:

@@ -102,6 +102,25 @@ def chain_offsets(anm: AnmFile, per_entry_scripts) -> list[int]:
     return offs
 
 
+def flat_chain_offsets(anm: AnmFile, per_entry_scripts) -> tuple[list[int], list[int]]:
+    """th08 扁平序号布局的 entry 基址: (sprite 基址表, script 基址表)。
+
+    sprites/scripts 是两条独立的扁平数组, 各按 entry 数量累加
+    (th08-ref AnmManager.cpp:2388-2389/2511-2512 的 currentSpriteNumber/
+    currentScriptNumber); 文件里存的 id 被忽略, 配合
+    AnmFile.ANM_FLAT_LAYOUT=True 的格式类(parse_scripts 键 = 装载序号)。
+    """
+    spr_offs: list[int] = []
+    scr_offs: list[int] = []
+    ns = nc = 0
+    for entry, escr in zip(anm.entries, per_entry_scripts):
+        spr_offs.append(ns)
+        scr_offs.append(nc)
+        ns += len(entry.sprites)
+        nc += len(escr)
+    return spr_offs, scr_offs
+
+
 def offsets_to_entry(offs: list[int], local: int) -> tuple[int, int]:
     """链式偏移空间的位置 → (entry, entry 内局部 id)。"""
     entry, lid = 0, local

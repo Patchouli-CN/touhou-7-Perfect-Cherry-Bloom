@@ -26,7 +26,7 @@ import random
 import numpy as np
 import pygame
 
-from .anm_vm import AnmVm, ScriptRef, chain_offsets, reset_and_run
+from .anm_vm import AnmVm, ScriptRef, chain_offsets, flat_chain_offsets, reset_and_run
 
 # EffectManager.cpp g_EffectMapping 子集: effectId → (anm 全局 script id, 粒子物理)
 _FX_STATIC, _FX_BURST, _FX_BURST_FAST, _FX_ATTACH, _FX_BURST30 = 0, 1, 2, 3, 4
@@ -64,6 +64,17 @@ class AnmScriptBank:
         anm = bank.anm(name)
         assert anm is not None
         per_entry = anm.parse_scripts(raw)
+        if getattr(anm, "ANM_FLAT_LAYOUT", False):
+            # th08 扁平序号布局: 脚本/精灵各按 entry 数量累加, 脚本里的
+            # sprite 参数已是扁平序号(ScriptRef.sprite_base=0 不加基址,
+            # AnmManager.cpp:237 SetSprite 直接用实参当下标)
+            spr_offs, scr_offs = flat_chain_offsets(anm, per_entry)
+            for ei, (entry, escr) in enumerate(zip(anm.entries, per_entry)):
+                for sid, instrs in escr.items():
+                    self.refs[scr_offs[ei] + sid] = ScriptRef(instrs, 0)
+                for sid in entry.sprites:
+                    self._spr_loc[spr_offs[ei] + sid] = (ei, sid)
+            return
         for ei, (entry, escr, off) in enumerate(
             zip(anm.entries, per_entry, chain_offsets(anm, per_entry))
         ):
@@ -200,12 +211,18 @@ class TransformCache:
 
 
 class Vm2d:
-    """2D 战斗实体的 AnmVm 宿主: start(gid) → 每帧 execute() → draw()。"""
+    """2D 战斗实体的 AnmVm 宿主: start(gid) → 每帧 execute() → draw()。
 
-    def __init__(self, sbank: AnmScriptBank, tcache: TransformCache) -> None:
+    ``vm_cls`` 选 anm 脚本 VM 方言(th08 = AnmVmTh08, 指令集差集见
+    games/th08/view/anm_vm.py); 默认 AnmVm(th07), 既有行为不变。
+    """
+
+    def __init__(
+        self, sbank: AnmScriptBank, tcache: TransformCache, vm_cls=AnmVm
+    ) -> None:
         self.sbank = sbank
         self.tcache = tcache
-        self.vm = AnmVm()
+        self.vm = vm_cls()
         self.surf: pygame.Surface | None = None
 
     def _set_sprite(self, key: int) -> None:
@@ -242,7 +259,9 @@ class Vm2d:
         img = self.surf
         if not vm.visible or img is None:
             return
-        r, g, b, a = vm.color
+        # th08 flag17: 有效色取 color2 (DrawInner, AnmManager.cpp:1215);
+        # th07 的 AnmVm 无该属性, getattr 回落 color1
+        r, g, b, a = vm.color2 if getattr(vm, "flag17", 0) else vm.color
         if tint_alpha is not None:
             a = a * tint_alpha // 255
         if a <= 0 or vm.scale[0] == 0.0 or vm.scale[1] == 0.0:

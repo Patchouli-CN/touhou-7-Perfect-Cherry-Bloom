@@ -147,14 +147,17 @@ class SoundQueue:
 
     引擎各模块在帧内 play(idx); 帧末由整合层 take() 取走并清空,
     交给播放层(C++ 主循环每帧 ProcessQueues 对应)。
+    ``table_size`` = 作品的 SE 表槽数(th07=38, th08=46,
+    th08-ref SoundPlayer.cpp:20-29), 超界 idx 丢弃。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, table_size: int = len(_BUFFER_IDX_VOL)) -> None:
         self._queue: list[int] = []
+        self._table_size = table_size
 
     def play(self, idx: int) -> None:
         """PlaySoundByIdx (SoundPlayer.cpp:597-623): 同帧同音去重, 满 5 槽丢弃。"""
-        if idx < 0 or idx >= len(_BUFFER_IDX_VOL):
+        if idx < 0 or idx >= self._table_size:
             return
         if idx in self._queue:
             return

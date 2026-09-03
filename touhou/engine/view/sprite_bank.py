@@ -107,9 +107,7 @@ class SpriteBank:
         """外链纹理 loader: 格式类声明了 make_texture_loader 工厂才接(可选鸭子方法)。"""
         if not self._tex_loader_ready:
             factory = getattr(self._anm_format(), "make_texture_loader", None)
-            self._tex_loader = (
-                factory(self._archive()) if factory is not None else None
-            )
+            self._tex_loader = factory(self._archive()) if factory is not None else None
             self._tex_loader_ready = True
         return self._tex_loader
 
@@ -128,6 +126,10 @@ class SpriteBank:
         if raw is None:
             return False
         fmt = self._anm_format()
+        # 条目内层解密钩子(可选鸭子方法, 如 th08 的 edz; th07 无此层)
+        decrypt = getattr(fmt, "decrypt_entry", None)
+        if decrypt is not None:
+            raw = decrypt(raw)
         self._anms[name] = fmt.parse_cached(
             raw, texture_loader=self._texture_loader(), cache_tag=self._game
         )

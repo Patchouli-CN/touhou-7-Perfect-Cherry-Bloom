@@ -83,8 +83,9 @@ def parse_fmt(data: bytes) -> dict[str, ThbgmTrack]:
     return tracks
 
 
-def check_thbgm_header(path: str | Path) -> bool:
-    """校验 thbgm.dat 头部 ("ZWAV"/v1/game 0x700, Supervisor.cpp:1183-1199)。"""
+def check_thbgm_header(path: str | Path, game_id: int = THBGM_GAME_ID) -> bool:
+    """校验 thbgm.dat 头部 ("ZWAV"/v1/game id, Supervisor.cpp:1183-1199;
+    th07=0x700, th08=0x800, th08-ref Supervisor.cpp:1426)。"""
     try:
         with open(path, "rb") as f:
             header = f.read(THBGM_HEADER_SIZE)
@@ -92,10 +93,8 @@ def check_thbgm_header(path: str | Path) -> bool:
         return False
     if len(header) < THBGM_HEADER_SIZE:
         return False
-    magic, version, game_id, _ = struct.unpack("<4sIII", header)
-    return bool(
-        magic == THBGM_MAGIC and version == THBGM_VERSION and game_id == THBGM_GAME_ID
-    )
+    magic, version, gid, _ = struct.unpack("<4sIII", header)
+    return bool(magic == THBGM_MAGIC and version == THBGM_VERSION and gid == game_id)
 
 
 def build_wav(track: ThbgmTrack, pcm: bytes) -> bytes:

@@ -42,7 +42,14 @@ from ...registry import get_game
 from ...schema.anm import TextureLoader
 from ...schema.stage import Stage
 from ..render.d3dx_render import GAME_H, GAME_W, D3DXLikeRender
-from .anm_vm import AnmVm, ScriptRef, SpriteTex, chain_offsets, reset_and_run
+from .anm_vm import (
+    AnmVm,
+    ScriptRef,
+    SpriteTex,
+    chain_offsets,
+    flat_chain_offsets,
+    reset_and_run,
+)
 
 _ANM_OFFSET_BG1 = 0x300  # ANM_OFFSET_STAGE_BG1 (AnmIdx.hpp)
 
@@ -105,10 +112,18 @@ class StageScene:
         scripts: dict[int, ScriptRef],
         sprites: dict[int, SpriteTex],
         render_scale: float = 0.45,
+        *,
+        vm_cls: type[AnmVm] = AnmVm,
+        anm_offset: int = _ANM_OFFSET_BG1,
     ) -> None:
         self.stage = stage
         self._scripts = scripts
         self._sprites = sprites
+        self._vm_cls = vm_cls  # anm 脚本 VM 方言(th08 = AnmVmTh08, 脚本指令集不同)
+        # quad/vm 脚本下标基址: th07 = ANM_OFFSET_STAGE_BG1(0x300);
+        # th08 无全局脚本空间, quad 的 anmScript 直接是文件内扁平序号
+        # (Background.cpp:1057 ExecuteAnmIdx(vm, anmScript)) → 0
+        self._anm_offset = anm_offset
         instrs = stage.instrs
         self._instrs = instrs
         self.script_time = 0
@@ -136,13 +151,13 @@ class StageScene:
         for obj in stage.objects:
             vms = []
             for q in obj.quads:
-                vm = AnmVm()
-                self._exec_anm_idx(vm, q.anm_script + _ANM_OFFSET_BG1)
+                vm = vm_cls()
+                self._exec_anm_idx(vm, q.anm_script + self._anm_offset)
                 vms.append(vm)
             self._obj_vms.append(vms)
             self._obj_active.append(True)
-        self.vm1 = AnmVm()
-        self.vm2 = AnmVm()
+        self.vm1 = vm_cls()
+        self.vm2 = vm_cls()
         self.vm1.active_sprite_idx = -1
         self.vm2.active_sprite_idx = -1
         for vm in (self.vm1, self.vm2):
@@ -177,11 +192,18 @@ class StageScene:
         render_scale: float = 0.45,
         *,
         game: str = "th07",
+        vm_cls: type[AnmVm] = AnmVm,
+        std_file: str | None = None,
+        bg_anms: "tuple[str, ...] | None" = None,
     ) -> "StageScene | None":
         """从资源包加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。
 
         anm 解析按 ``game`` 走注册表(get_game(game).anm.format); 外链纹理
-        loader 由格式类的 make_texture_loader 工厂(可选鸭子方法)提供。
+        loader 由格式类的 make_texture_loader 工厂(可选鸭子方法)提供;
+        条目内层解密由格式类的 decrypt_entry 钩子(可选, 如 th08 的 edz)
+        提供。``vm_cls`` 选 anm 脚本 VM 方言; ``std_file``/``bg_anms``
+        覆盖默认文件名(作品文件名不规整时用, 如 th08 的 stage4a.std /
+        stg4abg.anm)。
         """
         t0 = time.perf_counter()
         spec = get_game(game).anm
@@ -191,9 +213,11 @@ class StageScene:
         tex_loader: TextureLoader | None = (
             loader_factory(archive) if loader_factory is not None else None
         )
+        decrypt = getattr(fmt, "decrypt_entry", None)
         try:
             std_raw = None
-            for key in (f"stage{stage_no}.std", f"data/stage{stage_no}.std"):
+            std_name = std_file or f"stage{stage_no}.std"
+            for key in (std_name, f"data/{std_name}"):
                 try:
                     std_raw = archive.load(key)
                     break
@@ -201,16 +225,26 @@ class StageScene:
                     continue
             if std_raw is None:
                 return None
+            if decrypt is not None:
+                std_raw = decrypt(std_raw)
             stage = Stage.read(std_raw, stage_no)
         except Exception as e:
             log.warning("stage{} 背景(std)解析失败, 回退无 3D 背景: {}", stage_no, e)
             return None
-        names = [f"stg{stage_no}bg.anm"]
-        if stage_no == 4:
-            names += [f"stg4bg{k}.anm" for k in range(2, 6)]
+        if bg_anms is not None:
+            names = list(bg_anms)
+        else:
+            names = [f"stg{stage_no}bg.anm"]
+            if stage_no == 4:
+                names += [f"stg4bg{k}.anm" for k in range(2, 6)]
         scripts: dict[int, ScriptRef] = {}
         sprites: dict[int, SpriteTex] = {}
-        base = _ANM_OFFSET_BG1
+        # th08 扁平序号布局(格式类 ANM_FLAT_LAYOUT): quad 的 anmScript 直接
+        # 是文件内扁平脚本序号(Background.cpp:1057), 无 0x300 基址; 脚本里
+        # 的 sprite 参数也是扁平序号(ScriptRef.sprite_base=0)
+        flat = getattr(fmt, "ANM_FLAT_LAYOUT", False)
+        base = 0 if flat else _ANM_OFFSET_BG1
+        flat_spr_base = flat_scr_base = 0  # 扁平模式跨文件累加(实装一关一个 bg 文件)
         for name in names:
             raw = None
             for key in (name, f"data/{name}"):
@@ -223,10 +257,29 @@ class StageScene:
                 if name == names[0]:
                     return None
                 break
+            if decrypt is not None:
+                raw = decrypt(raw)
             anm = fmt.parse_cached(  # 进程级缓存 (BUGS.md 增量#3)
                 raw, texture_loader=tex_loader, cache_tag=game
             )
             per_entry_scripts = fmt.parse_scripts(raw)
+            if flat:
+                spr_offs, scr_offs = flat_chain_offsets(anm, per_entry_scripts)
+                for entry, escr, soff, cros in zip(
+                    anm.entries, per_entry_scripts, spr_offs, scr_offs
+                ):
+                    tex = np.frombuffer(entry.rgba, dtype=np.uint8).reshape(
+                        entry.tex_height, entry.tex_width, 4
+                    )
+                    for sid, spr in entry.sprites.items():
+                        sprites[flat_spr_base + soff + sid] = SpriteTex(
+                            tex, spr.x, spr.y, spr.w, spr.h
+                        )
+                    for sid, instrs in escr.items():
+                        scripts[flat_scr_base + cros + sid] = ScriptRef(instrs, 0)
+                flat_spr_base += sum(len(e.sprites) for e in anm.entries)
+                flat_scr_base += sum(len(s) for s in per_entry_scripts)
+                continue
             for entry, escr, off in zip(
                 anm.entries, per_entry_scripts, chain_offsets(anm, per_entry_scripts)
             ):
@@ -240,7 +293,14 @@ class StageScene:
                 for sid, instrs in escr.items():
                     scripts[base + off + sid] = ScriptRef(instrs, base + off)
             base += 0x10
-        scene = cls(stage, scripts, sprites, render_scale)
+        scene = cls(
+            stage,
+            scripts,
+            sprites,
+            render_scale,
+            vm_cls=vm_cls,
+            anm_offset=0 if flat else _ANM_OFFSET_BG1,
+        )
         ms = (time.perf_counter() - t0) * 1000
         if ms >= 30.0:
             log.debug("stage{} 3D 背景装配耗时 {:.1f}ms", stage_no, ms)
@@ -414,12 +474,12 @@ class StageScene:
             self._ease_modes[idx] = _EASE_CUBIC_INTERP
         elif op == 29:
             if ins.args_i[0] >= 0:
-                self._exec_anm_idx(self.vm1, ins.args_i[0] + _ANM_OFFSET_BG1)
+                self._exec_anm_idx(self.vm1, ins.args_i[0] + self._anm_offset)
             else:
                 self.vm1.active_sprite_idx = -1
         elif op == 30:
             if ins.args_i[0] >= 0:
-                self._exec_anm_idx(self.vm2, ins.args_i[0] + _ANM_OFFSET_BG1)
+                self._exec_anm_idx(self.vm2, ins.args_i[0] + self._anm_offset)
             else:
                 self.vm2.active_sprite_idx = -1
         # opcode 31: wait 标记, 顺序执行到时跳过(C switch 无 case 31)
