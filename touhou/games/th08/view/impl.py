@@ -9,7 +9,10 @@ title00.png 背景/70 帧白淡入/底部帮助行, 见本包 title_flow.py(纯�
 title_view.py(渲染)。难度/机体/Extra 选择已原作化(B2 期): select00.png
 背景 + title01.anm 难度项/头像/名牌 vm + 通关标记, 见 title_flow.py
 (CharacterFlowTh08/completion_mark_sprite)与 select_view.py。
-一期遗留范围: Music Room/Replay/Option/Result 浏览/Practice/Spell Practice
+Option/KeyConfig 已原作化(C 期): OptionFlowTh08/KeyConfigFlowTh08(本包
+title_flow.py) + option_view.py 贴图渲染(行标签/残机档/音量数字 vm +
+键名绘字), Graphic/SlowMode 等无引擎对应物的行置灰锁定(偏离注明)。
+一期遗留范围: Music Room/Replay/Result 浏览/Practice/Spell Practice
 画面(菜单项给"未实装"提示)、对话立绘、符卡宣言、结局画面(world 出 ending
 时直接 finish_ending 跳总结算)、录像录制/播放、入榜名字输入(结算直接存档回标题)。
 
@@ -58,7 +61,11 @@ from .pygame_backend import PygameTh08Renderer
 from .title_flow import (
     CURSOR_FROM_GAME,
     CURSOR_FROM_RESULT,
+    ITEM_OPTION,
+    OPTION_ROW_KEYCONFIG,
     CharacterFlowTh08,
+    KeyConfigFlowTh08,
+    OptionFlowTh08,
     TitleFlowTh08,
     completion_mark_sprite,
     unlock_flags,
@@ -102,7 +109,6 @@ _UNSUPPORTED_ACTIONS = (
     "replay",
     "result",
     "music_room",
-    "option",
 )
 
 
@@ -153,6 +159,9 @@ class GameApp:
         # TitleScreen.cpp:3695-3696 wantedState2 默认分支)
         self._screen = Screen.MAIN_MENU
         self._flow = TitleFlowTh08()
+        # Option/KeyConfig 画面 flow(C 期; 共享 config 实例, 改值即时生效)
+        self._option_flow = OptionFlowTh08(config=self._config)
+        self._keyconfig_flow = KeyConfigFlowTh08(config=self._config)
         self._title_fade = 0  # 进标题的白淡入帧计数(_TITLE_FADE_FRAMES 封顶)
         # 名单/面数: 作品数据表(game_data, 经 TouhouWorld 从 GameSpec.data 传入)
         # 优先; 缺省回落注册表 th08 表
@@ -235,9 +244,15 @@ class GameApp:
             self._sound.play_music(_TITLE_BGM)
         running = True
         while running:
-            inp = self._renderer.poll_input()
+            inp = self._renderer.poll_input(
+                capturing=self._screen == Screen.KEY_CONFIG
+                and self._keyconfig_flow.capturing is not None
+            )
             if inp.quit:
                 running = False
+            if inp.captured_key is not None and self._screen == Screen.KEY_CONFIG:
+                # KeyConfig "按新键"捕获: 该键已被后端吃掉, 不进菜单动作
+                self._keyconfig_capture(inp.captured_key)
             if self._screen == Screen.MAIN_MENU:
                 self._run_title_menu(inp.menu_actions)
             elif self._screen in (
@@ -246,6 +261,10 @@ class GameApp:
                 Screen.EXTRA_LEVEL,
             ):
                 self._run_menu(inp.menu_actions)
+            elif self._screen == Screen.OPTION:
+                self._run_option(inp)
+            elif self._screen == Screen.KEY_CONFIG:
+                self._run_keyconfig(inp)
             elif self._screen == Screen.RESULT:
                 self._run_result(inp.menu_actions)
             else:  # playing
@@ -379,6 +398,134 @@ class GameApp:
             flow.skip_locked_forward()
         self._screen = Screen.CHARACTER
 
+    # ---- Option 设置页(OnUpdateOptions, TitleScreen.cpp:644-1153) ----
+    def _enter_option(self) -> None:
+        """进 Option: 光标归零 + 闲置/长按计数清零 + 喂 play_count 快照
+        (残机高档位解锁判定 :699-707/:826-844, attemptsTotal = plst 的
+        play_count; 只在进画面时读一次, 同 _reload_title_unlocks 口径)。"""
+        flow = self._option_flow
+        flow.cursor.index = 0
+        flow.idle_frames = 0
+        flow.hold_left = flow.hold_right = 0
+        store = self._title_store
+        flow.play_count = (store.plst["play_count"] or 0) if store is not None else 0
+        self._screen = Screen.OPTION
+
+    def _leave_option(self) -> None:
+        """退回主菜单, 光标落 Option 项(:1113 cursor=TITLE_MENU_ITEM_OPTION)。"""
+        self._screen = Screen.MAIN_MENU
+        self._flow.cursor.index = ITEM_OPTION
+
+    def _run_option(self, inp: FrameInput) -> None:
+        """Option 一帧: 渲染 → 菜单键 → 长按连调(:947-988)→ 闲置超时
+        (:1086-1092, 3600 帧无输入退回主菜单)。frame==0 = 进屏(进场动画)。"""
+        flow = self._option_flow
+        if self._last_menu_screen != Screen.OPTION:
+            self._last_menu_screen = Screen.OPTION
+            self._menu_sub_frame = 0
+        frame = self._menu_sub_frame
+        self._menu_sub_frame += 1
+        self._renderer.render_option(flow, frame=frame)
+        actions = inp.menu_actions
+        for act in actions:
+            self._on_menu(act)
+            if self._screen != Screen.OPTION:
+                return  # 已切屏(KeyConfig/主菜单), 本帧不再推进 Option 状态
+        # 音量行选中时每 50 帧一声提示音(:1070-1076 stateTimer%50 → SE 29)
+        if flow.is_volume_row and frame > 0 and frame % 50 == 0:
+            self._play_se(SE.SOUND_TIMEOUT)
+        held = inp.held
+        r = flow.tick_held("left" in held, "right" in held)
+        if r is not None:
+            self._apply_option(r["item"], r["value"])
+        if flow.tick_idle(bool(actions) or bool(held)):
+            self._renderer.play_menu_se("cancel")
+            self._leave_option()
+
+    def _apply_option(self, item: str, value) -> None:
+        """Option 调值即时生效 + 落盘(BGM 切源重播 :856-870; Mode 映射
+        window_scale 即时 resize 是偏离 —— 原作 Mode 是全屏切换且退出时
+        才检查重启 :1118-1122, 我们无全屏支持)。"""
+        if item == "Vol":
+            self._sound.set_bgm_volume(value / 100)
+        elif item == "S.E.Vol":
+            self._sound.set_se_volume(value / 100)
+        elif item in ("BGM", "reset"):
+            # 切源后需停再播才生效(sound_player docstring; :856-870
+            # StopAudio → 改 musicMode → 重播当前曲)
+            current = self._sound.current_bgm
+            self._sound.set_bgm_source(self._config.bgm_source)
+            if current:
+                self._sound.stop_music()
+                self._sound.play_music(current)
+        elif item == "Mode":
+            self._scale = value
+            self._renderer.resize(self._screen, self._scale)
+        # Player(初始残机): 开局时应用(_start_game), 无即时动作
+        self._save_config()
+
+    def _save_config(self) -> None:
+        """即时写 config.json(容错: 写盘失败不炸, 同 th07 impl.py:244)。"""
+        try:
+            self._config.save(self._config_path)
+        except OSError:
+            pass
+
+    # ---- KeyConfig 键位设置页(OnUpdateKeyConfig, TitleScreen.cpp:1156-1402) ----
+    def _enter_keyconfig(self) -> None:
+        """进 KeyConfig: 光标归零(:1106) + 捕获态/闲置计数清零。"""
+        flow = self._keyconfig_flow
+        flow.cursor.index = 0
+        flow.capturing = None
+        flow.idle_frames = 0
+        self._screen = Screen.KEY_CONFIG
+
+    def _leave_keyconfig(self) -> None:
+        """退回 Option, 光标落 KeyConfig 行(:1369 cursor=8)。"""
+        self._keyconfig_flow.capturing = None
+        self._screen = Screen.OPTION
+        self._option_flow.cursor.index = OPTION_ROW_KEYCONFIG
+
+    def _run_keyconfig(self, inp: FrameInput) -> None:
+        """KeyConfig 一帧: 渲染 → 菜单键(捕获态下按键走 captured_key,
+        run() 已分流)→ 闲置超时(:1345-1347, 3600 帧退回 Option)。"""
+        flow = self._keyconfig_flow
+        if self._last_menu_screen != Screen.KEY_CONFIG:
+            self._last_menu_screen = Screen.KEY_CONFIG
+            self._menu_sub_frame = 0
+        frame = self._menu_sub_frame
+        self._menu_sub_frame += 1
+        self._renderer.render_keyconfig(flow, frame=frame)
+        if flow.capturing is not None:
+            # 捕获中只跑闲置超时; 正常按键已由 captured_key 路径处理
+            if flow.tick_idle(False):
+                flow.capturing = None
+                self._renderer.play_menu_se("cancel")
+                self._leave_keyconfig()
+            return
+        actions = inp.menu_actions
+        for act in actions:
+            self._on_menu(act)
+            if self._screen != Screen.KEY_CONFIG:
+                return
+        if flow.tick_idle(bool(actions)):
+            self._renderer.play_menu_se("cancel")
+            self._leave_keyconfig()
+
+    def _keyconfig_capture(self, name: str) -> None:
+        """捕获态收一个键名(th07 口径: 即时生效 + 落盘; Esc/X 取消的
+        判定在 flow.capture)。"""
+        flow = self._keyconfig_flow
+        r = flow.capture(name)
+        flow.idle_frames = 0
+        log.debug("KeyConfig 捕获: {} 键={} → {}", r.get("item"), name, r["action"])
+        se = r.get("se")
+        if se is not None:
+            self._renderer.play_menu_se(se)
+        if r["action"] == "changed":
+            self._rebuild_keymap()
+            self._save_config()
+
     def _on_menu(self, action: MenuAction) -> None:
         if self._screen == Screen.MAIN_MENU:
             if action in (MenuAction.UP, MenuAction.DOWN):
@@ -388,6 +535,43 @@ class GameApp:
             r = self._flow.handle(action)
             if r:
                 self._handle_main_result(r)
+        elif self._screen == Screen.OPTION:
+            # 行移动/调值/子画面跳转的音效由 flow 结果的 "se" 键给出
+            # (对照 :712+ 的 SOUND_MOVE_MENU/:1102/:1115/:1143 等)
+            if action in (MenuAction.UP, MenuAction.DOWN):
+                self._renderer.play_menu_se("select")
+            r = self._option_flow.handle(action)
+            if not r:
+                return
+            se = r.get("se")
+            if se is not None:
+                self._renderer.play_menu_se(se)
+            act = r["action"]
+            if act == "quit":
+                self._leave_option()
+            elif act == "changed":
+                self._apply_option(r["item"], r["value"])
+            elif act == "reset":
+                self._apply_option("reset", None)
+            elif act == "keyconfig":
+                self._enter_keyconfig()
+            # "back" = 光标跳 Quit 行(:1137-1141), 音效已播, 无其他动作
+        elif self._screen == Screen.KEY_CONFIG:
+            flow = self._keyconfig_flow
+            if flow.capturing is None and action in (MenuAction.UP, MenuAction.DOWN):
+                self._renderer.play_menu_se("select")
+            r = flow.handle(action)
+            if not r:
+                return
+            se = r.get("se")
+            if se is not None:
+                self._renderer.play_menu_se(se)
+            if r["action"] == "quit":
+                self._leave_keyconfig()
+            elif r["action"] == "changed":  # Reset 恢复默认 keymap
+                self._rebuild_keymap()
+                self._save_config()
+            # "capture" = 进入"按新键"捕获态; "back" = 光标跳 Quit 行(th07 口径)
         elif self._screen == Screen.DIFFICULTY:
             if action == MenuAction.UP:
                 self._diff.move(-1)
@@ -451,6 +635,10 @@ class GameApp:
             self._renderer.play_menu_se("ok")
             self._extra_mode = True
             self._screen = Screen.EXTRA_LEVEL
+        elif act == "option":
+            # → Option 设置页(:565-570 case TITLE_MENU_ITEM_OPTION)
+            self._renderer.play_menu_se("ok")
+            self._enter_option()
         elif act in _UNSUPPORTED_ACTIONS:
             # 一期未实装(见模块 docstring): 提示后留在主菜单
             self._renderer.play_menu_se("cancel")

@@ -5,7 +5,8 @@
   BGM 再生方法(WAV/MIDI/OFF) / Sound(SE 开关) / Mode(窗口/全屏) /
   SlowMode / Reset / KeyConfig / Quit。
 本期接其中 5 项: BGM 音量(0-100) / SE 音量(0-100) / 音源(WAV/MIDI) /
-窗口缩放(1-3) / 初始残机数(2-5); KeyConfig 以 keymap 段落地(编辑界面在
+窗口缩放(1-3) / 初始残机数(2-7, 上限随 th08 Option 档位解锁扩过,
+th07 Option UI 仍按 2-5); KeyConfig 以 keymap 段落地(编辑界面在
 games/th07/view, 对照 MainMenu.cpp OnUpdateKeyConfig)。
 
 读写容错同 score_store: 文件缺失/损坏/字段非法一律回退默认值, 不抛异常
@@ -22,7 +23,10 @@ CONFIG_JSON_VERSION = 1
 BGM_SOURCES = ("wav", "midi")
 VOLUME_MIN, VOLUME_MAX = 0, 100
 SCALE_MIN, SCALE_MAX = 1, 3
-LIVES_MIN, LIVES_MAX = 2, 5
+# 初始残机 2-7: 上限 7 是 th08 Option 的档位(th08-ref TitleScreen.cpp:826-844
+# lifeCount 0..6, 高档位按总游戏次数解锁, 见 games/th08 Option 画面);
+# th07 的 Option UI 仍按本篇口径 2-5 调值(games/th07/view/screens.py 本地上限)。
+LIVES_MIN, LIVES_MAX = 2, 7
 
 # ---- 键位映射(KeyConfig) ----
 # 每个动作一组 pygame 键名(pygame.key.name 的格式), 多键 = 任一生效。
@@ -91,7 +95,7 @@ class GameConfig(msgspec.Struct):
     se_volume: int = 100  # 0-100
     bgm_source: str = "wav"  # "wav"(thbgm.dat 优先) / "midi"(强制 MIDI)
     window_scale: int = 2  # 窗口缩放倍率 1-3
-    initial_lives: int = 3  # 初始残机数 2-5 (原版默认 3)
+    initial_lives: int = 3  # 初始残机数 2-7 (原版默认 3; 上限见 LIVES_MAX 注)
     # 键位映射: 动作 → pygame 键名列表(多键任一生效), 见模块顶部 KEYMAP_ACTIONS
     keymap: dict = msgspec.field(default_factory=_default_keymap)
 

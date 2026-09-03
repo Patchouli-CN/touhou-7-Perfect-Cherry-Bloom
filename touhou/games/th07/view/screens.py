@@ -21,7 +21,6 @@ from ....registry import get_game
 from ....schema.archive import open_archive
 from ....schema.musiccmt import parse_musiccmt
 from ....engine.config import (
-    LIVES_MAX,
     LIVES_MIN,
     SCALE_MAX,
     SCALE_MIN,
@@ -236,6 +235,10 @@ OPTION_ITEMS = [
 
 _OPTION_VOLUME_STEP = 10
 
+# 本篇 Option 残机调值上限保持原作 2-5(MainMenu.cpp lifeCount 0-4);
+# 引擎 LIVES_MAX 已扩到 7(th08 Option 档位解锁用), 与本篇 UI 无关。
+_OPTION_LIVES_MAX = 5
+
 
 def _wrap(v: int, lo: int, hi: int, delta: int) -> int:
     """枚举值回绕(原版 lifeCount/musicMode 等的左右调值语义)。"""
@@ -301,7 +304,9 @@ class OptionFlow(msgspec.Struct):
             cfg.window_scale = _wrap(cfg.window_scale, SCALE_MIN, SCALE_MAX, delta)
             value = cfg.window_scale
         elif item == "初始残机":
-            cfg.initial_lives = _wrap(cfg.initial_lives, LIVES_MIN, LIVES_MAX, delta)
+            cfg.initial_lives = _wrap(
+                cfg.initial_lives, LIVES_MIN, _OPTION_LIVES_MAX, delta
+            )
             value = cfg.initial_lives
         else:
             return None

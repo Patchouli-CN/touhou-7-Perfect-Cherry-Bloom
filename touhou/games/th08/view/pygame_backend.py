@@ -4,10 +4,12 @@
 games/th08/view/impl.py 直接实例化, 第三后端出现时再抽象。)
 
 与 th07 后端 (games/th07/view/pygame_backend.py) 的差异:
-- 标题主菜单 + 难度/机体/Extra 选择是原作版贴图渲染(本包
-  title_view.TitleView: title01.anm 菜单 vm + title00.png 背景 + 白淡入/
+- 标题主菜单 + 难度/机体/Extra 选择 + Option/KeyConfig 是原作版贴图渲染
+  (本包 title_view.TitleView: title01.anm 菜单 vm + title00.png 背景 + 白淡入/
   帮助行; select_view.DifficultySelectView/CharacterSelectView:
-  select00.png 背景 + 难度项/头像/名牌 vm + 通关标记), 加载失败回退文字菜单;
+  select00.png 背景 + 难度项/头像/名牌 vm + 通关标记;
+  option_view.OptionView/KeyConfigView: title01.anm 行标签/残机档/音量数字
+  vm + 键名绘字), 加载失败回退文字菜单;
 - 结算/暂停/续关覆盖层同样是文字版; 对话立绘/结局/弹字二期;
 - 菜单 SE 自带小三件套(se_ok00/se_cancel00/se_select00, th08-ref
   SoundPlayer.hpp SoundIdx: SOUND_SELECT=10/BACK=11/MOVE_MENU=12),
@@ -34,9 +36,18 @@ from ....engine.view.shake_view import ScreenShake
 from ...th07.view.screens import MenuAction, Screen
 from ..crypt import try_decrypt_from_table
 from .hud_view import HudView
+from .option_view import KeyConfigView, OptionView
 from .select_view import CharacterSelectView, DifficultySelectView
 from .sprite_view import GAME_H, GAME_W, GAME_X, GAME_Y, WIN_H, WIN_W, GameView
-from .title_flow import CharacterFlowTh08, TITLE_MENU_ITEMS, TitleFlowTh08
+from .title_flow import (
+    KEYCONFIG_ITEMS,
+    OPTION_ITEMS,
+    CharacterFlowTh08,
+    KeyConfigFlowTh08,
+    OptionFlowTh08,
+    TITLE_MENU_ITEMS,
+    TitleFlowTh08,
+)
 from .title_view import TitleView
 
 TITLE_W, TITLE_H = 640, 480
@@ -92,6 +103,10 @@ def _key_code(name: str) -> "int | None":
 
 
 def _load_font(size: int):
+    # 字体模块可能已被 pygame.quit() 关掉(如 close 后重建/测试串台),
+    # 守卫口径同 hud_view.py:460
+    if not pygame.font.get_init():
+        pygame.font.init()
     for name in ("Microsoft YaHei", "SimHei", "SimSun", None):
         try:
             return pygame.font.SysFont(name, size)
@@ -126,6 +141,10 @@ class PygameTh08Renderer:
         self._difficulty_view: DifficultySelectView | None = None
         self._character_view: CharacterSelectView | None = None
         self._select_view_broken = False
+        # Option/KeyConfig 贴图视图(懒加载; 无数据/损坏回退文字菜单)
+        self._option_view: OptionView | None = None
+        self._keyconfig_view: KeyConfigView | None = None
+        self._option_view_broken = False
         # 输入映射(set_keymap 重建)
         self._action_codes: dict[str, list[int]] = {}
         self._menu_keys: dict[int, MenuAction] = {}
@@ -370,6 +389,78 @@ class PygameTh08Renderer:
                 self._character_view = None
                 self._select_view_broken = True
         return self._difficulty_view, self._character_view
+
+    def _ensure_option_views(
+        self,
+    ) -> "tuple[OptionView | None, KeyConfigView | None]":
+        """Option/KeyConfig 贴图视图(懒加载一次; 失败永久回退文字菜单,
+        同 _ensure_title_view 口径)。两视图同源资源(title01.anm), 一起建。"""
+        if self._option_view is None and not self._option_view_broken:
+            try:
+                self._option_view = OptionView(self._data_path)
+                self._keyconfig_view = KeyConfigView(self._data_path)
+            except Exception as e:
+                log.warning("Option/KeyConfig 贴图视图加载失败, 回退文字菜单: {}", e)
+                self._option_view = None
+                self._keyconfig_view = None
+                self._option_view_broken = True
+        return self._option_view, self._keyconfig_view
+
+    @staticmethod
+    def _option_fallback_items(flow: OptionFlowTh08) -> "list[str]":
+        """Option 文字回退的 "项: 值" 名单(锁定行标 [N/A])。"""
+        cfg = flow.config
+        values = {
+            0: str(cfg.initial_lives),
+            2: cfg.bgm_source.upper(),
+            3: str(cfg.bgm_volume),
+            4: str(cfg.se_volume),
+            5: f"Window x{cfg.window_scale}",
+        }
+        items = []
+        for i, label in enumerate(OPTION_ITEMS):
+            if flow.locked(i):
+                items.append(f"{label}: [N/A]")
+            elif i in values:
+                items.append(f"{label}: {values[i]}")
+            else:
+                items.append(label)
+        return items
+
+    def render_option(self, flow: OptionFlowTh08, *, frame: int = 0) -> None:
+        """Option 画面: 原作版贴图渲染(option_view), 失败/无数据回退文字菜单。"""
+        view = self._ensure_option_views()[0]
+        if view is not None:
+            try:
+                self._blit_scaled(view.render(flow, frame))
+                return
+            except Exception:
+                log.exception("Option 画面渲染异常(本帧降级为文字菜单)")
+        surf = pygame.Surface((TITLE_W, TITLE_H))
+        self._draw_menu_list(
+            surf, "Option", self._option_fallback_items(flow), flow.cursor.index
+        )
+        self._blit_scaled(surf)
+
+    def render_keyconfig(self, flow: KeyConfigFlowTh08, *, frame: int = 0) -> None:
+        """KeyConfig 画面: 原作版贴图渲染(option_view), 失败/无数据回退文字菜单。"""
+        view = self._ensure_option_views()[1]
+        if view is not None:
+            try:
+                self._blit_scaled(view.render(flow, frame))
+                return
+            except Exception:
+                log.exception("KeyConfig 画面渲染异常(本帧降级为文字菜单)")
+        items = [
+            item
+            if item in ("reset", "quit")
+            else f"{item}: {' / '.join(flow.config.keymap.get(item, ()))}"
+            for item in KEYCONFIG_ITEMS
+        ]
+        hint = "<press a key>" if flow.capturing is not None else ""
+        surf = pygame.Surface((TITLE_W, TITLE_H))
+        self._draw_menu_list(surf, "KeyConfig", items, flow.cursor.index, hint=hint)
+        self._blit_scaled(surf)
 
     # ---- 对局场景 ----
     def begin_game(self, game, *, character: int) -> None:
