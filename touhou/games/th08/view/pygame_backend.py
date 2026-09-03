@@ -53,6 +53,8 @@ from .result_flow import (
     ResultBrowseState,
 )
 from .result_view import ResultBrowseView
+from .replay_flow import REPLAYS_PER_PAGE, entry_line
+from .replay_view import ReplayMenuView
 from .select_view import CharacterSelectView, DifficultySelectView
 from .sprite_view import GAME_H, GAME_W, GAME_X, GAME_Y, WIN_H, WIN_W, GameView
 from .title_flow import (
@@ -170,6 +172,9 @@ class PygameTh08Renderer:
         # Result 浏览面贴图视图(懒加载; 无数据/损坏回退文字菜单)
         self._result_view: ResultBrowseView | None = None
         self._result_view_broken = False
+        # Replay 菜单贴图视图(懒加载; 无数据/损坏回退文字菜单)
+        self._replay_view: ReplayMenuView | None = None
+        self._replay_view_broken = False
         # 输入映射(set_keymap 重建)
         self._action_codes: dict[str, list[int]] = {}
         self._menu_keys: dict[int, MenuAction] = {}
@@ -598,6 +603,37 @@ class PygameTh08Renderer:
             surf.blit(font.render(title, True, _TEXT_COLOR), (32, 24))
             for i, line in enumerate(lines):
                 surf.blit(font.render(line, True, _TEXT_COLOR), (40, 56 + i * 20))
+        self._blit_scaled(surf)
+
+    # ---- Replay 菜单(replay_view 贴图渲染; 失败回退文字列表) ----
+    def _ensure_replay_view(self) -> "ReplayMenuView | None":
+        """Replay 菜单贴图视图(懒加载一次; 失败永久回退文字菜单,
+        同 _ensure_title_view 口径)。"""
+        if self._replay_view is None and not self._replay_view_broken:
+            try:
+                self._replay_view = ReplayMenuView(self._data_path)
+            except Exception as e:
+                log.warning("Replay 菜单贴图视图加载失败, 回退文字菜单: {}", e)
+                self._replay_view_broken = True
+        return self._replay_view
+
+    def render_replay_menu(self, flow, frame: int = 0) -> None:
+        """Replay 菜单: 原作版渲染(replay_view), 失败/无数据回退文字列表。"""
+        view = self._ensure_replay_view()
+        if view is not None:
+            try:
+                self._blit_scaled(view.render(flow, frame))
+                return
+            except Exception:
+                log.exception("Replay 菜单渲染异常(本帧降级为文字列表)")
+        surf = pygame.Surface((TITLE_W, TITLE_H))
+        n = len(flow.entries)
+        start = flow.page_start
+        items = [
+            entry_line(flow.entries[i])
+            for i in range(start, min(start + REPLAYS_PER_PAGE, n))
+        ]
+        self._draw_menu_list(surf, "Replay", items, flow.cursor - start)
         self._blit_scaled(surf)
 
     # ---- 对局场景 ----

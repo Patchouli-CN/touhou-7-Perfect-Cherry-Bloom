@@ -19,9 +19,14 @@ Result 浏览面已原作化(C 期第 3 片): result_flow.ResultFlowTh08(纯逻�
 类别/难度/机体三级选择 + 高分榜/符卡战绩/统计取数) +
 result_view.ResultBrowseView(result.jpg 背景 + result00.anm 贴图 vm +
 榜单/统计直接绘字); 入榜名字输入/replay 保存流(结算 GAME_RESULT 模式)
-不在其内。一期遗留范围: Replay/Practice/Spell Practice
-画面(菜单项给"未实装"提示)、对话立绘、符卡宣言、结局画面(world 出 ending
-时直接 finish_ending 跳总结算)、录像录制/播放、入榜名字输入(结算直接存档回标题)。
+不在其内。Replay 菜单已实装(C 期第 4 片): replay_flow.ReplayFlowTh08
+(纯逻辑: 扫 replay 目录 th8_*.json/15 行翻页/10 帧输入门) +
+replay_view.ReplayMenuView(select00.png 背景 + 列表直接绘字),
+确认即按 meta 重建同种子对局逐帧喂输入回放(JSON 路线, 原作的选面/
+减速/只 boss 战依赖逐面 stageReplayData 与 replayEventFlags, 不支持)。
+一期遗留范围: Practice/Spell Practice 画面(菜单项给"未实装"提示)、
+对话立绘、符卡宣言、结局画面(world 出 ending 时直接 finish_ending 跳
+总结算)、录像录制(D 期)、入榜名字输入(结算直接存档回标题)。
 
 渲染/输入采集委托 Renderer 后端(协议见 engine/render/__init__.py);
 默认后端是本包 pygame_backend.PygameTh08Renderer(自持, 不进全局
@@ -42,6 +47,7 @@ from ....logger import logger as log
 
 from ....apis.basic import Game
 from ....registry import GameData, get_game, register_app
+from ....engine import replay as replay_mod
 from ....engine.config import DEFAULT_CONFIG_PATH, GameConfig
 from ....engine.render import FrameInput, Renderer
 from ....engine.view.sound_player import SoundPlayer
@@ -66,12 +72,14 @@ from ..progress import (
 from ..sound import SE, SE_FILES, SE_VOLUMES
 from .music_flow import MusicRoomFlowTh08, load_tracks
 from .pygame_backend import PygameTh08Renderer
+from .replay_flow import ReplayFlowTh08, scan_replays
 from .result_flow import ResultFlowTh08
 from .title_flow import (
     CURSOR_FROM_GAME,
     CURSOR_FROM_MUSIC_ROOM,
     CURSOR_FROM_RESULT,
     ITEM_OPTION,
+    ITEM_REPLAY,
     OPTION_ROW_KEYCONFIG,
     CharacterFlowTh08,
     KeyConfigFlowTh08,
@@ -116,7 +124,6 @@ _WARMUP_ANMS = (
 _UNSUPPORTED_ACTIONS = (
     "spell_practice",
     "practice",
-    "replay",
 )
 
 
@@ -139,6 +146,7 @@ class GameApp:
         score_path=None,
         config_path=None,
         bgm_path=None,
+        replay_dir=None,
         game_data: GameData | None = None,
         renderer: "Renderer | None" = None,
         spectate=None,
@@ -174,6 +182,13 @@ class GameApp:
         self._music_flow: MusicRoomFlowTh08 | None = None
         # Result 浏览面 flow(C 期第 3 片; 进画面才建, 持存档快照)
         self._result_flow: ResultFlowTh08 | None = None
+        # Replay 菜单 flow(C 期第 4 片; 进画面才扫目录建列表)
+        self._replay_flow: ReplayFlowTh08 | None = None
+        # 回放播放状态: {"codes", "idx", "name", "extra"}; None = 非播放
+        self._playback: dict | None = None
+        if replay_dir is None:
+            replay_dir = replay_mod.DEFAULT_REPLAY_DIR
+        self._replay_dir = replay_dir
         self._title_fade = 0  # 进标题的白淡入帧计数(_TITLE_FADE_FRAMES 封顶)
         # 名单/面数: 作品数据表(game_data, 经 TouhouWorld 从 GameSpec.data 传入)
         # 优先; 缺省回落注册表 th08 表
@@ -281,6 +296,8 @@ class GameApp:
                 self._run_music_room(inp)
             elif self._screen == Screen.PLAYER_DATA:
                 self._run_result_browse(inp)
+            elif self._screen == Screen.REPLAY:
+                self._run_replay_menu(inp)
             elif self._screen == Screen.RESULT:
                 self._run_result(inp.menu_actions)
             else:  # playing
@@ -654,6 +671,116 @@ class GameApp:
                 return
         flow.tick_frame()
 
+    # ---- Replay 菜单(OnUpdateReplayMenu, TitleScreen.cpp:3213-3548) ----
+    def _enter_replay_menu(self) -> None:
+        """进 Replay 菜单(state 0 扫描段, :3226-3312): 扫 replay 目录建列表
+        (进一次扫一次, 列表态不再重扫)。标题曲不停(标题 → Replay 是
+        TitleScreen 子画面切换, 非场景迁移, 无 StopAudio)。"""
+        self._replay_flow = ReplayFlowTh08(entries=scan_replays(self._replay_dir))
+        self._screen = Screen.REPLAY
+
+    def _leave_replay_menu(self) -> None:
+        """退回主菜单, 光标落 Replay 项(state 4 → StartMenu 且
+        cursor=TITLE_MENU_ITEM_START_REPLAY, :3532-3537; 标题内子画面往返,
+        同 _leave_option 口径不淡入)。原作退幕有 30 帧动画(:3523-3531),
+        这里即时切换(与 A/B2/C 期各画面一致)。"""
+        self._screen = Screen.MAIN_MENU
+        self._flow.cursor.index = ITEM_REPLAY
+
+    def _run_replay_menu(self, inp: FrameInput) -> None:
+        """Replay 菜单一帧: 渲染 → 菜单键(确认/返回有 10 帧进场门, flow 内
+        门控; 移动不受门控)。播放失败(坏档/不支持的起始关)留在列表。"""
+        flow = self._replay_flow
+        if flow is None:  # 防御(正常 _enter_replay_menu 已建)
+            self._enter_main_menu()
+            return
+        if self._last_menu_screen != Screen.REPLAY:
+            self._last_menu_screen = Screen.REPLAY
+            self._menu_sub_frame = 0
+        frame = self._menu_sub_frame
+        self._menu_sub_frame += 1
+        self._renderer.render_replay_menu(flow, frame)
+        for act in inp.menu_actions:
+            r = flow.handle(act)
+            if not r:
+                continue
+            se = r.get("se")
+            if se is not None:
+                self._renderer.play_menu_se(se)
+            if r["action"] == "quit":
+                self._leave_replay_menu()
+                return
+            if r["action"] == "play":
+                self._start_replay(flow.entries[r["index"]])
+                if self._screen != Screen.REPLAY:
+                    return  # 已进回放(PLAYING)
+        flow.tick_frame()
+
+    # ---- 回放播放(录像选择 → 重建 game → 逐帧喂录像输入) ----
+    def _start_replay(self, entry: dict) -> None:
+        """播放选中录像: 按 meta 重建同难度/机体/种子的 game, 逐帧喂输入。
+
+        确定性依赖: world.tick 只由输入帧 + 种子驱动(engine/replay.py;
+        th08 侧 set_seed 见 world.py 回放确定性段); 残机按录像
+        initial_lives 覆写。起始关只支持 1(本篇从头)与 9(Extra) ——
+        原作选面播放(state 2, :3420-3467)依赖逐面 stageReplayData,
+        JSON 路线无此数据。"""
+        try:
+            r = replay_mod.load_replay(entry["path"])
+        except ValueError as e:
+            log.warning("录像加载失败: {}", e)
+            return
+        meta = r["meta"]
+        dif = int(meta.get("difficulty", 1)) % len(self._difficulties)
+        ch = int(meta.get("character", 0)) % len(self._characters)
+        stage = int(meta.get("stage", 1))
+        seed = int(meta.get("seed", 0x5EED))
+        if stage not in (1, _EXTRA_STAGE_NO):
+            log.warning(
+                "录像起始关不支持(只支持 1/{}): {} stage={}",
+                _EXTRA_STAGE_NO,
+                entry["path"].name,
+                stage,
+            )
+            return
+        extra = stage == _EXTRA_STAGE_NO
+        log.debug(
+            "播放录像 {}: character={} difficulty={} stage={} seed={} frames={}",
+            entry["path"].name,
+            ch,
+            dif,
+            stage,
+            seed,
+            len(r["codes"]),
+        )
+        # _start_game 从 flow 光标取机体/难度: 按录像 meta 摆位
+        # (机体列表可能被解锁态截成 4 组, 这里先放开成全表; 回标题时
+        # _reload_title_unlocks 会重建)
+        self._char_flow.cursor.items = list(self._characters)
+        self._char_flow.cursor.index = ch
+        if not extra and dif < len(self._main_difficulties):
+            self._diff.index = dif
+        self._start_game(extra=extra, seed=seed)
+        g0 = getattr(self._game, "globals", None)
+        if g0 is not None and dif < 4 and hasattr(g0, "lives_remaining"):
+            g0.lives_remaining = float(meta.get("initial_lives", 3))
+        self._playback = {
+            "codes": r["codes"],
+            "idx": 0,
+            "name": entry["path"].name,
+            "extra": extra,
+        }
+
+    def _quit_playback(self) -> None:
+        """退出回放(播完/Esc 中止/GameOver/出结算) → 回标题。初始光标 =
+        原作 FinishReplay → TitleScreen(AFTER_REPLAY)(Supervisor.cpp:275-288)
+        的 wantedState2=GameManager 分支: Extra 难度 1, 否则 0
+        (TitleScreen.cpp:3684-3687)。"""
+        extra = bool(self._playback and self._playback["extra"])
+        self._playback = None
+        self._game = None
+        self._enter_title_scene(CURSOR_FROM_GAME if extra else 0)
+
     def _on_menu(self, action: MenuAction) -> None:
         if self._screen == Screen.MAIN_MENU:
             if action in (MenuAction.UP, MenuAction.DOWN):
@@ -776,6 +903,11 @@ class GameApp:
             # SupervisorState_ResultScreen, RegisterChain(BROWSE))
             self._renderer.play_menu_se("ok")
             self._enter_result_browse()
+        elif act == "replay":
+            # → Replay 菜单(:559-563 case TITLE_MENU_ITEM_START_REPLAY →
+            # ChangeCurrentScreen(TitleCurrentScreen_Replay))
+            self._renderer.play_menu_se("ok")
+            self._enter_replay_menu()
         elif act in _UNSUPPORTED_ACTIONS:
             # 一期未实装(见模块 docstring): 提示后留在主菜单
             self._renderer.play_menu_se("cancel")
@@ -855,6 +987,11 @@ class GameApp:
         # Esc → 暂停(冻结 tick; 本帧直接画冻结画面, Esc 的 BACK 不立即触发 Resume)
         # 续关菜单中 Esc 无效
         if inp.esc and not self._paused and not getattr(self._game, "game_over", False):
+            if self._playback is not None:
+                # 回放中止: Esc 直接回标题(不进暂停菜单; 同 th07 口径)
+                log.debug("回放中止 (Esc, frame={})", getattr(self._game, "frame", "?"))
+                self._quit_playback()
+                return
             if self._spectate is not None:
                 # 观战中止: Esc 直接退出(不弹暂停菜单, 观战无标题可回)
                 log.debug("观战中止 (Esc, frame={})", getattr(self._game, "frame", "?"))
@@ -898,7 +1035,24 @@ class GameApp:
             "focus" in held,
             shot_held,
         )
-        if self._spectate is not None:
+        if self._playback is not None:
+            # 回放播放: 输入逐帧来自录像(真实键盘只认 Esc, 已在上面处理)
+            pb = self._playback
+            if pb["idx"] >= len(pb["codes"]):
+                log.debug("回放播完 ({} 帧, {}) → 回标题", pb["idx"], pb["name"])
+                self._quit_playback()
+                return
+            keys6, bomb_pressed, adv, skip_dec = replay_mod.decode_input(
+                pb["codes"][pb["idx"]]
+            )
+            pb["idx"] += 1
+            game.tick(
+                keys=keys6,
+                bomb=bomb_pressed,
+                advance=adv and msg_active,
+                skip=skip_dec,
+            )
+        elif self._spectate is not None:
             # 观战: 本帧输入来自策略(policy 的实参 = 包 live 对局的 Game 门面)
             pi = self._spectate(self._spectate_facade)
             keys6 = pi._keys()
@@ -933,6 +1087,12 @@ class GameApp:
             and getattr(game, "result", None) is None
             and getattr(game, "continue_available", False)
         ):
+            if self._playback is not None:
+                # 回放不可续关(原作 replay 跳过 retry 菜单直接 FinishReplay
+                # 回标题; 不写结算)
+                log.debug("回放播到 GameOver (frame={}) → 回标题", game.frame)
+                self._quit_playback()
+                return
             if self._spectate is not None:
                 # 观战不可续关: 等价选 No → 结算 → 结束观战
                 game.finalize_game_over()
@@ -943,11 +1103,20 @@ class GameApp:
         # 通关 → 结局: 一期无结局画面, 直接看完进总结算
         # (world 的 _enter_ending 已备好 EndingData; 二期再画)
         if getattr(game, "ending", None) is not None:
+            if self._playback is not None:
+                log.debug("回放播到结局 (frame={}) → 回标题", game.frame)
+                self._quit_playback()
+                return
             log.debug("结局(一期跳过画面) → 总结算 (frame={})", game.frame)
             game.finish_ending()
             return
         # 通关(EX)/GameOver → 结算(world 填 result)
         if getattr(game, "result", None) is not None:
+            if self._playback is not None:
+                # 播放模式不进结算(不写榜), 直接回标题
+                log.debug("回放播到结算 (frame={}) → 回标题", game.frame)
+                self._quit_playback()
+                return
             if self._spectate is not None:
                 # 观战不进结算画面(不写榜), 直接结束观战
                 log.debug("观战到结算 (frame={}) → 结束观战", game.frame)
