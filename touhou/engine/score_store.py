@@ -6,16 +6,24 @@
 - highscores: Hscr 子集 —— 每 (难度, 角色) 一个 Top10 榜
   {score, character, difficulty, stage, name, numRetries, date(ISO 字符串)}。
   空位不入库, 展示时按默认分 100000-k*10000 补齐 (GetHighScore 的 100000 底线)。
-- catk: 符卡统计 {name, attempts[7], successes[7], highscore[7]},
-  下标 0..5 = shotType, 6 = 合计 (EclManager BeginSpellcard/EndSpellcard)。
-  张数是作品专属数据(th07 = 141), 引擎层不硬编码: 由构造参数
-  ``spellcard_count`` 注入(作品层传 ``len(GameData.spellcard_scores)``);
+- catk: 符卡统计 {name, attempts[N], successes[N], highscore[N]},
+  下标 0..N-2 = 作品专属轴(如 shotType), N-1 = 合计
+  (EclManager BeginSpellcard/EndSpellcard)。槽数 N 与轴语义是作品专属数据,
+  引擎层不硬编码: 由构造参数 ``catk_slot_count`` 注入(默认 7);
+  ``catk_practice_group=True`` 时每条追加同构的 "practice" 组
+  (符卡练习战绩, 对照 Catk.spellPracticeHistory, th08-ref ScoreDat.hpp:184)。
+  张数也是作品专属数据(th07 = 141): 由构造参数 ``spellcard_count`` 注入
+  (作品层传 ``len(GameData.spellcard_scores)``);
   读档时若传入值小于存档实际长度, 按存档长度扩容(读档不丢卡)。
-- clrd: 每角色 {with_retries[6], without_retries[6]}, 值为到达的最大面数
-  (GameManager.cpp 过关时 currentStage-1 取 max)。
+- clrd: 每角色 {with_retries[D], without_retries[D]}, 值的语义作品自定
+  (th07 = 到达的最大面数, GameManager.cpp 过关时 currentStage-1 取 max;
+  th08 = 面通关位掩码, 见 games/th08/progress.py)。行数/难度数由
+  ``num_characters``/``num_difficulties`` 注入(默认 6/6),
+  引擎只存 int 列表, 不解释值。
 - pscr: 每 (难度, 角色) {play_count, highscore} (PSCR 简化)。
-- plst: {play_count, total_frames, clear_count, retry_count} (PLST 简化:
-  原版按难度/机型细分, 这里只留总数)。
+- plst: {play_count, total_frames, clear_count, retry_count, bgmUnlocked[32]}
+  (PLST 简化: 原版按难度/机型细分, 这里只留总数; bgmUnlocked = 曲目解锁
+  列表, 对照 Plst.bgmUnlocked, th08-ref ScoreDat.hpp:150)。
 - lsnm: 上次输入的名字 (LSNM 块, ResultScreen.cpp:2597 默认 8 空格);
   None = 从未输入过(本期初始默认名 DEFAULT_NAME, 输入后带出上次名字)。
 
@@ -28,12 +36,17 @@ from __future__ import annotations
 import msgspec
 from datetime import datetime
 from pathlib import Path
+from typing import Any, TypeGuard
 
 SCORE_JSON_VERSION = 1
 NUM_CHARACTERS = 6
 NUM_DIFFICULTIES = 6
 TOP_SIZE = 10
 CATK_CAP = 9999  # attempts/successes 上限 (EclManager.cpp < 9999 才 ++)
+CATK_SLOT_COUNT = 7  # catk 默认槽数(0..N-2 = 作品轴, N-1 = 合计)
+BGM_SLOT_COUNT = (
+    32  # plst.bgmUnlocked 槽数 (Plst.bgmUnlocked[32], th08-ref ScoreDat.hpp:150)
+)
 DEFAULT_NAME = "PLAYER"  # 从未输入过名字时的初始默认名(原版 LSNM 缺省为 8 空格)
 
 
@@ -66,11 +79,24 @@ def make_highscore_record(
     }
 
 
-def _new_catk_entry() -> dict:
-    return {"name": "", "attempts": [0] * 7, "successes": [0] * 7, "highscore": [0] * 7}
+def _new_catk_group(slots: int) -> dict:
+    """一组 catk 战绩(对照 CatkHistory: maxBonus/attempts/captures,
+    th08-ref ScoreDat.hpp:164-169)。"""
+    return {
+        "attempts": [0] * slots,
+        "successes": [0] * slots,
+        "highscore": [0] * slots,
+    }
 
 
-def _is_int_list(v, n: int) -> bool:
+def _new_catk_entry(slots: int = CATK_SLOT_COUNT, practice: bool = False) -> dict:
+    e = {"name": "", **_new_catk_group(slots)}
+    if practice:
+        e["practice"] = _new_catk_group(slots)
+    return e
+
+
+def _is_int_list(v, n: int) -> TypeGuard[list[int]]:
     return (
         isinstance(v, list)
         and len(v) == n
@@ -81,28 +107,46 @@ def _is_int_list(v, n: int) -> bool:
 class ScoreStore:
     """内存中的成绩总库 + JSON 读写。纯逻辑, 不依赖 pygame。
 
-    ``spellcard_count`` = 作品的符卡总数(引擎不硬编码, 由作品层注入,
-    th07 = 141); catk 按此长度分配, 符卡入账按 ``len(catk)`` 做越界保护。
+    作品专属口径全部由构造参数注入(引擎不硬编码):
+    ``spellcard_count`` = 作品的符卡总数(th07 = 141), catk 按此长度分配,
+    符卡入账按 ``len(catk)`` 做越界保护; ``num_characters``/``num_difficulties``
+    = clrd 的行数/难度槽数; ``catk_slot_count`` = catk 每组的槽数
+    (末槽 = 合计); ``catk_practice_group`` = 每条 catk 是否带 "practice"
+    战绩组(符卡练习用)。
     """
 
-    def __init__(self, *, spellcard_count: int = 0) -> None:
+    def __init__(
+        self,
+        *,
+        spellcard_count: int = 0,
+        num_characters: int = NUM_CHARACTERS,
+        num_difficulties: int = NUM_DIFFICULTIES,
+        catk_slot_count: int = CATK_SLOT_COUNT,
+        catk_practice_group: bool = False,
+    ) -> None:
         self.highscores: dict[str, list[dict]] = {}  # "difficulty,character" -> [rec]
+        self.num_characters = max(1, int(num_characters))
+        self.num_difficulties = max(1, int(num_difficulties))
+        self.catk_slot_count = max(1, int(catk_slot_count))
+        self._catk_practice = bool(catk_practice_group)
         self.catk: list[dict] = [
-            _new_catk_entry() for _ in range(max(0, int(spellcard_count)))
+            _new_catk_entry(self.catk_slot_count, self._catk_practice)
+            for _ in range(max(0, int(spellcard_count)))
         ]
         self.clrd = [
             {
-                "with_retries": [0] * NUM_DIFFICULTIES,
-                "without_retries": [0] * NUM_DIFFICULTIES,
+                "with_retries": [0] * self.num_difficulties,
+                "without_retries": [0] * self.num_difficulties,
             }
-            for _ in range(NUM_CHARACTERS)
+            for _ in range(self.num_characters)
         ]
         self.pscr: dict[str, dict] = {}  # "difficulty,character" -> {...}
-        self.plst = {
+        self.plst: dict[str, Any] = {
             "play_count": 0,
             "total_frames": 0,
             "clear_count": 0,
             "retry_count": 0,
+            "bgmUnlocked": [0] * BGM_SLOT_COUNT,
         }
         self.lsnm: str | None = None  # LSNM: 上次输入的名字(None=从未输入)
 
@@ -176,27 +220,40 @@ class ScoreStore:
         return out[:TOP_SIZE]
 
     # ---- catk 符卡统计 (EclManager Begin/EndSpellcard) ----
-    def record_spellcard_attempt(self, idx: int, name: str, shot: int) -> None:
-        """BeginSpellcard: attempts[shot]/attempts[6] ++ (封顶 9999), 记名字。"""
+    def record_spellcard_attempt(
+        self, idx: int, name: str, shot: int, *, practice: bool = False
+    ) -> None:
+        """BeginSpellcard: attempts[shot]/attempts[合计槽] ++ (封顶 9999), 记名字。
+        practice=True 记账进 "practice" 组(条目无该组时只记名字)。"""
         if not 0 <= idx < len(self.catk):
             return
         e = self.catk[idx]
         e["name"] = str(name)[:48]
-        for s in (int(shot), 6):
-            if 0 <= s <= 6 and e["attempts"][s] < CATK_CAP:
-                e["attempts"][s] += 1
+        group = e.get("practice") if practice else e
+        if not isinstance(group, dict):
+            return
+        total = self.catk_slot_count - 1
+        for s in (int(shot), total):
+            if 0 <= s <= total and group["attempts"][s] < CATK_CAP:
+                group["attempts"][s] += 1
 
-    def record_spellcard_success(self, idx: int, shot: int, score: int) -> None:
-        """EndSpellcard 捕获成功: successes ++, highscore 取 max (捕获分+擦弹加成)。"""
+    def record_spellcard_success(
+        self, idx: int, shot: int, score: int, *, practice: bool = False
+    ) -> None:
+        """EndSpellcard 捕获成功: successes ++, highscore 取 max (捕获分+擦弹加成)。
+        practice=True 记账进 "practice" 组(条目无该组时静默忽略)。"""
         if not 0 <= idx < len(self.catk):
             return
-        e = self.catk[idx]
-        for s in (int(shot), 6):
-            if 0 <= s <= 6:
-                if e["successes"][s] < CATK_CAP:
-                    e["successes"][s] += 1
-                if e["highscore"][s] < score:
-                    e["highscore"][s] = int(score)
+        group = self.catk[idx].get("practice") if practice else self.catk[idx]
+        if not isinstance(group, dict):
+            return
+        total = self.catk_slot_count - 1
+        for s in (int(shot), total):
+            if 0 <= s <= total:
+                if group["successes"][s] < CATK_CAP:
+                    group["successes"][s] += 1
+                if group["highscore"][s] < score:
+                    group["highscore"][s] = int(score)
 
     # ---- CLRD 通关统计 (GameManager.cpp 过关时) ----
     def record_clear(
@@ -207,8 +264,8 @@ class ScoreStore:
         ZUN quirk: C++ 里 difficultyClearedWithRetries 反而被
         numRetries==0 门控(字段名与语义疑似写反), 这里照抄原逻辑。
         """
-        c = self.clrd[int(character) % NUM_CHARACTERS]
-        d = int(difficulty) % NUM_DIFFICULTIES
+        c = self.clrd[int(character) % self.num_characters]
+        d = int(difficulty) % self.num_difficulties
         if num_retries == 0 and c["with_retries"][d] < stage_reached:
             c["with_retries"][d] = stage_reached
         if c["without_retries"][d] < stage_reached:
@@ -264,13 +321,30 @@ class ScoreStore:
         tmp.replace(path)  # 原子替换, 避免半截文件
 
     @classmethod
-    def from_dict(cls, data, *, spellcard_count: int = 0) -> "ScoreStore":
+    def from_dict(
+        cls,
+        data,
+        *,
+        spellcard_count: int = 0,
+        num_characters: int = NUM_CHARACTERS,
+        num_difficulties: int = NUM_DIFFICULTIES,
+        catk_slot_count: int = CATK_SLOT_COUNT,
+        catk_practice_group: bool = False,
+    ) -> "ScoreStore":
         """从 JSON 对象恢复; 任何字段不对就回退该字段默认值。
 
         catk 目标长度 = max(spellcard_count, 存档实际条数): 未指定/偏小时
         按存档扩容(读档不丢卡), 有效条目按原下标覆盖, 无效条目留默认值。
+        catk 条目按 catk_slot_count 校验; catk_practice_group=True 时
+        "practice" 组缺失/损坏回退默认组(不连累条目主体)。
         """
-        store = cls(spellcard_count=spellcard_count)
+        store = cls(
+            spellcard_count=spellcard_count,
+            num_characters=num_characters,
+            num_difficulties=num_difficulties,
+            catk_slot_count=catk_slot_count,
+            catk_practice_group=catk_practice_group,
+        )
         if not isinstance(data, dict):
             return store
         hs = data.get("highscores")
@@ -285,18 +359,23 @@ class ScoreStore:
         if isinstance(catk, list):
             if len(store.catk) < len(catk):
                 store.catk.extend(
-                    _new_catk_entry() for _ in range(len(catk) - len(store.catk))
+                    _new_catk_entry(store.catk_slot_count, store._catk_practice)
+                    for _ in range(len(catk) - len(store.catk))
                 )
             for i, e in enumerate(catk):
-                if _is_catk_entry(e):
+                if _is_catk_entry(e, store.catk_slot_count):
+                    if store._catk_practice and not _is_catk_group(
+                        e.get("practice"), store.catk_slot_count
+                    ):
+                        e = {**e, "practice": _new_catk_group(store.catk_slot_count)}
                     store.catk[i] = e
         clrd = data.get("clrd")
         if isinstance(clrd, list):
-            for i, c in enumerate(clrd[:NUM_CHARACTERS]):
+            for i, c in enumerate(clrd[: store.num_characters]):
                 if (
                     isinstance(c, dict)
-                    and _is_int_list(c.get("with_retries"), NUM_DIFFICULTIES)
-                    and _is_int_list(c.get("without_retries"), NUM_DIFFICULTIES)
+                    and _is_int_list(c.get("with_retries"), store.num_difficulties)
+                    and _is_int_list(c.get("without_retries"), store.num_difficulties)
                 ):
                     store.clrd[i] = c
         pscr = data.get("pscr")
@@ -317,23 +396,49 @@ class ScoreStore:
             for k in ("play_count", "total_frames", "clear_count", "retry_count"):
                 if isinstance(plst.get(k), int):
                     store.plst[k] = plst[k]
+            bgm = plst.get("bgmUnlocked")
+            if _is_int_list(bgm, BGM_SLOT_COUNT):
+                store.plst["bgmUnlocked"] = list(bgm)
         lsnm = data.get("lsnm")
         if isinstance(lsnm, str):
             store.lsnm = lsnm[:8]
         return store
 
     @classmethod
-    def load(cls, path: str | Path, *, spellcard_count: int = 0) -> "ScoreStore":
+    def load(
+        cls,
+        path: str | Path,
+        *,
+        spellcard_count: int = 0,
+        num_characters: int = NUM_CHARACTERS,
+        num_difficulties: int = NUM_DIFFICULTIES,
+        catk_slot_count: int = CATK_SLOT_COUNT,
+        catk_practice_group: bool = False,
+    ) -> "ScoreStore":
         """读文件; 缺失/损坏/JSON 不合法 → 全新默认值 (不抛异常)。
 
         msgspec.DecodeError 是 ValueError 子类, 坏 UTF-8/坏 JSON 同样落网。
-        spellcard_count 语义见 from_dict(作品的符卡总数, 读档可按存档扩容)。
+        spellcard_count 语义见 from_dict(作品的符卡总数, 读档可按存档扩容);
+        其余参数同 from_dict(作品专属口径, 读档校验随之参数化)。
         """
         try:
             data = msgspec.json.decode(Path(path).read_bytes())
         except (OSError, ValueError):
-            return cls(spellcard_count=spellcard_count)
-        return cls.from_dict(data, spellcard_count=spellcard_count)
+            return cls(
+                spellcard_count=spellcard_count,
+                num_characters=num_characters,
+                num_difficulties=num_difficulties,
+                catk_slot_count=catk_slot_count,
+                catk_practice_group=catk_practice_group,
+            )
+        return cls.from_dict(
+            data,
+            spellcard_count=spellcard_count,
+            num_characters=num_characters,
+            num_difficulties=num_difficulties,
+            catk_slot_count=catk_slot_count,
+            catk_practice_group=catk_practice_group,
+        )
 
 
 def _is_highscore_record(r) -> bool:
@@ -350,11 +455,18 @@ def _is_highscore_record(r) -> bool:
     )
 
 
-def _is_catk_entry(e) -> bool:
+def _is_catk_group(g, slots: int) -> bool:
+    return (
+        isinstance(g, dict)
+        and _is_int_list(g.get("attempts"), slots)
+        and _is_int_list(g.get("successes"), slots)
+        and _is_int_list(g.get("highscore"), slots)
+    )
+
+
+def _is_catk_entry(e, slots: int) -> bool:
     return (
         isinstance(e, dict)
         and isinstance(e.get("name"), str)
-        and _is_int_list(e.get("attempts"), 7)
-        and _is_int_list(e.get("successes"), 7)
-        and _is_int_list(e.get("highscore"), 7)
+        and _is_catk_group(e, slots)
     )

@@ -19,6 +19,7 @@ import msgspec
 from typing import TYPE_CHECKING
 
 from ...th07.view.screens import MenuAction, MenuCursor
+from ..progress import is_extra_unlocked, is_spell_practice_unlocked
 
 if TYPE_CHECKING:
     from ....engine.score_store import ScoreStore
@@ -67,25 +68,19 @@ CURSOR_FROM_GAME = 1  # 游戏中途 Quit to Title 回来(:3684-3687; 原作条�
 # 实为 difficulty>=EXTRA ? 1 : 0, 这里按 A 期规格简化为退出即 1)
 CURSOR_FROM_RESULT = 5  # 结算回来(ResultScreen → Result 项, :3689-3690)
 
-# score.json 通关记录的面数口径: world 的 stage_no 1..9
-# (world.py:174 —— 7=6A 8=6B 9=EX), record_clear 只在通关时记
-_STAGE_6A_NO = 7
-_STAGE_6B_NO = 8
-
 
 def unlock_flags(store: ScoreStore) -> tuple[bool, bool]:
     """score.json → (Extra 解锁, Spell Practice 解锁)。
 
-    简化判定(CLRD 位掩码 + EXTRA/SPELL_PRACTICE flag 语义是 B 期):
-    原作 IsExtraUnlocked(GameManager.cpp:1337-1343)看 4 组队伍的 6B 通关
-    标记, IsSpellPracticeUnlocked(:1356-1362)看通关标记; 这里按 score.json
-    的 clrd.without_retries(record_clear 记的是到达面数)近似 —— 任一机体
-    6B(8 面)通关 → Extra 解锁; 6A/6B(≥7 面)通关 → Spell Practice 解锁。
+    原作语义(B 期起, 实现见 games/th08/progress.py):
+    IsExtraUnlocked (GameManager.cpp:1337-1343) = 4 组队伍任一 CLRD
+    WithoutRetries 带 EXTRA_UNLOCKED_FLAG (bit14, GameManager.hpp:14);
+    IsSpellPracticeUnlocked (:1356-1362) = 4 组任一 WithRetries 带
+    SPELL_PRACTICE_UNLOCKED_FLAG (bit15) —— 菜单置灰用的就是这两个全局
+    判定 (ActualAddedCallback 的 extraUnlocked/spellPracticeUnlocked,
+    TitleScreen.cpp:3651-3674)。
     """
-    reached = [stage for c in store.clrd for stage in c["without_retries"]]
-    extra = any(stage >= _STAGE_6B_NO for stage in reached)
-    spell = any(stage >= _STAGE_6A_NO for stage in reached)
-    return extra, spell
+    return is_extra_unlocked(store), is_spell_practice_unlocked(store)
 
 
 class TitleFlowTh08(msgspec.Struct):

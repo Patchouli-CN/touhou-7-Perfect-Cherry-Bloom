@@ -30,7 +30,6 @@ from ....apis.basic import Game
 from ....registry import GameData, get_game, register_app
 from ....engine.config import DEFAULT_CONFIG_PATH, GameConfig
 from ....engine.render import FrameInput, Renderer
-from ....engine.score_store import ScoreStore
 from ....engine.view.sound_player import SoundPlayer
 from ....engine.view.sprite_bank import SpriteBank
 from ....paths import DEFAULT_SCORE_PATH, resolve_data_path
@@ -42,6 +41,7 @@ from ...th07.view.screens import (
     Screen,
 )
 from ..crypt import try_decrypt_from_table
+from ..progress import TITLE_BGM_INDEX, load_score_store, unlock_bgm
 from ..sound import SE, SE_FILES, SE_VOLUMES
 from .pygame_backend import PygameTh08Renderer
 from .title_flow import (
@@ -295,11 +295,20 @@ class GameApp:
         self._enter_main_menu()
 
     def _reload_title_unlocks(self) -> None:
-        """重读 score.json 更新 Extra/Spell Practice 解锁态(置灰/跳过依据)。"""
-        store = ScoreStore.load(self._score_path)
+        """重读 score.json 更新 Extra/Spell Practice 解锁态(置灰/跳过依据,
+        判定语义见 progress.is_extra_unlocked/is_spell_practice_unlocked);
+        标题曲播放即解锁 Music Room 0 号曲(TitleScreen.cpp:293
+        PlayMusic(8, 0) → Supervisor.cpp:1579 置位), 有变化才落盘。"""
+        store = load_score_store(self._score_path)
         self._flow.extra_unlocked, self._flow.spell_practice_unlocked = unlock_flags(
             store
         )
+        if not store.plst["bgmUnlocked"][TITLE_BGM_INDEX]:
+            unlock_bgm(store, TITLE_BGM_INDEX)
+            try:
+                store.save(self._score_path)
+            except OSError:
+                pass  # 写盘失败不炸(容错同 score_store)
 
     def _on_menu(self, action: MenuAction) -> None:
         if self._screen == Screen.MAIN_MENU:

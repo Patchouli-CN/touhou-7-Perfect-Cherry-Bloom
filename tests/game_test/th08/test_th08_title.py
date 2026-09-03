@@ -15,8 +15,11 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame  # noqa: E402
 
 from touhou.engine.render import FrameInput  # noqa: E402
-from touhou.engine.score_store import ScoreStore  # noqa: E402
 from touhou.games.th07.view.screens import MenuAction, Screen  # noqa: E402
+from touhou.games.th08.progress import (  # noqa: E402
+    load_score_store,
+    record_ending_clear,
+)
 from touhou.games.th08.view.title_flow import (  # noqa: E402
     CURSOR_FROM_GAME,
     CURSOR_FROM_RESULT,
@@ -121,16 +124,23 @@ def test_back_jumps_to_quit() -> None:
     assert flow.cursor.index == 8
 
 
-# ---- 解锁判定(score.json 简化语义, CLRD 位掩码是 B 期) ----
-def test_unlock_flags() -> None:
-    store = ScoreStore()
+# ---- 解锁判定(CLRD 位掩码原作语义, Ending.cpp:509 的 flag 写回) ----
+def test_unlock_flags(tmp_path) -> None:
+    """6A 通关 → Spell Practice(bit15, 判定读 with 表, 含续关也算);
+    6B 通关 → Extra(bit14, 判定读 without 表, 只认无续关)。"""
+    store = load_score_store(tmp_path / "a.json")  # 缺文件 → 全新
     assert unlock_flags(store) == (False, False)
-    store = ScoreStore()
-    store.record_clear(0, 1, 7, 0)  # 6A 通关(stage_no 7)
-    assert unlock_flags(store) == (False, True)  # Spell Practice 解锁
-    store = ScoreStore()
-    store.record_clear(0, 1, 8, 0)  # 6B 通关(stage_no 8)
-    assert unlock_flags(store) == (True, True)  # Extra + Spell Practice 解锁
+    record_ending_clear(store, 0, 1, cleared_6b=False, num_retries=0)
+    assert unlock_flags(store) == (False, True)  # 6A → Spell Practice 解锁
+    store = load_score_store(tmp_path / "b.json")
+    record_ending_clear(store, 0, 1, cleared_6b=True, num_retries=0)
+    assert unlock_flags(store) == (True, False)  # 6B 无续关 → 只解锁 Extra
+    store = load_score_store(tmp_path / "c.json")
+    record_ending_clear(store, 0, 1, cleared_6b=True, num_retries=1)
+    assert unlock_flags(store) == (False, False)  # 6B 有续关 → Extra 不解锁
+    store = load_score_store(tmp_path / "d.json")
+    record_ending_clear(store, 0, 1, cleared_6b=False, num_retries=1)
+    assert unlock_flags(store) == (False, True)  # 6A 有续关 → Spell 仍解锁
 
 
 # ---- 初始光标规则(:3682-3698; 只接现有路径能产生的来源) ----
@@ -191,10 +201,11 @@ def test_sub_screen_back_keeps_cursor(tmp_path) -> None:
 
 
 def test_unlocks_reloaded_on_title_entry(tmp_path) -> None:
-    """带 6B 通关存档构造 → Extra/Spell Practice 解锁, 光标可停 1/2。"""
-    store = ScoreStore()
-    store.record_clear(0, 1, 8, 0)
+    """带 6A+6B 通关存档构造 → Extra/Spell Practice 解锁, 光标可停 1/2。"""
     score_path = tmp_path / "score.json"
+    store = load_score_store(score_path)
+    record_ending_clear(store, 0, 1, cleared_6b=False, num_retries=0)
+    record_ending_clear(store, 0, 1, cleared_6b=True, num_retries=0)
     store.save(score_path)
     app, _stub = _stub_app(tmp_path, score_path=score_path)
     assert app._flow.extra_unlocked and app._flow.spell_practice_unlocked

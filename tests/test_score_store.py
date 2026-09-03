@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 
+import msgspec
 import pytest
 
 sys.path.insert(0, r"D:\python_play\Touhou08")
@@ -254,3 +255,145 @@ def test_make_highscore_record_accepts_name() -> None:
     assert r["name"] == "REIMU"
     r = make_highscore_record(100, 0, 1, 1, name="TOOLONGNAME99")
     assert r["name"] == "TOOLONGNA"  # 原版 name[9] 截断
+
+
+# ---- 参数化口径(作品专属形状由构造参数注入, 引擎不硬编码) ----
+
+
+def _th08_store() -> ScoreStore:
+    """th08 口径: 222 卡 × 13 槽(shotType 轴 + SHOT_ALL 合计)双组 catk、
+    clrd 13 行 × 5 难度(值语义引擎不解释, 位掩码见 games/th08/progress.py)。"""
+    return ScoreStore(
+        spellcard_count=222,
+        num_characters=13,
+        num_difficulties=5,
+        catk_slot_count=13,
+        catk_practice_group=True,
+    )
+
+
+def test_th08_shape_defaults() -> None:
+    s = _th08_store()
+    assert len(s.catk) == 222
+    assert len(s.catk[0]["attempts"]) == 13
+    assert s.catk[0]["practice"]["attempts"] == [0] * 13
+    assert len(s.clrd) == 13
+    assert all(len(r["with_retries"]) == 5 for r in s.clrd)
+    assert s.plst["bgmUnlocked"] == [0] * 32
+
+
+def test_default_shape_unchanged() -> None:
+    """不传参数 → 旧默认形状(7 槽单组 catk / 6×6 clrd / bgmUnlocked[32])。"""
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
+    assert len(s.catk[0]["attempts"]) == 7
+    assert "practice" not in s.catk[0]
+    assert len(s.clrd) == 6 and len(s.clrd[0]["with_retries"]) == 6
+
+
+def test_catk_total_slot_and_practice_group() -> None:
+    """合计槽 = catk_slot_count-1; practice=True 记账进 practice 组, 两组独立。"""
+    s = _th08_store()
+    s.record_spellcard_attempt(0, "test", 3)
+    s.record_spellcard_attempt(0, "test", 3, practice=True)
+    e = s.catk[0]
+    assert e["attempts"][3] == 1 and e["attempts"][12] == 1
+    assert e["practice"]["attempts"][3] == 1 and e["practice"]["attempts"][12] == 1
+    s.record_spellcard_success(0, 3, 5000, practice=True)
+    assert e["successes"][3] == 0  # in-game 组不受 practice 入账影响
+    assert e["practice"]["successes"][3] == 1
+    assert e["practice"]["highscore"][12] == 5000
+
+
+def test_practice_attempt_without_group_is_silent() -> None:
+    """未配置 practice 组: practice=True 只记名字, 组缺失静默不炸。"""
+    s = ScoreStore(spellcard_count=SPELLCARD_COUNT)
+    s.record_spellcard_attempt(0, "x", 0, practice=True)
+    assert s.catk[0]["attempts"][0] == 0
+    assert s.catk[0]["name"] == "x"
+    s.record_spellcard_success(0, 0, 100, practice=True)
+    assert s.catk[0]["successes"][0] == 0
+
+
+def test_record_clear_uses_configured_character_count() -> None:
+    """取模按注入的 num_characters: 13 行口径下 12 是合法行(不混进 0)。"""
+    s = _th08_store()
+    s.record_clear(12, 2, 5, 0)
+    assert s.clrd[12]["with_retries"][2] == 5
+    assert s.clrd[0]["with_retries"][2] == 0
+    s.record_clear(13, 2, 5, 0)  # 越界取模回 0(取模行为本身不变)
+    assert s.clrd[0]["with_retries"][2] == 5
+
+
+def test_bgm_unlocked_roundtrip_and_fallback(tmp_path) -> None:
+    s = _th08_store()
+    s.plst["bgmUnlocked"][18] = 1
+    p = tmp_path / "score.json"
+    s.save(p)
+    s2 = ScoreStore.load(
+        p,
+        num_characters=13,
+        num_difficulties=5,
+        catk_slot_count=13,
+        catk_practice_group=True,
+    )
+    assert s2.plst["bgmUnlocked"][18] == 1
+    # 坏字段(槽数不对)回退全零
+    raw = msgspec.json.decode(p.read_bytes())
+    raw["plst"]["bgmUnlocked"] = [1] * 5
+    p.write_bytes(msgspec.json.encode(raw))
+    s3 = ScoreStore.load(p, num_characters=13, num_difficulties=5, catk_slot_count=13)
+    assert s3.plst["bgmUnlocked"] == [0] * 32
+
+
+def test_th08_slot_mismatch_falls_back(tmp_path) -> None:
+    """旧形状数据在新口径下读: 7 槽 catk 条目/6 列 clrd 行校验不过, 回退默认。"""
+    s = _th08_store()
+    s.catk[0]["attempts"][1] = 9
+    s.clrd[0]["with_retries"][1] = 0x67
+    p = tmp_path / "score.json"
+    s.save(p)
+    raw = msgspec.json.decode(p.read_bytes())
+    raw["catk"][0]["attempts"] = [1] * 7
+    raw["clrd"][0]["with_retries"] = [1] * 6
+    p.write_bytes(msgspec.json.encode(raw))
+    s2 = ScoreStore.load(
+        p,
+        num_characters=13,
+        num_difficulties=5,
+        catk_slot_count=13,
+        catk_practice_group=True,
+    )
+    assert s2.catk[0]["attempts"] == [0] * 13  # 整条回退默认
+    assert s2.clrd[0]["with_retries"][1] == 0  # 6 列过不了 5 列校验
+
+
+def test_corrupt_practice_group_falls_back_group_only(tmp_path) -> None:
+    """practice 组单独损坏: 只回退该组, 条目主体保留。"""
+    s = _th08_store()
+    s.catk[0]["attempts"][1] = 5
+    s.catk[0]["practice"]["attempts"][1] = 7
+    p = tmp_path / "score.json"
+    s.save(p)
+    raw = msgspec.json.decode(p.read_bytes())
+    raw["catk"][0]["practice"] = {"attempts": [1]}  # 槽数错误
+    p.write_bytes(msgspec.json.encode(raw))
+    s2 = ScoreStore.load(
+        p,
+        num_characters=13,
+        num_difficulties=5,
+        catk_slot_count=13,
+        catk_practice_group=True,
+    )
+    assert s2.catk[0]["attempts"][1] == 5  # 主组保留
+    assert s2.catk[0]["practice"]["attempts"] == [0] * 13  # 组回退默认
+
+
+def test_load_grows_catk_to_archive_length(tmp_path) -> None:
+    """读档 spellcard_count 小于存档条数 → 按存档扩容(读档不丢卡)。"""
+    s = _th08_store()
+    s.catk[221]["attempts"][0] = 3
+    p = tmp_path / "score.json"
+    s.save(p)
+    s2 = ScoreStore.load(p, catk_slot_count=13, catk_practice_group=True)
+    assert len(s2.catk) == 222
+    assert s2.catk[221]["attempts"][0] == 3

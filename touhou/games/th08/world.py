@@ -101,6 +101,14 @@ from .player import (
     PlayerState,
     Th08Player,
 )
+from .progress import (
+    load_score_store,
+    record_bad_ending,
+    record_ending_clear,
+    record_extra_clear,
+    record_stage_clear,
+    unlock_stage_bgm,
+)
 from .results import RunStats, clear_percent, rating
 from .shot_data import parse_sht_th08
 
@@ -212,14 +220,16 @@ class ImperishableNight:
         )  # 时刻符点出生速度随机
         self.targeting = Targeting()
 
-        # 成绩持久化(内存库; th08 catk 是另一格式, 本期按 0 张符卡建库)
+        # 成绩持久化(内存库; 落盘由 view 结算确认时做)。
+        # th08 口径: 222 卡 × 13 槽(shotType 轴 + SHOT_ALL 合计)双组 catk、
+        # clrd 13 行位掩码、plst.bgmUnlocked —— 参数与旧档迁移见 progress.py
         if score_store is not None:
             self.store = score_store
         else:
-            self.store = ScoreStore.load(
-                score_path or DEFAULT_SCORE_PATH, spellcard_count=0
-            )
+            self.store = load_score_store(score_path or DEFAULT_SCORE_PATH)
         self.store.record_play(character, difficulty)
+        # 初始面的面曲解锁(播曲即置位, Supervisor.cpp:1579; 换面在 enter_stage)
+        unlock_stage_bgm(self.store, self.stage_no - 1, 0)
         self.result: dict | None = None
         self.cleared = False
         self.stage_results: dict | None = None
@@ -480,6 +490,9 @@ class ImperishableNight:
             timeout_spell=bool(st.is_survival_spellcard),
         )
         self._catk_idx = idx
+        # catk: BeginSpellcard attempts[shotType]/[SHOT_ALL] ++ (封顶 9999,
+        # Spellcard.cpp:845-855 非 replay 段; 13 槽轴 = shotType)
+        self.store.record_spellcard_attempt(idx, name, self.character)
         self.sounds.play(SE_SPELL_DECLARE)  # 符卡宣告(cut-in 演出是 view 侧)
         log.debug(
             "符卡宣言: #{} {} (stage={}, bonus={}, 时限={}s) (frame={})",
@@ -655,6 +668,9 @@ class ImperishableNight:
             next((n for n in self.stage.bgm_names if n), ""),
             self.frame,
         )
+        # 换面面曲解锁(GameManager.cpp:408-410 → PlayMusic 置位;
+        # 下标表 g_GuiStageMusicContexts, Gui.cpp:39-50)
+        unlock_stage_bgm(self.store, stage_no - 1, 0)
         self._load_ecl()
 
     # ---- 对话(GuiImpl::RunMsg 的每帧语义 + 世界门控) ----
@@ -676,7 +692,10 @@ class ImperishableNight:
                 self._on_next_level()
             elif ev.startswith("music:"):
                 # MSG_MUSIC: musicIdx 索引 stage.bgm_paths
-                self.bgm_events.append(("music", int(ev[6:])))
+                idx = int(ev[6:])
+                self.bgm_events.append(("music", idx))
+                # 切曲解锁(Gui.cpp:624-633 → PlayMusic 置位)
+                unlock_stage_bgm(self.store, self.stage_no - 1, idx)
             elif ev == "fadeout_music":
                 self.bgm_events.append(("fadeout", 4.0))
             else:
@@ -1039,11 +1058,21 @@ class ImperishableNight:
         self._advance_or_ending()
 
     def _advance_or_ending(self) -> None:
-        """过关去向 (GameManager 链回调, GameManager.cpp:313-374):
+        """过关去向 (GameManager 链回调, GameManager.cpp:297-374):
+        CLRD 面位在任何去向之前先写(:297-308, 含 Bad Ending 路径);
         非终面(stage_no 1-6 = 1-5 面): 时刻 ≥12 → Bad Ending
         (gameCleared=0 → 结局, :342-348), 否则换关;
-        7/8(6A/6B) → 结局(gameCleared=1, :368-372);
-        9(EX) → 直接总结算(difficulty>=4 分支, :357-362)。"""
+        7/8(6A/6B) → 结局(gameCleared=1, :370-374, flag 写在 _enter_ending);
+        9(EX) → 直接总结算(difficulty>=4 分支, :357-368)。"""
+        # CLRD 过关置面位 (GameManager.cpp:299-307): 无续关才进
+        # without_retries 表, with_retries 无条件; SHOT_ALL 合计行同步
+        record_stage_clear(
+            self.store,
+            self.character,
+            self.difficulty,
+            self.stage_no - 1,
+            self.globals.num_retries,
+        )
         if self.stage_no <= 6:
             clock = self.ecl_host.clock if self.ecl_host is not None else None
             if clock is not None and clock.units >= 12:
@@ -1065,6 +1094,8 @@ class ImperishableNight:
             )
             self._enter_ending(bad=False)
         else:
+            # EX 通关追加写 0x8000(GameManager.cpp:357-363, 两表不对称 quirk)
+            record_extra_clear(self.store, self.character, self.difficulty)
             self.cleared = True
             log.debug(
                 "通关(EX) → 总结算 (frame={}, score={})",
@@ -1142,6 +1173,18 @@ class ImperishableNight:
         g.snap_gui_score()  # NEXT_LEVEL: guiScore 对齐真实分
         self.stage_results = None
         self._ending_bad = bad
+        # Ending AddedCallback 的解锁写回 (Ending.cpp:504-557):
+        # good → 6A/6B flag 两表 + 结局曲 18/19; bad → bgmUnlocked[18]=0x12
+        if bad:
+            record_bad_ending(self.store)
+        else:
+            record_ending_clear(
+                self.store,
+                self.character,
+                self.difficulty,
+                cleared_6b=self.stage_no == 8,
+                num_retries=g.num_retries,
+            )
         team = self.character if self.character < 4 else (self.character - 4) // 2
         if bad:
             variant = "a"
@@ -1460,6 +1503,13 @@ class ImperishableNight:
                 # 捕获的时刻符点奖 (Spellcard.cpp:763-766 AddTimeOrbs)
                 self.globals.add_time_orbs(res["pending_time_orbs"])
         self._last_spellcard_captured = bool(res["captured"])
+        # catk: 捕获成功 → captures[shotType]/[SHOT_ALL] ++, maxBonus 取 max
+        # (Spellcard.cpp:1086-1105; 只接 ECL 路径, _catk_idx 由 begin 登记;
+        # maxBonus 原作是 bonusProgress, 这里喂显示分 = 代码值 // 10)
+        if res["captured"] and self._catk_idx is not None:
+            self.store.record_spellcard_success(
+                self._catk_idx, self.character, res["score"] // 10
+            )
         self._catk_idx = None
         if res["despawn_bullets"]:
             removed = self._despawn_bullets_bonus()
@@ -1808,10 +1858,9 @@ class ImperishableNight:
             num_retries=g.num_retries,
         )
         pos = self.store.insert_score(rec)
-        if cleared:
-            self.store.record_clear(
-                self.character, self.difficulty, self.stage_no, g.num_retries
-            )
+        # CLRD 不走引擎 record_clear(那是 th07 的 max-stage 口径); th08 的
+        # 位掩码在过关/结局时已由 progress 模块写入(_advance_or_ending 的
+        # record_stage_clear / _enter_ending 的 record_ending_clear)
         self.store.record_run_end(
             self.character,
             self.difficulty,
