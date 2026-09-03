@@ -40,6 +40,19 @@ from .hud_view import HudView
 from .music_flow import MusicRoomFlowTh08
 from .music_view import MusicRoomView
 from .option_view import KeyConfigView, OptionView
+from .result_data import (
+    CHARACTER_ITEMS,
+    highscore_rows,
+    spellcard_rows,
+    stats_lines,
+)
+from .result_flow import (
+    CATEGORY_ITEMS,
+    HIGHSCORE_DIFFICULTY_ITEMS,
+    SPELLCARD_DIFFICULTY_ITEMS,
+    ResultBrowseState,
+)
+from .result_view import ResultBrowseView
 from .select_view import CharacterSelectView, DifficultySelectView
 from .sprite_view import GAME_H, GAME_W, GAME_X, GAME_Y, WIN_H, WIN_W, GameView
 from .title_flow import (
@@ -154,6 +167,9 @@ class PygameTh08Renderer:
         # Music Room 贴图视图(懒加载; 无数据/损坏回退文字菜单)
         self._music_view: MusicRoomView | None = None
         self._music_view_broken = False
+        # Result 浏览面贴图视图(懒加载; 无数据/损坏回退文字菜单)
+        self._result_view: ResultBrowseView | None = None
+        self._result_view_broken = False
         # 输入映射(set_keymap 重建)
         self._action_codes: dict[str, list[int]] = {}
         self._menu_keys: dict[int, MenuAction] = {}
@@ -505,6 +521,83 @@ class PygameTh08Renderer:
         self._draw_menu_list(
             surf, "Music Room", items, flow.cursor - flow.listing_offset
         )
+        self._blit_scaled(surf)
+
+    # ---- Result 浏览面(result_view 贴图渲染; 失败回退文字列表) ----
+    def _ensure_result_view(self) -> "ResultBrowseView | None":
+        """Result 浏览面贴图视图(懒加载一次; 失败永久回退文字菜单,
+        同 _ensure_title_view 口径)。"""
+        if self._result_view is None and not self._result_view_broken:
+            try:
+                self._result_view = ResultBrowseView(self._data_path)
+            except Exception as e:
+                log.warning("Result 浏览面贴图视图加载失败, 回退文字菜单: {}", e)
+                self._result_view_broken = True
+        return self._result_view
+
+    def render_player_data(self, flow, store=None, frame: int = 0) -> None:
+        """Result 浏览面: 原作版渲染(result_view), 失败/无数据回退文字列表。"""
+        view = self._ensure_result_view()
+        if view is not None:
+            try:
+                self._blit_scaled(view.render(flow, frame))
+                return
+            except Exception:
+                log.exception("Result 浏览面渲染异常(本帧降级为文字列表)")
+        surf = pygame.Surface((TITLE_W, TITLE_H))
+        names = [n.strip() for n in CHARACTER_ITEMS]
+        state = flow.state
+        if state == ResultBrowseState.CATEGORY:
+            self._draw_menu_list(surf, "Result", CATEGORY_ITEMS, flow.cursor)
+        elif state == ResultBrowseState.HIGHSCORE_DIFFICULTY:
+            self._draw_menu_list(
+                surf, "High Scores", HIGHSCORE_DIFFICULTY_ITEMS, flow.cursor
+            )
+        elif state == ResultBrowseState.HIGHSCORE_CHARACTER:
+            self._draw_menu_list(surf, "High Scores", names[:12], flow.cursor)
+        elif state == ResultBrowseState.SPELLCARD_DIFFICULTY:
+            self._draw_menu_list(
+                surf, "Spell Cards", SPELLCARD_DIFFICULTY_ITEMS, flow.cursor
+            )
+        elif state == ResultBrowseState.SPELLCARD_CHARACTER:
+            self._draw_menu_list(surf, "Spell Cards", names, flow.cursor)
+        else:
+            surf.fill((12, 10, 28))
+            font = self._font(16)
+            if state == ResultBrowseState.HIGHSCORE:
+                lines = [
+                    f"{r.rank:>2} {r.name:8s} {r.score:9d}{r.retries}"
+                    f"({r.stage_label}) {r.date}"
+                    for r in highscore_rows(
+                        flow.store, flow.selected_difficulty, flow.selected_character
+                    )
+                ]
+                title = (
+                    f"High Scores "
+                    f"{HIGHSCORE_DIFFICULTY_ITEMS[flow.selected_difficulty]}"
+                    f" / {names[flow.selected_character]}"
+                )
+            elif state == ResultBrowseState.SPELLCARD:
+                lines = [
+                    f"{r.number_label} {r.name} {r.stats}"
+                    for r in spellcard_rows(
+                        flow.store,
+                        flow.selected_spellcard_difficulty,
+                        flow.page,
+                        flow.shot_type,
+                    )
+                ]
+                title = (
+                    f"Spell Cards "
+                    f"{SPELLCARD_DIFFICULTY_ITEMS[flow.selected_spellcard_difficulty]}"
+                    f" p{flow.page + 1} / {names[flow.shot_type]}"
+                )
+            else:  # STATS
+                lines = list(stats_lines(flow.store))
+                title = "Stats"
+            surf.blit(font.render(title, True, _TEXT_COLOR), (32, 24))
+            for i, line in enumerate(lines):
+                surf.blit(font.render(line, True, _TEXT_COLOR), (40, 56 + i * 20))
         self._blit_scaled(surf)
 
     # ---- 对局场景 ----

@@ -4,7 +4,8 @@
 背景) + HUD(时刻表盘/妖率计/右栏基础行) + BGM/SE。标题主菜单已原作化
 (A 期, title_flow/title_view); 难度/机体/Extra 选择已原作化(B2 期,
 title_flow.CharacterFlowTh08 + select_view); Music Room 已原作化(C 期第 2 片,
-music_flow + music_view); 对话立绘/符卡宣言/结局/Replay/录像 留二期
+music_flow + music_view); Result 浏览面已原作化(C 期第 3 片, result_flow +
+result_view); 对话立绘/符卡宣言/结局/Replay/录像 留二期
 (见 impl.py 模块 docstring)。
 
 - ``anm_vm``: AnmVmTh08(th08 指令集差集, 对照 th08-ref AnmManager.cpp

@@ -15,7 +15,11 @@ title_flow.py) + option_view.py 贴图渲染(行标签/残机档/音量数字 vm
 Music Room 已原作化(C 期第 2 片): music_flow.MusicRoomFlowTh08(纯逻辑:
 10 行滚动窗口/解锁隐藏/SKIP 淡出/RESET 重播) + music_view.MusicRoomView
 (music.jpg 背景 + music00.anm 主装饰 vm + 曲名/简介直接绘字)。
-一期遗留范围: Replay/Result 浏览/Practice/Spell Practice
+Result 浏览面已原作化(C 期第 3 片): result_flow.ResultFlowTh08(纯逻辑:
+类别/难度/机体三级选择 + 高分榜/符卡战绩/统计取数) +
+result_view.ResultBrowseView(result.jpg 背景 + result00.anm 贴图 vm +
+榜单/统计直接绘字); 入榜名字输入/replay 保存流(结算 GAME_RESULT 模式)
+不在其内。一期遗留范围: Replay/Practice/Spell Practice
 画面(菜单项给"未实装"提示)、对话立绘、符卡宣言、结局画面(world 出 ending
 时直接 finish_ending 跳总结算)、录像录制/播放、入榜名字输入(结算直接存档回标题)。
 
@@ -62,6 +66,7 @@ from ..progress import (
 from ..sound import SE, SE_FILES, SE_VOLUMES
 from .music_flow import MusicRoomFlowTh08, load_tracks
 from .pygame_backend import PygameTh08Renderer
+from .result_flow import ResultFlowTh08
 from .title_flow import (
     CURSOR_FROM_GAME,
     CURSOR_FROM_MUSIC_ROOM,
@@ -112,7 +117,6 @@ _UNSUPPORTED_ACTIONS = (
     "spell_practice",
     "practice",
     "replay",
-    "result",
 )
 
 
@@ -168,6 +172,8 @@ class GameApp:
         self._keyconfig_flow = KeyConfigFlowTh08(config=self._config)
         # Music Room flow(C 期第 2 片; 进画面才建, 每进一次重读曲目表/解锁快照)
         self._music_flow: MusicRoomFlowTh08 | None = None
+        # Result 浏览面 flow(C 期第 3 片; 进画面才建, 持存档快照)
+        self._result_flow: ResultFlowTh08 | None = None
         self._title_fade = 0  # 进标题的白淡入帧计数(_TITLE_FADE_FRAMES 封顶)
         # 名单/面数: 作品数据表(game_data, 经 TouhouWorld 从 GameSpec.data 传入)
         # 优先; 缺省回落注册表 th08 表
@@ -273,6 +279,8 @@ class GameApp:
                 self._run_keyconfig(inp)
             elif self._screen == Screen.MUSIC_ROOM:
                 self._run_music_room(inp)
+            elif self._screen == Screen.PLAYER_DATA:
+                self._run_result_browse(inp)
             elif self._screen == Screen.RESULT:
                 self._run_result(inp.menu_actions)
             else:  # playing
@@ -601,6 +609,51 @@ class GameApp:
                 return
         flow.tick_frame()
 
+    # ---- Result 浏览面(ResultScreen BROWSE 模式, ResultScreen.cpp:544-2151) ----
+    def _enter_result_browse(self) -> None:
+        """进 Result 浏览面(RegisterChain(BROWSE), :2292; 标题菜单 Result 项)。
+        持存档快照(当次会话内不刷新, 同 AddedCallback 一次开档口径);
+        标题曲不停(标题 → ResultScreen 迁移分支无 StopAudio,
+        Supervisor.cpp:180-186, 同 MusicRoom)。"""
+        store = self._title_store
+        if store is None:  # 防御(正常 _reload_title_unlocks 已读)
+            store = load_score_store(self._score_path)
+            self._title_store = store
+        self._result_flow = ResultFlowTh08(store=store)
+        self._screen = Screen.PLAYER_DATA
+
+    def _leave_result_browse(self) -> None:
+        """回标题主菜单: 初始光标 5 = Result 项(wantedState2 规则,
+        TitleScreen.cpp:3689-3690) + 重读解锁态(同 _leave_music_room 口径)。
+        原作退出有 20 帧退幕动画(EXITING 态, :2363-2383), 这里即时切换
+        (与 A/B2/C 期各画面一致)。"""
+        self._enter_title_scene(CURSOR_FROM_RESULT)
+
+    def _run_result_browse(self, inp: FrameInput) -> None:
+        """Result 浏览面一帧: 渲染 → 菜单键(各状态有进场输入门, flow 内门控;
+        移动/确认/返回的菜单 SE 由 flow 结果的 "se" 键给出)。"""
+        flow = self._result_flow
+        if flow is None:  # 防御(正常 _enter_result_browse 已建)
+            self._enter_main_menu()
+            return
+        if self._last_menu_screen != Screen.PLAYER_DATA:
+            self._last_menu_screen = Screen.PLAYER_DATA
+            self._menu_sub_frame = 0
+        frame = self._menu_sub_frame
+        self._menu_sub_frame += 1
+        self._renderer.render_player_data(flow, self._title_store, frame)
+        for act in inp.menu_actions:
+            r = flow.handle(act)
+            if not r:
+                continue
+            se = r.get("se")
+            if se is not None:
+                self._renderer.play_menu_se(se)
+            if r["action"] == "quit":
+                self._leave_result_browse()
+                return
+        flow.tick_frame()
+
     def _on_menu(self, action: MenuAction) -> None:
         if self._screen == Screen.MAIN_MENU:
             if action in (MenuAction.UP, MenuAction.DOWN):
@@ -718,6 +771,11 @@ class GameApp:
             # → Music Room(:569-572 case TITLE_MENU_ITEM_START_MUSIC_ROOM)
             self._renderer.play_menu_se("ok")
             self._enter_music_room()
+        elif act == "result":
+            # → Result 浏览面(:573-575 case TITLE_MENU_ITEM_START_RESULT →
+            # SupervisorState_ResultScreen, RegisterChain(BROWSE))
+            self._renderer.play_menu_se("ok")
+            self._enter_result_browse()
         elif act in _UNSUPPORTED_ACTIONS:
             # 一期未实装(见模块 docstring): 提示后留在主菜单
             self._renderer.play_menu_se("cancel")

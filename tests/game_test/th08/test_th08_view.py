@@ -78,6 +78,9 @@ class StubRenderer:
     def render_music_room(self, flow, frame=0):
         self.calls.append(("music_room", flow.cursor, frame))
 
+    def render_player_data(self, flow, store=None, frame=0):
+        self.calls.append(("player_data", flow.state, flow.cursor, frame))
+
     def begin_game(self, game, *, character):
         self.calls.append(("begin_game", character))
 
