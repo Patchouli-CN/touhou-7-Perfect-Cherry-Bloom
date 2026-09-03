@@ -38,7 +38,7 @@ import numpy as np
 import pygame
 
 from ...logger import logger as log
-from ...registry import get_game
+from ...registry import default_game, get_game
 from ...schema.anm import TextureLoader
 from ...schema.stage import Stage
 from ..render.d3dx_render import GAME_H, GAME_W, D3DXLikeRender
@@ -191,14 +191,15 @@ class StageScene:
         stage_no: int,
         render_scale: float = 0.45,
         *,
-        game: str = "th07",
+        game: str | None = None,
         vm_cls: type[AnmVm] = AnmVm,
         std_file: str | None = None,
         bg_anms: "tuple[str, ...] | None" = None,
     ) -> "StageScene | None":
         """从资源包加载 stage{no}.std + stg{no}bg*.anm; 缺资源返回 None。
 
-        anm 解析按 ``game`` 走注册表(get_game(game).anm.format); 外链纹理
+        anm 解析按 ``game`` 走注册表(get_game(game).anm.format; None = 框架
+        默认作品 registry.default_game()); 外链纹理
         loader 由格式类的 make_texture_loader 工厂(可选鸭子方法)提供;
         条目内层解密由格式类的 decrypt_entry 钩子(可选, 如 th08 的 edz)
         提供。``vm_cls`` 选 anm 脚本 VM 方言; ``std_file``/``bg_anms``
@@ -206,6 +207,7 @@ class StageScene:
         stg4abg.anm)。
         """
         t0 = time.perf_counter()
+        game = game if game is not None else default_game()
         spec = get_game(game).anm
         assert spec is not None, f"{game} 未注册 ANM 维度"
         fmt = spec.format

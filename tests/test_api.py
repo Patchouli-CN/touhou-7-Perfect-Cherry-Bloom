@@ -9,6 +9,7 @@ game_test/th07/test_th07_api.py。
 from __future__ import annotations
 
 import ast
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -293,6 +294,84 @@ def test_root_tests_do_not_import_games() -> None:
                 continue
             if hit:
                 offenders.append(f"{f.name}:{node.lineno}")
+    assert not offenders, offenders
+
+
+def test_framework_layers_have_no_game_name_leakage() -> None:
+    """分层红线: 框架层(engine/apis/utils/schema + 包根)的可执行代码不得
+    出现作品名(``th\\d\\d`` 形态, 大小写不敏感)。
+
+    历史教训: th08 接入时实现曾漏进 engine/ecl.py(作品字段/接缝方法),
+    靠手工清出(596e336); 上面的 import 守护只能守依赖方向, 守不住
+    "下层代码按作品名分支/出现作品专属标识符"这种语义耦合 —— 本测试补位。
+
+    规则(注释/docstring 非代码节点, 天然豁免):
+    - R1 禁止作品名比较分支: ``if game == "th08"`` 之类(作品差异走
+      hook/注册表/子类多态, 不许按名分派)
+    - R2 禁止作品名前缀标识符: Th08Xxx 类 / th08_foo 函数·参数·属性
+      (作品扩展类住 games/thNN/)
+    - R3 禁止作品名字符串字面量; 唯一豁免是 registry 自登记调用参数
+      (``register_*`` 系列装饰器/调用 —— 注册表就是作品名与实现的绑定地,
+      如 schema/archive/pbgz.py 的 ``@register_archive("th08")``)
+
+    "默认作品"同样是显式决策而非散落字面量: 作品包在自己的注册处
+    ``register_default_game`` 声明(th07 见 games/th07/data.py), 消费方
+    一律 ``default_game()`` 解析。豁免文件: registry.py(绑定地本身)与
+    paths.py(作品资源路径配置地)。
+    """
+    pkg = Path(__file__).resolve().parent.parent / "touhou"
+    str_re = re.compile(r"^th\d{2}$", re.IGNORECASE)  # 字符串全匹配
+    ident_re = re.compile(r"^th\d{2}", re.IGNORECASE)  # 标识符前缀匹配
+    files = [f for f in pkg.glob("*.py") if f.name not in ("registry.py", "paths.py")]
+    for sub in ("engine", "apis", "utils", "schema"):
+        files += [f for f in (pkg / sub).rglob("*.py") if "__pycache__" not in f.parts]
+    offenders: list[str] = []
+    for f in files:
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        # R3 豁免区: register_* 调用/装饰器的直接参数与关键字值里的常量
+        exempt: set[int] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            fname = (
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
+                else ""
+            )
+            if not fname.startswith("register_"):
+                continue
+            for a in (*node.args, *(kw.value for kw in node.keywords)):
+                if isinstance(a, ast.Constant):
+                    exempt.add(id(a))
+        for node in ast.walk(tree):
+            loc = f"{f.relative_to(pkg)}:{getattr(node, 'lineno', 0)}"
+            if isinstance(node, ast.Compare):
+                for c in (node.left, *node.comparators):
+                    if (
+                        isinstance(c, ast.Constant)
+                        and isinstance(c.value, str)
+                        and str_re.match(c.value)
+                    ):
+                        offenders.append(f"R1 比较分支 {loc} == {c.value!r}")
+            elif isinstance(
+                node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+            ):
+                if ident_re.match(node.name):
+                    offenders.append(f"R2 定义名 {loc} {node.name}")
+            elif isinstance(node, ast.arg) and ident_re.match(node.arg):
+                offenders.append(f"R2 参数名 {loc} {node.arg}")
+            elif isinstance(node, ast.Attribute) and ident_re.match(node.attr):
+                offenders.append(f"R2 属性名 {loc} .{node.attr}")
+            elif (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and str_re.match(node.value)
+                and id(node) not in exempt
+            ):
+                offenders.append(f"R3 字符串 {loc} {node.value!r}")
     assert not offenders, offenders
 
 

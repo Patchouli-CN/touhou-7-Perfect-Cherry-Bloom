@@ -21,7 +21,7 @@ register_game_data + 复用/自实现对局类即可, 引擎模块不用改。
 
 from __future__ import annotations
 
-from ...registry import GameData, register_game_data
+from ...registry import GameData, register_default_game, register_game_data
 
 # ---- 名单(下标语义: shotType / difficulty) ----
 # 机体名单(shotType: 0=ReimuA 1=ReimuB 2=MarisaA 3=MarisaB 4=SakuyaA 5=SakuyaB)
@@ -304,3 +304,6 @@ TH07_DATA = register_game_data(
         full_power_score_bonus=tuple(FULL_POWER_SCORE_BONUS),
     ),
 )
+# 框架默认作品(Game()/TouhouWorld() 不传 game= 的构造对象; 显式声明制,
+# 见 registry.register_default_game)
+register_default_game("th07")

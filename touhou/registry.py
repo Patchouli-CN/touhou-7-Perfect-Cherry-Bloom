@@ -61,6 +61,7 @@ __all__ = [
     "GameData",
     "GameHooks",
     "GameSpec",
+    "default_game",
     "get_archive_format",
     "get_archive_spec",
     "get_game",
@@ -69,6 +70,7 @@ __all__ = [
     "register_anm",
     "register_app",
     "register_archive",
+    "register_default_game",
     "register_ecl",
     "register_game_data",
     "register_game_hooks",
@@ -421,6 +423,32 @@ def registered_games() -> list[str]:
         | set(_MODS)
         | set(_ARCHIVE)
     )
+
+
+# ---- 默认作品(Game()/TouhouWorld() 等不传 game= 时的构造对象) ----
+#: 显式声明制: 作品包在自己的注册处(data.py)自报, 不靠导入顺序推导
+#: (测试进程另有假作品先注册也不受影响)。框架层不散落 "th07" 字面量默认值
+#: (分层红线, tests/test_api.py 的泄漏守护钉死)。
+_DEFAULT_GAME: str | None = None
+
+
+def register_default_game(name: str) -> None:
+    """声明框架默认作品; 同名重复声明幂等, 改判他人报 DuplicateRegistrationError。"""
+    global _DEFAULT_GAME
+    if _DEFAULT_GAME is not None and _DEFAULT_GAME != name:
+        raise DuplicateRegistrationError(
+            f"默认作品重复声明: {_DEFAULT_GAME!r} 在先, 拒绝改判 {name!r}"
+        )
+    _DEFAULT_GAME = name
+
+
+def default_game() -> str:
+    """框架默认作品名; 尚无作品声明(作品包未导入)时报 NotRegisteredError。"""
+    if _DEFAULT_GAME is None:
+        raise NotRegisteredError(
+            "尚无默认作品(作品包导入时经 register_default_game 声明)"
+        )
+    return _DEFAULT_GAME
 
 
 # ---- 渲染后端维度(与作品名正交: 后端名 → Renderer 实现类) ----

@@ -60,6 +60,7 @@ from typing import Any, Iterator, Optional
 from ..bullet_commands import CmdFlag
 from ..ecl import EclInstr, EclOpcode
 from ...logger import logger as log
+from ...registry import default_game
 from .base import EclTranslatorBase, TraceEvent, spellcard_name
 from .ir import IrCond, IrIf, IrLoop, IrNode, IrOp, IrOperand, IrSeq
 
@@ -298,7 +299,7 @@ def _wrap_angle(a: float) -> float:
 class YoukaiDanmakuTranslator(EclTranslatorBase):
     """ECL → 妖归 SpellDefinition JSON 的翻译器。
 
-    参数(均有 th07 默认值; 其他作品经参数覆盖, 不 import games.*):
+    参数(映射表均有 th07 默认表; 其他作品经参数覆盖, 不 import games.*):
     - ``speed_scale``: 引擎像素/帧 → 妖归速度的比例(subskill 参考
       0.8≈0.4, 默认 0.5, 按手感微调);
     - ``default_lifetime``: 敌弹 lifetime(tick), ECL 弹自然飞出场,
@@ -315,7 +316,7 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
 
     def __init__(
         self,
-        game: str = "th07",
+        game: str | None = None,
         *,
         speed_scale: float = 0.5,
         default_lifetime: int = 200,
@@ -328,7 +329,7 @@ class YoukaiDanmakuTranslator(EclTranslatorBase):
         laser_length: int = 100,
         laser_thickness_scale: float = 0.1,
     ) -> None:
-        super().__init__(game)
+        super().__init__(game if game is not None else default_game())
         self.speed_scale = speed_scale
         self.default_lifetime = default_lifetime
         self.min_fold = min_fold

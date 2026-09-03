@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from .registry import default_game
+
 # 内置默认数据源(本机游戏目录, 按作品名查表; 新作品接入时在此补默认路径)
 DEFAULT_DATA_PATHS = {
     "th07": Path(r"D:\TOUHOU_GAME\[th07] 东方妖妖梦 (日文版)\th07.dat"),
@@ -26,15 +28,17 @@ DEFAULT_SCORE_PATH = Path(__file__).resolve().parent.parent / "score.json"
 
 
 def resolve_data_path(
-    data_path: str | Path | None = None, *, game: str = "th07"
+    data_path: str | Path | None = None, *, game: str | None = None
 ) -> Path:
     """按 显式参数 > TOUHOU_DAT 环境变量 > 内置默认(按 ``game`` 查表) 解析 .dat 路径。
 
-    环境变量是全局覆盖, 不分作品(单包调试场景); 未登记的作品名回落 th07 默认。
+    环境变量是全局覆盖, 不分作品(单包调试场景); ``game=None`` 用框架默认
+    作品(registry.default_game()); 未登记的作品名回落默认作品的路径。
     """
     if data_path is not None:
         return Path(data_path)
     env = os.environ.get(ENV_DATA)
     if env:
         return Path(env)
+    game = game if game is not None else default_game()
     return DEFAULT_DATA_PATHS.get(game, DEFAULT_DATA)

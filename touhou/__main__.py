@@ -16,6 +16,7 @@ from types import ModuleType
 from .apis.basic import TouhouWorld
 from .env import log_environment
 from .logger import logger, setup_logging
+from .registry import default_game
 
 pyfiglet: ModuleType | None  # 缺依赖时回落 None(跳过横幅)
 try:
@@ -50,9 +51,12 @@ def main() -> None:
         prog="python -m touhou", description="东方引擎: 进入游戏"
     )
     parser.add_argument(
-        "--game", default="th07", help="作品名(默认 th07; 须在注册表已登记)"
+        "--game",
+        default=None,
+        help="作品名(缺省 = 注册表的框架默认作品; 须在注册表已登记)",
     )
     args = parser.parse_args()
+    game = args.game if args.game is not None else default_game()
 
     setup_logging(
         log_level=os.environ.get("TOUHOU_LOG_LEVEL", "TRACE"),
@@ -61,10 +65,10 @@ def main() -> None:
     )
     _print_banner()
     logger.info("=== 游戏启动 ===")
-    log_environment(logger, game=args.game)
+    log_environment(logger, game=game)
     try:
         # 窗口版: 弹出游戏界面, 阻塞至关窗
-        TouhouWorld(game=args.game, headless=False).run()
+        TouhouWorld(game=game, headless=False).run()
     except Exception:
         logger.exception("游戏异常退出")
         raise

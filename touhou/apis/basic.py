@@ -27,7 +27,7 @@ from typing import Callable, Generic, Iterator, Literal, TypeVar, overload
 
 from ..engine.lasers import LaserState
 from ..engine.replay import ReplayRecorder, make_meta, new_replay_name
-from ..registry import GameSpec, get_game
+from ..registry import GameSpec, default_game, get_game
 from ..types import GameEngine, InputSource, KeysTuple, PathLike
 
 
@@ -215,7 +215,9 @@ def _resolve_ids(
 
 
 class Game:
-    """一局作品对局(默认 th07, ``game=`` 指定其他已注册作品)。典型用法::
+    """一局作品对局(不传 ``game=`` 用框架默认作品, registry.default_game())。
+
+    典型用法::
 
     game = Game(character="ReimuA", difficulty="Normal")
     while game.phase == GamePhase.RUNNING:
@@ -230,14 +232,16 @@ class Game:
         difficulty: str = "Normal",
         stage: int = 1,
         *,
-        game: str = "th07",
+        game: str | None = None,
         data_path: PathLike | None = None,
         seed: int | None = None,
         lives: int | None = None,
         score_path: PathLike | None = None,
     ) -> None:
-        # 经注册表解析作品(未注册名报带已注册列表的 KeyError);
+        # 经注册表解析作品(未注册名报带已注册列表的 KeyError); None = 框架
+        # 默认作品(registry.default_game(), 作品包显式声明而非顺序推导);
         # 对局实现(register_world_impl 登记)必须有, 否则无法构造对局
+        game = game if game is not None else default_game()
         self.game_name = game
         self.spec = _require_world(game)
         # 角色/难度名经数值表名单映射内部 id(非法名在此报 ValueError)
@@ -700,7 +704,7 @@ class TouhouWorldEventStream:
 
 
 class TouhouWorld(Generic[_H]):
-    """一部作品对局世界的统一入口(默认 th07)。典型用法::
+    """一部作品对局世界的统一入口(不传 ``game=`` 用框架默认作品)。典型用法::
 
         from touhou import TouhouWorld, WorldData
 
@@ -714,8 +718,9 @@ class TouhouWorld(Generic[_H]):
         tw2 = TouhouWorld(wd=wd, headless=False)
         tw2.run()                        # 非 headless: 弹出游戏窗口, 阻塞至关窗
 
-    ``game`` 参数(默认 "th07")经 registry 全局注册表解析作品的
-    ECL VM/ANM 格式/回调包/对局实现/窗口 App; 未注册名报清晰 KeyError。
+    ``game`` 参数(None = registry.default_game(), 框架默认作品)经注册表
+    解析作品的 ECL VM/ANM 格式/回调包/对局实现/窗口 App; 未注册名报清晰
+    KeyError。
 
     需要 AI 介入时给 ``stream.policy`` 赋一个 ``game -> Input`` 的函数,
     或直接用 ``tw.game.step(your_input)`` 自己逐帧驱动。
@@ -741,7 +746,7 @@ class TouhouWorld(Generic[_H]):
         *,
         headless: Literal[True],
         stage: int = 1,
-        game: str = "th07",
+        game: str | None = None,
         seed: int | None = None,
         auto_input: InputSource | None = None,
     ) -> None: ...
@@ -755,7 +760,7 @@ class TouhouWorld(Generic[_H]):
         headless: Literal[False] = False,
         stage: int = 1,
         *,
-        game: str = "th07",
+        game: str | None = None,
         seed: int | None = None,
         auto_input: InputSource | None = None,
     ) -> None: ...
@@ -769,7 +774,7 @@ class TouhouWorld(Generic[_H]):
         headless: bool = False,
         stage: int = 1,
         *,
-        game: str = "th07",
+        game: str | None = None,
         seed: int | None = None,
         auto_input: InputSource | None = None,
     ) -> None: ...
@@ -782,11 +787,13 @@ class TouhouWorld(Generic[_H]):
         headless: bool = False,
         stage: int = 1,
         *,
-        game: str = "th07",
+        game: str | None = None,
         seed: int | None = None,
         auto_input: InputSource | None = None,
     ) -> None:
-        # 经注册表解析作品(未注册名在此即报 KeyError, 与 headless 无关)
+        # 经注册表解析作品(未注册名在此即报 KeyError, 与 headless 无关);
+        # None = 框架默认作品(registry.default_game())
+        game = game if game is not None else default_game()
         self.spec = _require_world(game)
         self.game_name = game
         self.wd = wd or WorldData()

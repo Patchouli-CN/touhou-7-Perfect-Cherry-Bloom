@@ -18,7 +18,7 @@ import numpy as np
 import pygame
 
 from ...logger import logger as log
-from ...registry import get_game
+from ...registry import default_game, get_game
 from ...schema.anm import AnmFile, AnmInstr, TextureLoader
 from ...schema.archive import ArchiveBase, open_archive
 
@@ -75,12 +75,12 @@ class SpriteBank:
     """anm sprite 缓存: 懒加载数据包, 按 (anm, entry, id) 缓存 Surface。
 
     ``game`` 决定 anm 解析走哪部作品的注册格式(get_game(game).anm.format);
-    默认 "th07", 既有调用方行为不变。
+    None = 框架默认作品(registry.default_game())。
     """
 
-    def __init__(self, data_path: str | Path, *, game: str = "th07") -> None:
+    def __init__(self, data_path: str | Path, *, game: str | None = None) -> None:
         self._data_path = Path(data_path)
-        self._game = game
+        self._game = game if game is not None else default_game()
         self._arc: ArchiveBase | None = None
         self._tex_loader: TextureLoader | None = None
         self._tex_loader_ready = False
