@@ -34,9 +34,10 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import cast
 
 from ...engine.bullets import BulletWorld
-from ...engine.ecl import EclEnemyState, EclWorld
+from ...engine.ecl import EclEnemyState
 from ...engine.ending import EndingData, parse_end, parse_end_music, parse_end_ops
 from ...engine.enemies import EclEnemy, EnemyHost, Targeting, settle_damage
 from ...engine.events import EventBus
@@ -46,8 +47,7 @@ from ...engine.score_store import ScoreStore, make_highscore_record
 from ...paths import DEFAULT_SCORE_PATH, resolve_data_path
 from ...registry import GameData, GameHooks, register_world_impl
 from ...schema.archive import open_archive
-from ...schema.msg import MsgFile, MsgVm
-from ...schema.shot_data import parse_sht_th08
+from ...schema.msg import MsgFile
 from ...schema.sound import SoundQueue
 from ...schema.stage import Stage
 from ...utils import Vec2
@@ -71,8 +71,10 @@ from .data import (
 )
 from .ecl_host import Th08GameEclHost
 from .ecl_file import EclFileTh08
+from .ecl_state import Th08EclWorld, Th08EnemyState
 from .ecl_timeline import Th08TimelineRunner
 from .ecl_vm import EclMachineTh08
+from .msg_vm import MsgVmTh08
 from .globals import (
     GRAZE_STAGE_CAP,
     GRAZE_TOTAL_CAP,
@@ -100,6 +102,7 @@ from .player import (
     Th08Player,
 )
 from .results import RunStats, clear_percent, rating
+from .shot_data import parse_sht_th08
 
 from ...logger import logger as log
 
@@ -261,11 +264,11 @@ class ImperishableNight:
 
         # ---- ECL 关卡脚本 ----
         self.ecl_file: EclFileTh08 | None = None
-        self.ecl_world: EclWorld | None = None
+        self.ecl_world: Th08EclWorld | None = None
         self.ecl_host: Th08GameEclHost | None = None
         self.ecl_timelines: list[Th08TimelineRunner] = []
         self.msg_file: MsgFile | None = None
-        self.msg_vm: MsgVm | None = None
+        self.msg_vm: MsgVmTh08 | None = None
         self._boss_ecl_state: EclEnemyState | None = None
         self._boss_ecl_enemy: EclEnemy | None = None
         self._rand_spawn_idx = 0  # C enemyDropCounter (itemDrop==-1 每 3 掉 1)
@@ -313,7 +316,7 @@ class ImperishableNight:
             return
         data = try_decrypt_from_table(data)
         self.ecl_file = EclFileTh08.parse(data)
-        self.ecl_world = EclWorld(
+        self.ecl_world = Th08EclWorld(
             rng=Rng(self._ecl_seed),
             difficulty=self.difficulty,
             rank=self.globals.rank,
@@ -344,7 +347,9 @@ class ImperishableNight:
             self.globals, "current_power", float(v)
         )
         # 击坠拆链奖励 (DetachEnemyChain(1), EnemyManager.cpp:229-345)
-        self.ecl_host.on_chain_kill = lambda e: self._detach_chain_rewards(e.state)
+        self.ecl_host.on_chain_kill = lambda e: self._detach_chain_rewards(
+            cast(Th08EnemyState, e.state)
+        )
         # 对话系统: msg 文件按 (关, 机体) 表取 (Gui.cpp:2098 LoadMsg);
         # 文本 XOR 0x77, 立绘 4 槽; 缺资源则不留 VM(不停轴)
         self.msg_file = None
@@ -352,9 +357,9 @@ class ImperishableNight:
         try:
             raw = self.archive.load(MSG_FILES[self.stage_no - 1][self.character])
             self.msg_file = MsgFile.parse(try_decrypt_from_table(raw), text_xor=0x77)
-            self.msg_vm = MsgVm(self.msg_file, num_portraits=4)
-            self.msg_vm.pause_min_frames = 6  # th08 MsgRead: waitThreshold=6
-            # (Gui.cpp:241)
+            self.msg_vm = MsgVmTh08(
+                self.msg_file, num_portraits=4, pause_min_frames=6
+            )  # th08 MsgRead: waitThreshold=6 (Gui.cpp:241)
             self.ecl_host.msg_vm = self.msg_vm
         except (KeyError, IndexError):
             self.ecl_host.msg_vm = None
@@ -1487,7 +1492,7 @@ class ImperishableNight:
                     )
                 b.dead = True
 
-    def _detach_chain_rewards(self, st) -> None:
+    def _detach_chain_rewards(self, st: Th08EnemyState) -> None:
         """DetachEnemyChain(awardRewards=1) 的奖励段 (EnemyManager.cpp:229-345)。
 
         被击坠的敌人是链上子机: 妖率 -gauge/12, 符点妖率抑制 50 帧,
@@ -1575,7 +1580,7 @@ class ImperishableNight:
         self.sounds.play(SE_ENEMY_DEAD_A + counter % 2)  # 两档音量交替
         g = self.globals
         if isinstance(e, EclEnemy):
-            st = e.state
+            st = cast(Th08EnemyState, e.state)
             if not self.bomb.is_in_use:
                 # 击坠妖率: focus(妖) +200, 否则 -200 (EnemyManagerUpdate.cpp:483-486)
                 g.add_to_youkai_gauge(200 if self.player.focus else -200)

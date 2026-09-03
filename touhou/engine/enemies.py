@@ -634,7 +634,7 @@ class EclEnemy:
         C 里四种 type 都会跑 deathCallbackSub(case 0/1 goto END_BOSS 后
         落进 case 2 的掉落段, 然后统一进死亡回调), 这里一并对齐。
         """
-        self.died_by_kill = True  # th08: 击坠拆链奖励走 on_enemy_gone 区分
+        self.died_by_kill = True  # 击坠置位, 供宿主区分死亡方式(kill/脚本 despawn)
         st = self.state
         dt = st.death_type
         self._kill_no_score = dt == 2  # C case 2 无 AddScore(其余 case 有)

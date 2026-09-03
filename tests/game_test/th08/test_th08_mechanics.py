@@ -14,9 +14,10 @@
 from __future__ import annotations
 
 import touhou  # noqa: F401  # import 即完成 th08 全维度注册
-from touhou.engine.ecl import EclContextArgs, Vec3
+from touhou.engine.ecl import Vec3
 from touhou.games.th08 import ecl_vm
 from touhou.games.th08.boss import TIMEOUT_SPELL_SCORE_LIMIT, Th08Boss
+from touhou.games.th08.ecl_state import Th08ContextArgs
 from touhou.games.th08.ecl_vm import Th08EclOpcode as Op
 from touhou.games.th08.globals import Th08Globals
 from touhou.games.th08.items import ItemType
@@ -261,7 +262,7 @@ def test_spellcard_capture_flow() -> None:
     px = g.player.pos.x
     e = g.ecl_host.spawn_enemy(
         0, Vec3(px, 100.0, 0.0), life=-1, item_drop=-2, score=1000,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     assert e is not None
     assert g.boss is not None and g.boss.is_active
@@ -301,7 +302,7 @@ def test_spellcard_timeout_flow() -> None:
     px = g.player.pos.x
     g.ecl_host.spawn_enemy(
         0, Vec3(px, 100.0, 0.0), life=-1, item_drop=-2, score=1000,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     assert g.boss is not None and g.boss.is_active
     invuln_seen = False
@@ -348,7 +349,7 @@ def test_last_spell_timeout_keeps_capture() -> None:
     px = g.player.pos.x
     g.ecl_host.spawn_enemy(
         0, Vec3(px, 100.0, 0.0), life=-1, item_drop=-2, score=1000,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     for _ in range(10):
         g.tick(keys=(False, False, False, False, False))
@@ -379,7 +380,7 @@ def test_deathbomb_window_freeze_and_cost() -> None:
     px, py = g.player.pos.x, g.player.pos.y
     g.ecl_host.spawn_enemy(
         0, Vec3(px, 100.0, 0.0), life=-1, item_drop=-2, score=1000,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     g.tick(keys=(False, False, False, False, False))
     assert g.boss is not None and g.boss.is_active
@@ -388,7 +389,7 @@ def test_deathbomb_window_freeze_and_cost() -> None:
     bombs0 = g.globals.bombs_remaining
     g.ecl_host.spawn_enemy(
         0, Vec3(px, py, 0.0), life=-1, item_drop=-2, score=100,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     g.tick(keys=(False, False, False, False, False))
     assert g.player.state == PlayerState.DEAD
@@ -425,14 +426,14 @@ def test_death_without_bomb_short_window() -> None:
     px, py = g.player.pos.x, g.player.pos.y
     g.ecl_host.spawn_enemy(
         0, Vec3(px, 100.0, 0.0), life=-1, item_drop=-2, score=1000,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     g.tick(keys=(False, False, False, False, False))
     assert g.boss is not None and g.boss.is_active
     lives0 = g.globals.lives_remaining
     g.ecl_host.spawn_enemy(
         0, Vec3(px, py, 0.0), life=-1, item_drop=-2, score=100,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     g.tick(keys=(False, False, False, False, False))
     assert g.player.state == PlayerState.DEAD
@@ -611,14 +612,14 @@ def test_familiar_chain_death_time_orbs() -> None:
     px = g.player.pos.x
     parent = g.ecl_host.spawn_enemy(
         0, Vec3(px, 100.0, 0.0), life=-1, item_drop=-2, score=1000,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     assert parent is not None
     children = []
     for i in range(3):
         c = g.ecl_host.spawn_familiar(
             90, 1, Vec3(px + 40.0 * (i + 1), 100.0, 0.0), 500, -2, 100,
-            EclContextArgs(), parent=parent.state,
+            Th08ContextArgs(), parent=parent.state,
         )
         assert c is not None
         children.append(c)
@@ -657,11 +658,11 @@ def test_chain_child_death_gauge_penalty() -> None:
     px = g.player.pos.x
     parent = g.ecl_host.spawn_enemy(
         0, Vec3(px, 60.0, 0.0), life=-1, item_drop=-2, score=1000,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     child = g.ecl_host.spawn_enemy(
         0, Vec3(px, 100.0, 0.0), life=-1, item_drop=1, score=1000,
-        mirror=0, context_args=EclContextArgs(),
+        mirror=0, context_args=Th08ContextArgs(),
     )
     assert parent is not None and child is not None
     # 手工挂链(模拟使魔附着): child 挂在 parent 下

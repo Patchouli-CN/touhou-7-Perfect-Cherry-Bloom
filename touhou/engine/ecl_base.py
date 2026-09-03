@@ -17,6 +17,10 @@
   默认委托 ``_get_float``(th07 需要 raw 回落以还原 C 的位型语义)。
 - ``_INTERP_POS_VARS``: 位置分量的变量 id 元组, 插值命中时回算 axis_speed
   (th07 = POS_X/POS_Y/POS_Z)。
+- ``_make_enemy_state()``/``_make_world()``/``_make_context()``/``_make_host()``:
+  构造工厂, 作品子类覆写以注入扩展状态类(th08 = Th08EnemyState/Th08EclWorld/
+  Th08ContextArgs/Th08NullHost, 见 games/th08/ecl_state.py 与 ecl_host.py);
+  默认实现即原行为。
 
 handler 注册示例(作品子类侧):
 
@@ -132,11 +136,11 @@ class EclMachineBase:
         strict: bool = False,
     ) -> None:
         self.file = ecl_file
-        self.enemy = enemy if enemy is not None else EclEnemyState()
-        self.world = world if world is not None else EclWorld()
-        self.host = host if host is not None else EclHost()
+        self.enemy = enemy if enemy is not None else self._make_enemy_state()
+        self.world = world if world is not None else self._make_world()
+        self.host = host if host is not None else self._make_host()
         self.strict = strict
-        self.current = EclContext()
+        self.current = self._make_context()
         self.stack: list[EclContext] = []
         self.finished = False
         # 正在 _execute 的指令(宿主回调溯源用, 如 engine/translate 的
@@ -147,6 +151,20 @@ class EclMachineBase:
         self.trace: Optional[list[int]] = None
         # 只警告一次的类别, 避免刷日志
         self._warned: set = set()
+
+    # ---- 构造工厂(作品子类覆写以注入扩展状态类, 如 th08 的 Th08* 子类) ----
+
+    def _make_enemy_state(self) -> EclEnemyState:
+        return EclEnemyState()
+
+    def _make_world(self) -> EclWorld:
+        return EclWorld()
+
+    def _make_context(self) -> EclContext:
+        return EclContext()
+
+    def _make_host(self) -> EclHost:
+        return EclHost()
 
     # ---- CallEclSub ----
     def call_sub(self, sub_id: int) -> None:

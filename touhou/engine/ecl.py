@@ -502,10 +502,6 @@ class EclContextArgs(msgspec.Struct):
 
     int3/float3 变量读的是这里的 global_* 快照(SUB_CALL 时从活动全局拷贝),
     与 EclWorld 里的活动全局变量区分。
-
-    th08_* 字段是 th08 上下文变量区(EnemyEclContext, EclManager.hpp:217-250):
-    intVariables[8]/floatVariables[8]/extraIntVariables[4]/extraFloatVariables[2]/
-    callParameterInts[4]/callParameterFloats[4]; th07 不使用(默认值不参与其逻辑)。
     """
 
     int_vars1: list[int] = msgspec.field(default_factory=lambda: [0] * 4)
@@ -514,13 +510,6 @@ class EclContextArgs(msgspec.Struct):
     float_vars2: list[float] = msgspec.field(default_factory=lambda: [0.0] * 2)
     global_ints: list[int] = msgspec.field(default_factory=lambda: [0] * 4)
     global_floats: list[float] = msgspec.field(default_factory=lambda: [0.0] * 4)
-    # ---- th08 上下文变量区(EclManager.hpp:225-230) ----
-    th08_ints: list[int] = msgspec.field(default_factory=lambda: [0] * 8)
-    th08_floats: list[float] = msgspec.field(default_factory=lambda: [0.0] * 8)
-    th08_extra_ints: list[int] = msgspec.field(default_factory=lambda: [0] * 4)
-    th08_extra_floats: list[float] = msgspec.field(default_factory=lambda: [0.0] * 2)
-    th08_call_ints: list[int] = msgspec.field(default_factory=lambda: [0] * 4)
-    th08_call_floats: list[float] = msgspec.field(default_factory=lambda: [0.0] * 4)
 
     def clone(self) -> "EclContextArgs":
         return EclContextArgs(
@@ -530,12 +519,6 @@ class EclContextArgs(msgspec.Struct):
             list(self.float_vars2),
             list(self.global_ints),
             list(self.global_floats),
-            list(self.th08_ints),
-            list(self.th08_floats),
-            list(self.th08_extra_ints),
-            list(self.th08_extra_floats),
-            list(self.th08_call_ints),
-            list(self.th08_call_floats),
         )
 
 
@@ -763,31 +746,6 @@ class EclEnemyState(msgspec.Struct):
     # 炸弹中 → 无碰撞不受击, 炸弹结束后延迟 1 帧解除 (EclManager.cpp:2261-2276)
     invisible_on_bomb: int = 0
     spellcard_delay_timer: int = 0
-    # ---- th08 专属字段(Reference/th08-ref/src; th07 不使用) ----
-    # positionOffset: worldPosition = position + positionOffset (EclRun.cpp:54-56;
-    # op92 使魔继承父位置时置位)
-    pos_offset: Vec3 = msgspec.field(default_factory=Vec3)
-    # enemy->eclIntVariables[8]/eclFloatVariables[8] (EclOperandsInt.cpp:38-45)
-    th08_enemy_ints: list[int] = msgspec.field(default_factory=lambda: [0] * 8)
-    th08_enemy_floats: list[float] = msgspec.field(default_factory=lambda: [0.0] * 8)
-    anm_alt_bank: int = 0  # flags2 bit2: 用 alternateEnemyAnm 银行 (EclRunLow.inl:457)
-    defer_bullet_pattern: int = 0  # ENEMY_FLAG_DEFER_BULLET_PATTERN (op107/108)
-    # defer 期间弹幕指令的 memcpy 快照 (EclRunHigh.inl:176-181), 自动射击时重新派发
-    pending_shot_instr: Optional[EclInstr] = None
-    min_player_dist_sq: float = 0.0  # op82: 距自机过近时压住弹幕 (EclDependencies.cpp:704-710)
-    form_effect: int = 0  # op83: flags2 formEffect
-    no_sprite: int = 0  # op79-81 bit3: ENEMY_FLAG_NO_SPRITE
-    draw_group: int = 0  # op156/159: 绘制分组
-    youkai_aligned: int = 0  # flags1 YOUKAI_ALIGNED (使魔 spawn 时按自机人妖定)
-    point_item_drop_count: int = 0  # op144 pointItemDropCount
-    power_or_point_item_drop_count: int = 0  # op144 powerOrPointItemDropCount
-    phase_starting_life: int = 0  # op131/177 phaseStartingLife
-    extra_vm_fixed_offset: int = 0  # op182: flags2 extraVmFixedOffset
-    no_damage_during_stop: int = 0  # op183: flags1 noDamageDuringStop
-    difficulty_mask_override: int = 0  # eclDifficultyMaskOverride (EclRun.cpp:67-74)
-    # 使魔父链: linkedChildCount(EclRunLow.inl:788-790; 链本体在 th08 宿主侧,
-    # 喂 VM 变量 10096, EclOperandsInt.cpp:125-129)
-    linked_child_count: int = 0
 
     def clamp_pos(self) -> None:
         """Enemy::ClampPos。"""
@@ -854,26 +812,6 @@ class EclWorld(msgspec.Struct):
     framerate_multiplier: float = 1.0  # g_Supervisor.effectiveFramerateMultiplier
     script_wait_time: int = 0
     unused_9545f0: int = 0
-    # ---- th08 专属字段(Reference/th08-ref/src; th07 不使用) ----
-    # op175: EnemyManager.suppressTimelineSpawns (EclRunHigh.inl:953), 时间轴生敌门控
-    suppress_timeline_spawns: int = 0
-    # 时间轴 op13/14 的事件槽 (EnemyManager.timelineEventSlots[4], EnemyTimeline.cpp:253-282)
-    timeline_event_slots: list[int] = msgspec.field(default_factory=lambda: [-1] * 4)
-    opcode163_value: int = 0  # op163: EnemyManager.opcode163Value (EclRunHigh.inl:425)
-    # th08: g_EclCallParameters(EclGlobals.cpp:105) —— C 是全局静态(全敌人共享,
-    # sub 调用时拷入新上下文, EclDependencies.cpp:485-487), 这里按 world 共享
-    # (同一 world 的全部 EclMachineTh08 引用同一对列表)
-    ecl_call_params_ints: list[int] = msgspec.field(default_factory=lambda: [0] * 4)
-    ecl_call_params_floats: list[float] = msgspec.field(
-        default_factory=lambda: [0.0] * 4
-    )
-    # th08 world 快照(变量 10097-10100 的读源, 每帧由宿主 frame_update 同步):
-    # 10097 自机妖形态(EclOperandsInt.cpp:138)/10098 时刻符点 Last Spell 状态
-    # (:139-144)/10099 符卡取得状态(:145-147)/10100 符卡计时(:148)
-    player_is_youkai: int = 0
-    last_spell_orb_status: int = 0
-    spellcard_capture_status: int = 0
-    spellcard_timer_frames: int = 0
 
     @property
     def difficulty_mask(self) -> int:
@@ -1019,83 +957,6 @@ class EclHost:
             instr.offset,
             machine.current.sub_id,
         )
-
-    # ---- th08 特有接缝(默认 no-op; Th08GameEclHost/world 阶段覆盖) ----
-    def spawn_familiar(
-        self,
-        kind: int,
-        sub_id: int,
-        pos: Vec3,
-        life: int,
-        item_drop: int,
-        score: int,
-        context_args: EclContextArgs,
-        parent: Optional[EclEnemyState] = None,
-    ) -> EclEnemy | None:
-        """th08 op90-92 使魔生成(含附着链登记, EclRunLow.inl:737-929)。
-
-        kind = opcode(90 定点 / 91 父偏移 / 92 继承父位置); parent = 调用方
-        敌人(父链挂载用); 默认无操作。
-        """
-        return None
-
-    def call_sub_on_boss(self, boss: EclEnemyState, sub_id: int) -> None:
-        """th08 op88: 让别的 boss 压栈并调用 sub(EclRunLow.inl:712-717)。"""
-        pass
-
-    def clock_advance(self) -> None:
-        """th08 op181: 时刻 +1 单位(封顶 12, EclRunHigh.inl:957-967)。"""
-        pass
-
-    def clock_hide(self) -> None:
-        """th08 op180: 隐藏时刻表盘(EclRunHigh.inl:956)。"""
-        pass
-
-    def show_retry_menu(self) -> None:
-        """th08 时间轴 op16: 显示 Retry 菜单(EnemyTimeline.cpp:136-138)。"""
-        pass
-
-    def clear_bullets_for_transition(self) -> None:
-        """th08 op112/符卡开始: ClearBulletsForTransition(EclRunHigh.inl:789)。"""
-        pass
-
-    def set_stage_script_label(self, label: int) -> None:
-        """th08 op147: Background.pendingStageScriptLabel(EclRunHigh.inl:711)。"""
-        pass
-
-    def start_stage_background_sequence(self) -> None:
-        """th08 op179: Gui.StartStageBackgroundSequence(EclRunHigh.inl:955)。"""
-        pass
-
-    def set_spellcard_effect_tracking(self, disabled: int, pos: Vec3) -> None:
-        """th08 op164: Spellcard 特效跟踪开关+记录向量(EclRunHigh.inl:856-863)。"""
-        pass
-
-    def set_bonus_updates_disabled(self, v: int) -> None:
-        """th08 op184: Spellcard.SetBonusUpdatesDisabled(EclRunHigh.inl:972)。"""
-        pass
-
-    def spawn_alignment_effect(self, kind: int) -> None:
-        """th08 op174: 人妖对齐特效(结界光环, EclRunHigh.inl:936-952)。"""
-        pass
-
-    def set_last_spell_flags(self) -> None:
-        """th08 op176: Last Spell 的 GameManager 标志位操作(EclRunHigh.inl:902-919)。"""
-        pass
-
-    def set_spellcard_bonus(self, bonus: int) -> None:
-        """th08 op122: 符卡 bonus(EclSpellCardInstructionArgs.bonus @0x10,
-        EclDependencies.cpp:18-36)在 begin_spellcard 前传递; 默认无操作。"""
-        pass
-
-    def count_parent_chain(self, enemy: EclEnemyState) -> int:
-        """th08: CountParentChain(使魔父链节点数, EclOperandsInt.cpp:125-129
-        的 10096 变量读源); 默认无链(0)。"""
-        return 0
-
-    def attached_parent(self, enemy: EclEnemyState) -> Optional[EclEnemyState]:
-        """th08: HasAttachedEnemy → parentEnemy(同 10096 判定); 默认无父(None)。"""
-        return None
 
 
 # ---- 时间轴(EnemyManager::RunEclTimeline) ----

@@ -6,7 +6,7 @@ tests/game_test/th07/test_th07_stage_ecl.py:206 的 _inject_ecl 模式)、
 同种子确定性。全部打 @needs_data(真实 th08.dat, 缺失自动 skip)。
 
 另含不打标记的纯逻辑用例: th08 msg 新 opcode(16/19/20/21/22)的合成数据
-VM 行为(schema/msg.py 参数化), 不需要真实资源。
+VM 行为(games/th08/msg_vm.py 的 MsgVmTh08), 不需要真实资源。
 """
 
 from __future__ import annotations
@@ -14,13 +14,15 @@ from __future__ import annotations
 import struct
 
 import touhou  # noqa: F401  # import 即完成 th08 全维度注册
-from touhou.engine.ecl import EclContextArgs, Vec3
+from touhou.engine.ecl import Vec3
 from touhou.games.th08.ecl_file import EclFileTh08
+from touhou.games.th08.ecl_state import Th08ContextArgs
 from touhou.games.th08.ecl_vm import Th08EclOpcode as Op
 from touhou.games.th08.items import ItemType
+from touhou.games.th08.msg_vm import MsgVmTh08
 from touhou.games.th08.player import PlayerState
 from touhou.games.th08.world import ImperishableNight
-from touhou.schema.msg import MsgFile, MsgVm
+from touhou.schema.msg import MsgFile
 
 from .conftest import needs_data
 from .test_th08_ecl import _build_ecl, _f, _instr
@@ -208,7 +210,7 @@ def test_player_shots_kill_ecl_enemy_and_drop() -> None:
         item_drop=int(ItemType.POINT),
         score=1000,
         mirror=0,
-        context_args=EclContextArgs(),
+        context_args=Th08ContextArgs(),
     )
     assert e is not None
     score0 = g.globals.score
@@ -289,7 +291,7 @@ def _synth_msg(text_xor: int = 0x77) -> MsgFile:
 def test_th08_msg_new_opcodes_synthetic() -> None:
     """op16/19 文本落行(XOR 0x77 解码); op21 超时自然前进;
     op22 写 final_stage_route 并读分支消息。"""
-    vm = MsgVm(_synth_msg(), num_portraits=4)
+    vm = MsgVmTh08(_synth_msg())
     vm.read(0)
     vm.step()
     assert vm.dialogue_lines[0].text == "頂部"  # op19 覆盖 op16 的落行 0

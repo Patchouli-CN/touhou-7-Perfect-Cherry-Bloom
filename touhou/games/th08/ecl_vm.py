@@ -15,7 +15,7 @@
   (调用参数快照 g_EclCallParameters + child 块栈下溢释放, 见下)。
 - th08 独有的 2 操作数算术(10-19)/polar(38)/dist(39) 按 EclRunLow.inl 新写;
   anm/移动/弹幕/激光/符卡系照 th07 同语义 handler 改编(games/th07/ecl_vm.py
-  是模板), 效果类全走 host 接口(EclHost 的 th08 no-op 接缝)。
+  是模板), 效果类全走 th08 宿主协议(``Th08HostProto``, games/th08/ecl_host.py)。
 - **child 上下文块**(op135): 主上下文 + 最多 4 个 child 块轮询
   (EclRun.cpp:188-202), 每块 = 独立 context + 调用栈(16 层,
   EclManager.hpp:255-268); step 覆写轮询, 帧级移动积分(C UpdateMovement)
@@ -33,10 +33,7 @@ from __future__ import annotations
 import math
 import struct
 from enum import IntEnum
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from .ecl_host import Th08GameEclHost  # 仅类型检查期(cast 收窄宿主用)
+from typing import Optional, cast
 
 from ...engine.ecl import (
     EclContext,
@@ -58,6 +55,8 @@ from ...utils import (
     i32,
 )
 from .ecl_file import EclFileTh08
+from .ecl_host import Th08HostProto, Th08NullHost
+from .ecl_state import Th08ContextArgs, Th08EclWorld, Th08EnemyState
 
 # 人妖门控的 transformFlags 位 (BulletManager.hpp:147-148; DispatchShotInstruction
 # 检查, EclDependencies.cpp:697-702)
@@ -332,7 +331,7 @@ class _ChildEclBlock:
 
     def __init__(self, sub_id: int) -> None:
         self.sub_id = sub_id
-        self.context = EclContext(sub_id=sub_id)
+        self.context = EclContext(sub_id=sub_id, args=Th08ContextArgs())
         self.stack: list[EclContext] = []
 
 
@@ -357,22 +356,53 @@ class EclMachineTh08(EclMachineBase):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # g_EclCallParameters(EclGlobals.cpp:105): C 是全局静态(全敌人共享),
-        # 这里引用 world 的共享对(同 world 的机器读写同一份; EclWorld 字段
-        # 见 engine/ecl.py th08 专属段)
-        self.call_params_ints = self.world.ecl_call_params_ints
-        self.call_params_floats = self.world.ecl_call_params_floats
+        # 这里引用 world 的共享对(同 world 的机器读写同一份; 字段见
+        # ecl_state.py 的 Th08EclWorld)
+        self.call_params_ints = self._w.ecl_call_params_ints
+        self.call_params_floats = self._w.ecl_call_params_floats
         # child 上下文块 4 槽(op135; EclManager.hpp:255-268)
         self._child_blocks: list[Optional[_ChildEclBlock]] = [None] * 4
         self._active_child_slot = -1  # 正在轮询的 child 槽(-1 = 主上下文)
         self._child_returned = False  # child 块 ret 栈下溢信号(释放块用)
         self._in_context_polling = False  # 轮询期间抑制逐上下文的移动积分
 
+    # ---- 构造工厂(注入 th08 扩展状态类, ecl_state.py) ----
+
+    def _make_enemy_state(self) -> EclEnemyState:
+        return Th08EnemyState()
+
+    def _make_world(self) -> Th08EclWorld:
+        return Th08EclWorld()
+
+    def _make_context(self) -> EclContext:
+        return EclContext(args=Th08ContextArgs())
+
+    def _make_host(self) -> Th08NullHost:
+        return Th08NullHost()  # 缺省宿主须满足 Th08HostProto(15 个 no-op 兜底)
+
+    # ---- 状态收窄(cast 均为运行时 no-op; 实际类型由上方工厂保证) ----
+
+    @property
+    def _st(self) -> Th08EnemyState:
+        return cast(Th08EnemyState, self.enemy)
+
+    @property
+    def _w(self) -> Th08EclWorld:
+        return cast(Th08EclWorld, self.world)
+
+    def _args(self, ctx: EclContext) -> Th08ContextArgs:
+        return cast(Th08ContextArgs, ctx.args)
+
+    @property
+    def _h(self) -> Th08HostProto:
+        return cast(Th08HostProto, self.host)
+
     # ---- 框架钩子 ----
 
     def _difficulty_skip(self, instr: EclInstr) -> bool:
         """th08 难度掩码: 指令掩码需完整包含(全局难度位 | 敌人覆盖位)才执行
         (EclRun.cpp:67-74); 单难度位且 override=0 时与 th07 语义等价。"""
-        eff = self.world.difficulty_mask | self.enemy.difficulty_mask_override
+        eff = self.world.difficulty_mask | self._st.difficulty_mask_override
         return (instr.skip_difficulty & eff) != eff
 
     def _update_movement(self) -> None:
@@ -392,7 +422,7 @@ class EclMachineTh08(EclMachineBase):
     def _auto_shoot(self) -> None:
         # C: UpdateShotAndAnm 用 pendingShotInstruction 重新派发
         # (EclDependencies.cpp:791-802) —— 操作数每次发射时重新解析
-        instr = self.enemy.pending_shot_instr
+        instr = self._st.pending_shot_instr
         if instr is not None:
             self._fire_shot(instr)
 
@@ -452,11 +482,11 @@ class EclMachineTh08(EclMachineBase):
 
     def _world_pos(self) -> Vec3:
         """worldPosition = position + positionOffset(EclRun.cpp:54-56)。"""
-        e = self.enemy
+        e = self._st
         return e.pos + e.pos_offset
 
     def _get_int(self, var_id: int) -> int:
-        e, w, a = self.enemy, self.world, self.current.args
+        e, w, a = self._st, self._w, self._args(self.current)
         if not (10000 <= var_id <= 10100):
             return var_id  # C default: 原样返回(即立即数)
         if 10000 <= var_id <= 10007:
@@ -541,30 +571,30 @@ class EclMachineTh08(EclMachineBase):
         if var_id == Th08EclVarId.PARENT_CHAIN_COUNT:
             # CountParentChain (EclOperandsInt.cpp:125-129): 自身有链数自身,
             # 否则有父数父的; 链在宿主侧(Th08GameEclHost.spawn_familiar 登记)
-            n = self.host.count_parent_chain(e)
+            n = self._h.count_parent_chain(e)
             if n == 0:
-                parent = self.host.attached_parent(e)
+                parent = self._h.attached_parent(e)
                 if parent is not None:
-                    n = self.host.count_parent_chain(parent)
+                    n = self._h.count_parent_chain(parent)
             return n
         if var_id == Th08EclVarId.PLAYER_IS_YOUKAI:
             # 自机妖形态(world 每帧经 host.frame_update 同步 player_is_youkai)
-            return int(getattr(w, "player_is_youkai", 0))
+            return int(w.player_is_youkai)
         if var_id == Th08EclVarId.LAST_SPELL_ORBS:
             # 时刻符点 Last Spell 状态(world._step_ecl 每帧发布)
-            return int(getattr(w, "last_spell_orb_status", 0))
+            return int(w.last_spell_orb_status)
         if var_id == Th08EclVarId.SPELLCARD_CAPTURED:
             # 符卡取得状态(world._step_ecl 发布: 活动中=捕获有效, 否则=上一张结果)
-            return int(getattr(w, "spellcard_capture_status", 0))
+            return int(w.spellcard_capture_status)
         if var_id == Th08EclVarId.SPELLCARD_TIMER:
             # 符卡剩余帧(world._step_ecl 发布 boss.time_remaining)
-            return int(getattr(w, "spellcard_timer_frames", 0))
+            return int(w.spellcard_timer_frames)
         return var_id  # C default: 原样返回
 
     def _set_int(self, var_id: int, value: int) -> None:
         """ResolveIntLValue 的可写集合; 不在集合里的写入被丢弃
         (C 写进指令内存, 无意义)。"""
-        e, w, a = self.enemy, self.world, self.current.args
+        e, w, a = self._st, self._w, self._args(self.current)
         value = i32(value)
         if 10000 <= var_id <= 10007:
             a.th08_ints[var_id - 10000] = value
@@ -596,7 +626,7 @@ class EclMachineTh08(EclMachineBase):
     def _get_float_value(self, var_id: int, raw: float) -> float:
         """Enemy::ResolveFloat: var_id 是 (i32) 转换后的值, raw 是原始 f32
         (默认值; 未命中变量表时原样返回)。"""
-        e, w, a = self.enemy, self.world, self.current.args
+        e, w, a = self._st, self._w, self._args(self.current)
         if not (10000 <= var_id <= 10100):
             return raw
         if 10000 <= var_id <= 10007:
@@ -684,22 +714,22 @@ class EclMachineTh08(EclMachineBase):
             return a.th08_extra_floats[var_id - 10094]
         if var_id == Th08EclVarId.PARENT_CHAIN_COUNT:
             # 同 int 读 (EclOperandsInt.cpp:125-129)
-            n = self.host.count_parent_chain(e)
+            n = self._h.count_parent_chain(e)
             if n == 0:
-                parent = self.host.attached_parent(e)
+                parent = self._h.attached_parent(e)
                 if parent is not None:
-                    n = self.host.count_parent_chain(parent)
+                    n = self._h.count_parent_chain(parent)
             return float(n)
         if var_id == Th08EclVarId.PLAYER_IS_YOUKAI:
-            return float(getattr(w, "player_is_youkai", 0))  # world 阶段接线
+            return float(w.player_is_youkai)
         if var_id == Th08EclVarId.SPELLCARD_CAPTURED:
-            return float(getattr(w, "spellcard_capture_status", 0))  # world 阶段接线
+            return float(w.spellcard_capture_status)
         # 10098(LAST_SPELL_ORBS)在 float 读里走 default(EclOperandsFloat.cpp:144-145)
         return raw
 
     def _set_float(self, var_id: int, value: float) -> None:
         """ResolveFloatLValue 的可写集合; 其余丢弃。"""
-        e, w, a = self.enemy, self.world, self.current.args
+        e, w, a = self._st, self._w, self._args(self.current)
         value = f32(value)
         if 10016 <= var_id <= 10023:
             a.th08_floats[var_id - 10016] = value
@@ -813,7 +843,7 @@ class EclMachineTh08(EclMachineBase):
         color=bit1, count1=bit2, count2=bit3, speed1=bit4, speed2=bit5,
         angle=bit6, angleStep=bit7。
         """
-        e, w = self.enemy, self.world
+        e, w = self._st, self.world
         p = e.bullet_props
         flags = instr.args[7]  # transformFlags(raw, 不解析)
         # 人妖门控: 与敌人自身的 youkaiAligned 比较(EclDependencies.cpp:697-702)
@@ -927,9 +957,9 @@ class EclMachineTh08(EclMachineBase):
         gui_id = instr.arg_i16(0, 0)
         spellcard_idx = instr.arg_u16(0, 1)
         # bonus i32 @0x10 = args word1(动态符卡分的初值, Spellcard.cpp:735-736)
-        self.host.set_spellcard_bonus(instr.arg_int(1))
+        self._h.set_spellcard_bonus(instr.arg_int(1))
         # C: StartSpell 里 ClearBulletsForTransition(Spellcard.cpp:747)
-        self.host.clear_bullets_for_transition()
+        self._h.clear_bullets_for_transition()
         # C: ResetBulletRankInfluence(模板默认值, 同 th07 的交接)
         e.bullet_rank_speed_low = -0.5
         e.bullet_rank_speed_high = 0.5
@@ -1073,8 +1103,8 @@ def _op_sub_call(m: EclMachineTh08, instr: EclInstr):
     m.call_sub(instr.arg_int(0))
     # C: activeEclContext->callParameterInts/Floats = g_EclCallParameters
     # (EclDependencies.cpp:485-487)
-    ctx.args.th08_call_ints = list(m.call_params_ints)
-    ctx.args.th08_call_floats = list(m.call_params_floats)
+    m._args(ctx).th08_call_ints = list(m.call_params_ints)
+    m._args(ctx).th08_call_floats = list(m.call_params_floats)
     return "restart"
 
 
@@ -1167,7 +1197,7 @@ def _op_vec_from_angle_mag_raw(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register((Th08EclOpcode.SET_ANM, Th08EclOpcode.SET_ANM_ALT))
 def _op_set_anm(m: EclMachineTh08, instr: EclInstr):
-    e = m.enemy
+    e = m._st
     e.anm_idx = m._int_arg(instr, 0)
     e.anm_alt_bank = 1 if instr.id == Th08EclOpcode.SET_ANM_ALT else 0
 
@@ -1178,16 +1208,16 @@ def _op_set_anm(m: EclMachineTh08, instr: EclInstr):
 def _op_set_move_anm_seq(m: EclMachineTh08, instr: EclInstr):
     # SetPrimaryAnmScripts(s, s+1, ..., s+5)(EclDependencies.cpp:449-460)
     base = m._int_arg(instr, 0)
-    m.enemy.move_anm = tuple(base + i for i in range(6))
-    m.enemy.anm_alt_bank = 1 if instr.id == Th08EclOpcode.SET_MOVE_ANM_SEQ_ALT else 0
+    m._st.move_anm = tuple(base + i for i in range(6))
+    m._st.anm_alt_bank = 1 if instr.id == Th08EclOpcode.SET_MOVE_ANM_SEQ_ALT else 0
 
 
 @EclMachineTh08.register(
     (Th08EclOpcode.SET_MOVE_ANM, Th08EclOpcode.SET_MOVE_ANM_ALT)
 )
 def _op_set_move_anm(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.move_anm = tuple(m._int_arg(instr, i) for i in range(6))
-    m.enemy.anm_alt_bank = 1 if instr.id == Th08EclOpcode.SET_MOVE_ANM_ALT else 0
+    m._st.move_anm = tuple(m._int_arg(instr, i) for i in range(6))
+    m._st.anm_alt_bank = 1 if instr.id == Th08EclOpcode.SET_MOVE_ANM_ALT else 0
 
 
 @EclMachineTh08.register(
@@ -1195,7 +1225,7 @@ def _op_set_move_anm(m: EclMachineTh08, instr: EclInstr):
 )
 def _op_set_sub_anm(m: EclMachineTh08, instr: EclInstr):
     # SetExtraAnmScript(EclDependencies.cpp:534-566): arg1<0 → scriptIndex=-1
-    e = m.enemy
+    e = m._st
     e.anm_alt_bank = 1 if instr.id == Th08EclOpcode.SET_SUB_ANM_ALT else 0
     idx = m._int_arg(instr, 0)
     if 0 <= idx < len(e.sub_anm_idx):
@@ -1376,14 +1406,14 @@ def _op_set_graze_size(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_MIN_PLAYER_DISTANCE)
 def _op_set_min_player_distance(m: EclMachineTh08, instr: EclInstr):
-    e = m.enemy
+    e = m._st
     d = m._float_arg(instr, 0)
     e.min_player_dist_sq = f32(d * d)
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_FORM_EFFECT)
 def _op_set_form_effect(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.form_effect = m._int_arg(instr, 0)
+    m._st.form_effect = m._int_arg(instr, 0)
 
 
 # ---- 敌人标志位(79-81, EclRunLow.inl:650-688) ----
@@ -1392,7 +1422,7 @@ def _op_set_form_effect(m: EclMachineTh08, instr: EclInstr):
 @EclMachineTh08.register(Th08EclOpcode.SET_ENEMY_FLAGS)
 def _op_set_enemy_flags(m: EclMachineTh08, instr: EclInstr):
     """flags 按掩码直接赋值(前三位反相语义, EclRunLow.inl:650-658)。"""
-    e = m.enemy
+    e = m._st
     lhs = m._int_arg(instr, 0)
     e.can_be_damaged = 0 if (lhs & 1) else 1
     e.has_contact_hitbox = 0 if (lhs & 2) else 1
@@ -1406,7 +1436,7 @@ def _op_set_enemy_flags(m: EclMachineTh08, instr: EclInstr):
 def _op_clear_enemy_flags(m: EclMachineTh08, instr: EclInstr):
     """掩码置位 → 对应能力关(EclRunLow.inl:660-673; bit1 顺带清
     alignmentEffect->vm.flag17, 特效是 world 阶段接线)。"""
-    e = m.enemy
+    e = m._st
     lhs = m._int_arg(instr, 0)
     if lhs & 1:
         e.can_be_damaged = 0
@@ -1425,7 +1455,7 @@ def _op_clear_enemy_flags(m: EclMachineTh08, instr: EclInstr):
 @EclMachineTh08.register(Th08EclOpcode.ENABLE_ENEMY_FLAGS)
 def _op_enable_enemy_flags(m: EclMachineTh08, instr: EclInstr):
     """掩码置位 → 对应能力开(EclRunLow.inl:675-688)。"""
-    e = m.enemy
+    e = m._st
     lhs = m._int_arg(instr, 0)
     if lhs & 1:
         e.can_be_damaged = 1
@@ -1472,7 +1502,7 @@ def _op_call_sub_on_boss(m: EclMachineTh08, instr: EclInstr):
     if boss is None:
         return None
     # sub id 用 raw(EclRunLow.inl:16-20); 压栈+调用交宿主(boss 机器的接缝)
-    m.host.call_sub_on_boss(boss, instr.arg_int(1))
+    m._h.call_sub_on_boss(boss, instr.arg_int(1))
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_BOSS_PENDING_SUB)
@@ -1489,7 +1519,7 @@ def _op_set_boss_pending_sub(m: EclMachineTh08, instr: EclInstr):
 @EclMachineTh08.register(Th08EclOpcode.SET_BOSS)
 def _op_set_boss(m: EclMachineTh08, instr: EclInstr):
     """op127(EclRunHigh.inl:426-456); GUI 血条/boss 标记经宿主。"""
-    e, w = m.enemy, m.world
+    e, w = m._st, m.world
     idx = m._int_arg(instr, 0)
     if idx >= 0:
         if idx < len(w.bosses):
@@ -1539,20 +1569,20 @@ def _op_spawn_familiar(m: EclMachineTh08, instr: EclInstr):
     world 阶段接线, 全走 host.spawn_familiar 接缝; 音效 0x24 无条件播放
     (EclRunLow.inl:792-794)。
     """
-    e = m.enemy
+    e = m._st
     pos = Vec3(m._float_arg(instr, 1), m._float_arg(instr, 2), 0.0)
     if instr.id == Th08EclOpcode.SPAWN_FAMILIAR_REL:
         pos = pos + m._world_pos()
     # C: parent life<=0 时不生成(lastSpawnFailed=1, EclDependencies.cpp:590-611)
     if e.life > 0:
-        m.host.spawn_familiar(
+        m._h.spawn_familiar(
             instr.id,
             instr.arg_int(0),  # sub id(raw)
             pos,
             m._int_arg(instr, 3),
             m._int_arg(instr, 4),
             m._int_arg(instr, 5),
-            m.current.args.clone(),
+            m._args(m.current).clone(),
             parent=e,  # 父链挂载(EclRunLow.inl:783-790)
         )
     m.host.play_sound(0x24)  # SOUND_FAMILIAR_SPAWN
@@ -1579,7 +1609,7 @@ def _op_spawn_enemy(m: EclMachineTh08, instr: EclInstr):
             m._int_arg(instr, 5),
             m._int_arg(instr, 6),
             0,
-            m.current.args.clone(),
+            m._args(m.current).clone(),
         )
 
 
@@ -1593,7 +1623,7 @@ def _op_remove_all_enemies(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(range(96, 105))  # 弹幕生成 9 合一(aim_mode = id - 96)
 def _op_spawn_bullet_pattern(m: EclMachineTh08, instr: EclInstr):
-    e = m.enemy
+    e = m._st
     if e.life <= 0:
         return None
     if e.defer_bullet_pattern:
@@ -1626,12 +1656,12 @@ def _op_set_shoot_interval_rand(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.DEFER_BULLET_PATTERN)
 def _op_defer_bullet_pattern(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.defer_bullet_pattern = 1
+    m._st.defer_bullet_pattern = 1
 
 
 @EclMachineTh08.register(Th08EclOpcode.DISABLE_DEFER_BULLET_PATTERN)
 def _op_disable_defer_bullet_pattern(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.defer_bullet_pattern = 0
+    m._st.defer_bullet_pattern = 0
 
 
 @EclMachineTh08.register(Th08EclOpcode.SPAWN_PREV_BULLET_PATTERN)
@@ -1665,7 +1695,7 @@ def _op_init_bullet_cmd(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.CLEAR_BULLETS_FOR_TRANSITION)
 def _op_clear_bullets_for_transition(m: EclMachineTh08, instr: EclInstr):
-    m.host.clear_bullets_for_transition()
+    m._h.clear_bullets_for_transition()
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_BULLET_SOUND)
@@ -1827,7 +1857,7 @@ def _op_set_death_callback_sub(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_LIFE)
 def _op_set_life(m: EclMachineTh08, instr: EclInstr):
-    e = m.enemy
+    e = m._st
     e.phase_starting_life = e.life = e.max_life = m._int_arg(instr, 0)
 
 
@@ -1919,7 +1949,7 @@ def _op_set_timeout_spell(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_SPECIAL_INTERACTION)
 def _op_set_special_interaction(m: EclMachineTh08, instr: EclInstr):
-    e = m.enemy
+    e = m._st
     e.is_projectile = instr.arg_bytes(0)[0]  # specialInteraction
     e.draw_group = 2
 
@@ -1950,7 +1980,7 @@ def _op_set_child_context(m: EclMachineTh08, instr: EclInstr):
         return None
     block = _ChildEclBlock(sub_id)
     block.context.instr_offset = m.file.sub_offset(sub_id)
-    src, dst = m.current.args, block.context.args
+    src, dst = m._args(m.current), m._args(block.context)
     dst.th08_ints = list(src.th08_ints)
     dst.th08_floats = list(src.th08_floats)
     dst.th08_extra_ints = list(src.th08_extra_ints)
@@ -2014,7 +2044,7 @@ def _op_set_item_drop(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_ITEM_DROP_COUNTS)
 def _op_set_item_drop_counts(m: EclMachineTh08, instr: EclInstr):
-    e = m.enemy
+    e = m._st
     e.point_item_drop_count = m._int_arg(instr, 0)
     e.power_or_point_item_drop_count = m._int_arg(instr, 1)
 
@@ -2024,7 +2054,7 @@ def _op_set_item_drop_counts(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_STAGE_SCRIPT_LABEL)
 def _op_set_stage_script_label(m: EclMachineTh08, instr: EclInstr):
-    m.host.set_stage_script_label(m._int_arg(instr, 0))
+    m._h.set_stage_script_label(m._int_arg(instr, 0))
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_TRAIL)
@@ -2040,7 +2070,7 @@ def _op_set_trail(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_DRAW_GROUP)
 def _op_set_draw_group(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.draw_group = m._int_arg(instr, 0)
+    m._st.draw_group = m._int_arg(instr, 0)
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_DAMAGE_REDUCTION_TIMER)
@@ -2061,12 +2091,12 @@ def _op_remove_all_bullets_despawn(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.SET_ENEMY_MANAGER_VALUE)
 def _op_set_enemy_manager_value(m: EclMachineTh08, instr: EclInstr):
-    m.world.opcode163_value = m._int_arg(instr, 0)
+    m._w.opcode163_value = m._int_arg(instr, 0)
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_SPELLCARD_EFFECT_TRACKING)
 def _op_set_spellcard_effect_tracking(m: EclMachineTh08, instr: EclInstr):
-    m.host.set_spellcard_effect_tracking(
+    m._h.set_spellcard_effect_tracking(
         m._int_arg(instr, 0),
         Vec3(m._float_arg(instr, 1), m._float_arg(instr, 2), m._float_arg(instr, 3)),
     )
@@ -2091,12 +2121,12 @@ def _op_rand_exit_angle(m: EclMachineTh08, instr: EclInstr):
 @EclMachineTh08.register(Th08EclOpcode.SPAWN_ALIGNMENT_EFFECT)
 def _op_spawn_alignment_effect(m: EclMachineTh08, instr: EclInstr):
     # 人妖对齐特效(结界光环, EclRunHigh.inl:936-952); 效果本体 world 阶段
-    m.host.spawn_alignment_effect(m._int_arg(instr, 0))
+    m._h.spawn_alignment_effect(m._int_arg(instr, 0))
 
 
 @EclMachineTh08.register(Th08EclOpcode.SUPPRESS_TIMELINE_SPAWNS)
 def _op_suppress_timeline_spawns(m: EclMachineTh08, instr: EclInstr):
-    m.world.suppress_timeline_spawns = m._int_arg(instr, 0)
+    m._w.suppress_timeline_spawns = m._int_arg(instr, 0)
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_LAST_SPELL_FLAGS)
@@ -2104,12 +2134,12 @@ def _op_set_last_spell_flags(m: EclMachineTh08, instr: EclInstr):
     # GameManager 标志位操作(EclRunHigh.inl:902-919)是 world 阶段接线;
     # ENEMY_FLAG_PAUSE_TIMER 置位在本侧
     m.enemy.freeze_ecl_during_bombs = 1
-    m.host.set_last_spell_flags()
+    m._h.set_last_spell_flags()
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_PHASE_START_LIFE)
 def _op_set_phase_start_life(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.phase_starting_life = m._int_arg(instr, 0)
+    m._st.phase_starting_life = m._int_arg(instr, 0)
 
 
 @EclMachineTh08.register(Th08EclOpcode.MOVE_RANDOM_BIASED)
@@ -2147,31 +2177,31 @@ def _op_move_random_biased(m: EclMachineTh08, instr: EclInstr):
 
 @EclMachineTh08.register(Th08EclOpcode.START_STAGE_BACKGROUND_SEQUENCE)
 def _op_start_stage_background_sequence(m: EclMachineTh08, instr: EclInstr):
-    m.host.start_stage_background_sequence()
+    m._h.start_stage_background_sequence()
 
 
 @EclMachineTh08.register(Th08EclOpcode.HIDE_CLOCK)
 def _op_hide_clock(m: EclMachineTh08, instr: EclInstr):
-    m.host.clock_hide()
+    m._h.clock_hide()
 
 
 @EclMachineTh08.register(Th08EclOpcode.ADVANCE_CLOCK)
 def _op_advance_clock(m: EclMachineTh08, instr: EclInstr):
     # 封顶 12/音效/表盘闪动在宿主侧(EclRunHigh.inl:957-967, 见
     # Th08GameEclHost.clock_advance)
-    m.host.clock_advance()
+    m._h.clock_advance()
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_EXTRA_VM_FIXED_OFFSET)
 def _op_set_extra_vm_fixed_offset(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.extra_vm_fixed_offset = m._int_arg(instr, 0)
+    m._st.extra_vm_fixed_offset = m._int_arg(instr, 0)
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_NO_DAMAGE_DURING_STOP)
 def _op_set_no_damage_during_stop(m: EclMachineTh08, instr: EclInstr):
-    m.enemy.no_damage_during_stop = m._int_arg(instr, 0)
+    m._st.no_damage_during_stop = m._int_arg(instr, 0)
 
 
 @EclMachineTh08.register(Th08EclOpcode.SET_BONUS_UPDATES_DISABLED)
 def _op_set_bonus_updates_disabled(m: EclMachineTh08, instr: EclInstr):
-    m.host.set_bonus_updates_disabled(m._int_arg(instr, 0))
+    m._h.set_bonus_updates_disabled(m._int_arg(instr, 0))

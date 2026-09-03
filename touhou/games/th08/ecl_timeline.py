@@ -23,13 +23,12 @@ from __future__ import annotations
 from typing import cast
 
 from ...engine.ecl import (
-    EclContextArgs,
-    EclHost,
-    EclWorld,
     Vec3,
     PLAYFIELD_W,
 )
 from .ecl_file import EclFileTh08, EclTimelineInstrTh08
+from .ecl_host import Th08HostProto
+from .ecl_state import Th08ContextArgs, Th08EclWorld, Th08EnemyState
 
 # 生敌门控适用的 opcode(0-5/11/12; 15 强制生敌无门控, EnemyTimeline.cpp:154-163)
 _GATED_SPAWNS = (0, 1, 2, 3, 4, 5, 11, 12)
@@ -39,7 +38,7 @@ class Th08TimelineRunner:
     """一条 th08 时间轴的执行器。每帧 step() 一次。"""
 
     def __init__(
-        self, ecl_file: EclFileTh08, index: int, world: EclWorld, host: EclHost
+        self, ecl_file: EclFileTh08, index: int, world: Th08EclWorld, host: Th08HostProto
     ) -> None:
         # 基类 timelines 注记的是 th07 形态(engine 层无法引用 th08 类型),
         # EclFileTh08 里实际恒为 EclTimelineInstrTh08(见 ecl_file.py parse)
@@ -81,17 +80,17 @@ class Th08TimelineRunner:
                             # itemDrop=-1, score=args[6], 掉落数落到新敌
                             spawned = host.spawn_enemy(
                                 instr.arg_int(0), pos, instr.arg_int(3), -1,
-                                instr.arg_int(6), mirror, EclContextArgs(),
+                                instr.arg_int(6), mirror, Th08ContextArgs(),
                             )
                             if spawned is not None:
-                                st = spawned.state
+                                st = cast(Th08EnemyState, spawned.state)
                                 st.point_item_drop_count = instr.arg_int(4)
                                 st.power_or_point_item_drop_count = instr.arg_int(5)
                         else:
                             host.spawn_enemy(
                                 instr.arg_int(0), pos, instr.arg_int(3),
                                 instr.arg_int(4), instr.arg_int(5),
-                                mirror, EclContextArgs(),
+                                mirror, Th08ContextArgs(),
                             )
                 elif op in (2, 4):
                     if self._spawn_gated():
@@ -101,7 +100,7 @@ class Th08TimelineRunner:
                         host.spawn_enemy(
                             instr.arg_int(0), pos, instr.arg_int(4),
                             instr.arg_int(5), instr.arg_int(6),
-                            mirror, EclContextArgs(),
+                            mirror, Th08ContextArgs(),
                         )
                 elif op in (3, 5):
                     if self._spawn_gated():
@@ -112,7 +111,7 @@ class Th08TimelineRunner:
                         host.spawn_enemy(
                             instr.arg_int(0), pos, instr.arg_int(2),
                             instr.arg_int(3), instr.arg_int(4),
-                            mirror, EclContextArgs(),
+                            mirror, Th08ContextArgs(),
                         )
                 elif op == 6:
                     host.msg_read(instr.arg_int(0))

@@ -34,7 +34,7 @@ games/th07/ecl_host.py 模式丰满:
 from __future__ import annotations
 
 import math
-from typing import Callable, Optional
+from typing import Callable, Optional, Protocol, cast
 
 from ...engine.ecl import (
     EclContext,
@@ -59,6 +59,7 @@ from ...schema.sound import SoundQueue
 from ...types import BeginSpellcardHook, EndSpellcardHook, IntHook, SetBossHook
 from ...utils import Vec2, add_normalize_angle, angle_to, f32
 from .clock import Th08Clock
+from .ecl_state import Th08ContextArgs, Th08EclWorld, Th08EnemyState
 from .items import STATE_ATTRACT, ItemType, ItemWorld
 
 # C 弹幕上限 (BulletManager::SpawnBulletPattern 的 activeBulletCount >= 0x600 检查)
@@ -80,6 +81,192 @@ _BULLET_FLAG_EX_TRIGGER_MARKER = 0x100000
 # (EclExIns.cpp:601-715; 无判定 = collisionDisabled)
 _BSTATE_FREEZEN = 100
 _BSTATE_FREEZEN_MID = 200
+
+
+def _args_of(ctx: EclContext) -> Th08ContextArgs:
+    """收窄上下文变量区(cast 是运行时 no-op; th08 机器恒产 Th08ContextArgs)。"""
+    return cast(Th08ContextArgs, ctx.args)
+
+
+class Th08HostProto(Protocol):
+    """th08 特有的 ECL 宿主接缝(EclHost 通用钩子之外的 15 个)。
+
+    签名/docstring 自 engine/ecl.py 下沉(那里曾是带默认 no-op 的基类方法)。
+    运行时鸭子类型不变: VM 侧经 ``cast(Th08HostProto, self.host)`` 收窄
+    (ecl_vm._h)。
+
+    注: typing.Protocol 运行时禁止继承具体类, 故不能写成
+    ``(EclHost, Protocol)``; 时间轴 runner 用到的基类方法
+    (spawn_enemy/msg_read/msg_wait/set_power)在此按原签名重声明。
+    """
+
+    # ---- 基类方法重声明(Th08TimelineRunner 消费; 签名照 EclHost) ----
+
+    def spawn_enemy(
+        self,
+        sub_id: int,
+        pos: Vec3,
+        life: int,
+        item_drop: int,
+        score: int,
+        mirror: int,
+        context_args: EclContextArgs,
+    ) -> EclEnemy | None:
+        """SpawnEnemy: 返回入场敌人(失败 None)。"""
+        ...
+
+    def msg_read(self, msg_id: int) -> None: ...
+
+    def msg_wait(self) -> bool:
+        """True = 消息仍在显示(时间轴暂停)。"""
+        ...
+
+    def set_power(self, value: int) -> None: ...
+
+    # ---- th08 特有接缝 ----
+
+    def spawn_familiar(
+        self,
+        kind: int,
+        sub_id: int,
+        pos: Vec3,
+        life: int,
+        item_drop: int,
+        score: int,
+        context_args: EclContextArgs,
+        parent: Optional[Th08EnemyState] = None,
+    ) -> EclEnemy | None:
+        """th08 op90-92 使魔生成(含附着链登记, EclRunLow.inl:737-929)。
+
+        kind = opcode(90 定点 / 91 父偏移 / 92 继承父位置); parent = 调用方
+        敌人(父链挂载用)。
+        """
+        ...
+
+    def call_sub_on_boss(self, boss: EclEnemyState, sub_id: int) -> None:
+        """th08 op88: 让别的 boss 压栈并调用 sub(EclRunLow.inl:712-717)。"""
+        ...
+
+    def clock_advance(self) -> None:
+        """th08 op181: 时刻 +1 单位(封顶 12, EclRunHigh.inl:957-967)。"""
+        ...
+
+    def clock_hide(self) -> None:
+        """th08 op180: 隐藏时刻表盘(EclRunHigh.inl:956)。"""
+        ...
+
+    def show_retry_menu(self) -> None:
+        """th08 时间轴 op16: 显示 Retry 菜单(EnemyTimeline.cpp:136-138)。"""
+        ...
+
+    def clear_bullets_for_transition(self) -> None:
+        """th08 op112/符卡开始: ClearBulletsForTransition(EclRunHigh.inl:789)。"""
+        ...
+
+    def set_stage_script_label(self, label: int) -> None:
+        """th08 op147: Background.pendingStageScriptLabel(EclRunHigh.inl:711)。"""
+        ...
+
+    def start_stage_background_sequence(self) -> None:
+        """th08 op179: Gui.StartStageBackgroundSequence(EclRunHigh.inl:955)。"""
+        ...
+
+    def set_spellcard_effect_tracking(self, disabled: int, pos: Vec3) -> None:
+        """th08 op164: Spellcard 特效跟踪开关+记录向量(EclRunHigh.inl:856-863)。"""
+        ...
+
+    def set_bonus_updates_disabled(self, v: int) -> None:
+        """th08 op184: Spellcard.SetBonusUpdatesDisabled(EclRunHigh.inl:972)。"""
+        ...
+
+    def spawn_alignment_effect(self, kind: int) -> None:
+        """th08 op174: 人妖对齐特效(结界光环, EclRunHigh.inl:936-952)。"""
+        ...
+
+    def set_last_spell_flags(self) -> None:
+        """th08 op176: Last Spell 的 GameManager 标志位操作(EclRunHigh.inl:902-919)。"""
+        ...
+
+    def set_spellcard_bonus(self, bonus: int) -> None:
+        """th08 op122: 符卡 bonus(EclSpellCardInstructionArgs.bonus @0x10,
+        EclDependencies.cpp:18-36)在 begin_spellcard 前传递。"""
+        ...
+
+    def count_parent_chain(self, enemy: Th08EnemyState) -> int:
+        """th08: CountParentChain(使魔父链节点数, EclOperandsInt.cpp:125-129
+        的 10096 变量读源)。"""
+        ...
+
+    def attached_parent(self, enemy: Th08EnemyState) -> Optional[Th08EnemyState]:
+        """th08: HasAttachedEnemy → parentEnemy(同 10096 判定)。"""
+        ...
+
+
+class Th08NullHost(EclHost):
+    """Th08HostProto 的全 no-op 兜底实现(EclMachineTh08 缺省宿主)。
+
+    原 engine/ecl.py EclHost 上的 15 个 th08 默认 no-op 下沉于此:
+    保证 th08 VM 在未注入真实宿主时(冒烟/单测)不因缺方法而炸。
+    真实世界效果见 Th08GameEclHost。
+    """
+
+    def spawn_familiar(
+        self,
+        kind: int,
+        sub_id: int,
+        pos: Vec3,
+        life: int,
+        item_drop: int,
+        score: int,
+        context_args: EclContextArgs,
+        parent: Optional[Th08EnemyState] = None,
+    ) -> EclEnemy | None:
+        """op90-92 使魔生成接缝(EclRunLow.inl:737-929); 默认无操作。"""
+        return None
+
+    def call_sub_on_boss(self, boss: EclEnemyState, sub_id: int) -> None:
+        """op88(EclRunLow.inl:712-717); 默认无操作。"""
+
+    def clock_advance(self) -> None:
+        """op181(EclRunHigh.inl:957-967); 默认无操作。"""
+
+    def clock_hide(self) -> None:
+        """op180(EclRunHigh.inl:956); 默认无操作。"""
+
+    def show_retry_menu(self) -> None:
+        """时间轴 op16(EnemyTimeline.cpp:136-138); 默认无操作。"""
+
+    def clear_bullets_for_transition(self) -> None:
+        """op112/符卡开始(EclRunHigh.inl:789); 默认无操作。"""
+
+    def set_stage_script_label(self, label: int) -> None:
+        """op147(EclRunHigh.inl:711); 默认无操作。"""
+
+    def start_stage_background_sequence(self) -> None:
+        """op179(EclRunHigh.inl:955); 默认无操作。"""
+
+    def set_spellcard_effect_tracking(self, disabled: int, pos: Vec3) -> None:
+        """op164(EclRunHigh.inl:856-863); 默认无操作。"""
+
+    def set_bonus_updates_disabled(self, v: int) -> None:
+        """op184(EclRunHigh.inl:972); 默认无操作。"""
+
+    def spawn_alignment_effect(self, kind: int) -> None:
+        """op174(EclRunHigh.inl:936-952); 默认无操作。"""
+
+    def set_last_spell_flags(self) -> None:
+        """op176(EclRunHigh.inl:902-919); 默认无操作。"""
+
+    def set_spellcard_bonus(self, bonus: int) -> None:
+        """op122(EclDependencies.cpp:18-36); 默认无操作。"""
+
+    def count_parent_chain(self, enemy: Th08EnemyState) -> int:
+        """CountParentChain(EclOperandsInt.cpp:125-129); 默认无链(0)。"""
+        return 0
+
+    def attached_parent(self, enemy: Th08EnemyState) -> Optional[Th08EnemyState]:
+        """HasAttachedEnemy → parentEnemy(同 10096 判定); 默认无父(None)。"""
+        return None
 
 
 @register_game_hooks("th08", msg_file="msg{n}{team}.dat")
@@ -108,7 +295,11 @@ class Th08GameEclHost(EclHost):
             world, ecl_file = ecl_file, None
         assert ecl_file is None or isinstance(ecl_file, EclFile)  # 收窄类型
         self.file: EclFile | None = ecl_file
-        self.world = world if world is not None else EclWorld()
+        # world 运行时是 Th08EclWorld(world._load_ecl 构造; 兼容裸构造时缺省
+        # 自建); cast 是运行时 no-op, 仅为收窄 th08 扩展字段的类型
+        self.world: Th08EclWorld = (
+            cast(Th08EclWorld, world) if world is not None else Th08EclWorld()
+        )
         self.enemies = enemies
         self.bullets = bullets
         self.lasers = lasers
@@ -138,8 +329,8 @@ class Th08GameEclHost(EclHost):
         # 使魔父链(id(state) 键; on_enemy_gone 清理):
         # _attach_next: 链尾指针链, _attach_parent: 子 → 父;
         # _attach_inherit_pos: op92 位继承子机(detach 时 positionOffset=父位置)
-        self._attach_next: dict[int, EclEnemyState] = {}
-        self._attach_parent: dict[int, EclEnemyState] = {}
+        self._attach_next: dict[int, Th08EnemyState] = {}
+        self._attach_parent: dict[int, Th08EnemyState] = {}
         self._attach_inherit_pos: set[int] = set()
         # ---- 事件透出(world 接线; 均为可选) ----
         self.on_set_boss: SetBossHook | None = None
@@ -202,7 +393,7 @@ class Th08GameEclHost(EclHost):
             e = self.enemy_by_state.get(sid)
             if e is None:
                 continue
-            st = e.state
+            st = cast(Th08EnemyState, e.state)
             if st.youkai_aligned != youkai:
                 # 形态翻转 (:871-896)
                 self._play_sound(40 if youkai else 39)
@@ -373,7 +564,7 @@ class Th08GameEclHost(EclHost):
         item_drop: int,
         score: int,
         context_args: EclContextArgs,
-        parent: Optional[EclEnemyState] = None,
+        parent: Optional[Th08EnemyState] = None,
     ) -> EclEnemy | None:
         """th08 op90-92 使魔生成 (EclRunLow.inl:737-929)。
 
@@ -386,8 +577,8 @@ class Th08GameEclHost(EclHost):
         e = self.spawn_enemy(sub_id, pos, life, item_drop, score, 0, context_args)
         if e is None or parent is None:
             return e
-        child = e.state
-        child.youkai_aligned = int(getattr(self.world, "player_is_youkai", 0))
+        child = cast(Th08EnemyState, e.state)
+        child.youkai_aligned = self.world.player_is_youkai
         child.draw_group = 0 if child.youkai_aligned else 2  # (v?-1:0)&-2)+2
         child.difficulty_mask_override = 64 if child.youkai_aligned else 32
         # (UpdateYoukaiAlignment 每帧跟随, EnemyManager.cpp:901)
@@ -405,26 +596,26 @@ class Th08GameEclHost(EclHost):
         parent.linked_child_count += 1
         return e
 
-    def count_parent_chain(self, st: EclEnemyState) -> int:
+    def count_parent_chain(self, st: Th08EnemyState) -> int:
         """CountParentChain: 从 st 起沿链尾走到头的节点数(不含 st 自身)。"""
         n = 0
-        cur = st
+        cur: Th08EnemyState = st
         while id(cur) in self._attach_next:
             cur = self._attach_next[id(cur)]
             n += 1
         return n
 
-    def attached_parent(self, st: EclEnemyState) -> Optional[EclEnemyState]:
+    def attached_parent(self, st: Th08EnemyState) -> Optional[Th08EnemyState]:
         """HasAttachedEnemy → parentEnemy (EclOperandsInt.cpp:125-129 用)。"""
         return self._attach_parent.get(id(st))
 
-    def detach_chain(self, st: EclEnemyState) -> list[EclEnemyState]:
+    def detach_chain(self, st: Th08EnemyState) -> list[Th08EnemyState]:
         """DetachEnemyChain 的拆链段 (EnemyManager.cpp:229-264):
         把 st 的子链从头至尾摘下(清双向链指针), op92 位继承的子机
         (spawn_familiar kind==92)positionOffset = st.pos (:243-246)。
         返回摘下的子机(顺序 = 链序); 奖励掉落在 world._kill_reward 结算。
         """
-        children: list[EclEnemyState] = []
+        children: list[Th08EnemyState] = []
         cur = st
         while id(cur) in self._attach_next:
             child = self._attach_next.pop(id(cur))
@@ -653,6 +844,30 @@ class Th08GameEclHost(EclHost):
         """op180(EclRunHigh.inl:956): Gui.HideClockTime。"""
         self.clock.hide()
 
+    # ---- 其余 th08 接缝(Th08HostProto): 世界侧效果未接, 显式 no-op ----
+
+    def call_sub_on_boss(self, boss: EclEnemyState, sub_id: int) -> None:
+        """op88: 让别的 boss 压栈并调用 sub(EclRunLow.inl:712-717); 未接。"""
+
+    def show_retry_menu(self) -> None:
+        """时间轴 op16: 显示 Retry 菜单(EnemyTimeline.cpp:136-138); 未接。"""
+
+    def set_stage_script_label(self, label: int) -> None:
+        """op147: Background.pendingStageScriptLabel(EclRunHigh.inl:711); 未接。"""
+
+    def start_stage_background_sequence(self) -> None:
+        """op179: Gui.StartStageBackgroundSequence(EclRunHigh.inl:955); 未接。"""
+
+    def set_spellcard_effect_tracking(self, disabled: int, pos: Vec3) -> None:
+        """op164: Spellcard 特效跟踪开关+记录向量(EclRunHigh.inl:856-863); 未接。"""
+
+    def spawn_alignment_effect(self, kind: int) -> None:
+        """op174: 人妖对齐特效(结界光环, EclRunHigh.inl:936-952); 未接。"""
+
+    def set_last_spell_flags(self) -> None:
+        """op176: Last Spell 的 GameManager 标志位操作(EclRunHigh.inl:902-919);
+        未接。"""
+
     # ---- EX 指令(32 条, EclGlobals.cpp:65-98) ----
 
     def run_ex_instr(
@@ -679,8 +894,9 @@ class Th08GameEclHost(EclHost):
         """ex0 ConfigureNightBlindness(EclExIns.cpp:30-35)。"""
         if ctx is None:
             return
-        self.night_blindness_alpha = ctx.args.th08_ints[0]
-        self.night_blindness_radius = ctx.args.th08_floats[0]
+        a = _args_of(ctx)
+        self.night_blindness_alpha = a.th08_ints[0]
+        self.night_blindness_radius = a.th08_floats[0]
 
     def _ex2_bouncing_motion(self, enemy, instr, ctx) -> None:
         """ex2 UpdateBouncingEnemyMotion(EclExIns.cpp:44-82): 边界反弹 +
@@ -688,12 +904,13 @@ class Th08GameEclHost(EclHost):
         if ctx is None:
             return
         e = enemy
+        a = _args_of(ctx)
         changed = False
         if e.pos.x <= 0.0 or e.pos.x >= 384.0:
             e.axis_speed.x = -e.axis_speed.x
             changed = True
-        if e.axis_speed.y < ctx.args.th08_floats[7]:
-            e.axis_speed.y = f32(e.axis_speed.y + ctx.args.th08_floats[6])
+        if e.axis_speed.y < a.th08_floats[7]:
+            e.axis_speed.y = f32(e.axis_speed.y + a.th08_floats[6])
             changed = True
         if e.pos.y < -64.0:
             e.axis_speed.y = -e.axis_speed.y
@@ -712,12 +929,12 @@ class Th08GameEclHost(EclHost):
     def _ex19_publish_spellcard_number(self, enemy, instr, ctx) -> None:
         """ex19 PublishCurrentSpellCardNumber(EclExIns.cpp:787-791)。"""
         if ctx is not None:
-            ctx.args.th08_ints[0] = self.current_spellcard_number
+            _args_of(ctx).th08_ints[0] = self.current_spellcard_number
 
     def _ex24_publish_captured_count(self, enemy, instr, ctx) -> None:
         """ex24 PublishCapturedSpellCardCount(EclExIns.cpp:808-812)。"""
         if ctx is not None:
-            ctx.args.th08_ints[0] = self.spellcards_captured
+            _args_of(ctx).th08_ints[0] = self.spellcards_captured
 
     def _ex26_scripted_update_freeze(self, enemy, instr, ctx) -> None:
         """ex26 SetScriptedUpdateFreeze(EclExIns.cpp:815-830);
@@ -871,36 +1088,38 @@ class Th08GameEclHost(EclHost):
         parent = self._attach_parent.get(id(enemy))
         if parent is None:
             return
-        group_id = ctx.args.th08_extra_ints[2]
+        a = _args_of(ctx)
+        group_id = a.th08_extra_ints[2]
         # 沿父链收集同组子机, 编号进 extraIntVariables[1]
         count = 0
-        first: EclEnemyState | None = None
+        first: Th08EnemyState | None = None
         cursor = parent
-        members: list[EclEnemyState] = []
+        members: list[Th08EnemyState] = []
         while id(cursor) in self._attach_next:
             cursor = self._attach_next[id(cursor)]
             peer = self.enemy_by_state.get(id(cursor))
             if peer is None:
                 continue
-            if peer.machine.current.args.th08_extra_ints[2] == group_id:
-                peer.machine.current.args.th08_extra_ints[1] = count
+            peer_args = _args_of(peer.machine.current)
+            if peer_args.th08_extra_ints[2] == group_id:
+                peer_args.th08_extra_ints[1] = count
                 if first is None:
                     first = cursor
                 members.append(cursor)
                 count += 1
-        ctx.args.th08_ints[5] = 0
-        if ctx.args.th08_ints[6] != count:
-            if ctx.args.th08_ints[6] != 0:
-                ctx.args.th08_ints[5] = 1
-            ctx.args.th08_ints[6] = count
-        my_group = ctx.args.th08_extra_ints[1]
-        ctx.args.th08_ints[7] += 1
+        a.th08_ints[5] = 0
+        if a.th08_ints[6] != count:
+            if a.th08_ints[6] != 0:
+                a.th08_ints[5] = 1
+            a.th08_ints[6] = count
+        my_group = a.th08_extra_ints[1]
+        a.th08_ints[7] += 1
         if my_group == 0 or first is None:
             return
         first_peer = self.enemy_by_state.get(id(first))
         target = first.move_angle + my_group * 6.2831854820251465 / count
         if first_peer is not None and (
-            first_peer.machine.current.args.th08_ints[7] != ctx.args.th08_ints[7]
+            _args_of(first_peer.machine.current).th08_ints[7] != a.th08_ints[7]
         ):
             target = add_normalize_angle(target, first.move_angular_velocity)
         delta = add_normalize_angle(enemy.move_angle, enemy.move_angular_velocity)
@@ -929,14 +1148,14 @@ class Th08GameEclHost(EclHost):
                 peer = self.enemy_by_state.get(id(cursor))
                 if peer is None:
                     continue
-                args = peer.machine.current.args
+                args = _args_of(peer.machine.current)
                 if args.th08_extra_ints[2] != 0:
                     continue
                 dx = b.pos.x - cursor.pos.x
                 dy = b.pos.y - cursor.pos.y
                 if dx * dx + dy * dy < 4096.0:
                     args.th08_extra_ints[2] = 60
-                    args.th08_ints[7] = ctx.args.th08_ints[7]
+                    args.th08_ints[7] = _args_of(ctx).th08_ints[7]
 
     def _ex27_spawn_enemies_from_marked_bullets(self, enemy, instr, ctx) -> None:
         """ex27 SpawnEnemiesFromMarkedBullets(EclExIns.cpp:835-855):
@@ -944,18 +1163,19 @@ class Th08GameEclHost(EclHost):
         分 10), 清标记; 弹角写 floatVariables[0]。"""
         if self.bullets is None or ctx is None:
             return
+        a = _args_of(ctx)
         for b in self.bullets.alive():
             if not (b.more_flags & _BULLET_FLAG_EX_TRIGGER_MARKER):
                 continue
-            ctx.args.th08_floats[0] = b.angle
+            a.th08_floats[0] = b.angle
             self.spawn_enemy(
-                ctx.args.th08_extra_ints[2],
+                a.th08_extra_ints[2],
                 Vec3(b.pos.x, b.pos.y, 0.0),
                 800,
                 -2,
                 10,
                 0,
-                ctx.args.clone(),
+                a.clone(),
             )
             b.more_flags &= ~_BULLET_FLAG_EX_TRIGGER_MARKER
 
@@ -978,7 +1198,8 @@ class Th08GameEclHost(EclHost):
         """
         if self.bullets is None or ctx is None:
             return
-        mask = ctx.args.th08_ints[0]
+        a = _args_of(ctx)
+        mask = a.th08_ints[0]
         mult = self.world.framerate_multiplier
         for b in self.bullets.alive():
             if not (b.more_flags & mask):
@@ -986,7 +1207,7 @@ class Th08GameEclHost(EclHost):
             if b.state2 == 0:  # type 1 → 冻结
                 b.state2 = _BSTATE_FREEZEN
                 b.vel = Vec2.from_angle(
-                    ctx.args.th08_floats[0], mult * ctx.args.th08_floats[1]
+                    a.th08_floats[0], mult * a.th08_floats[1]
                 )
             else:  # → 解冻
                 b.state2 = 0
@@ -999,14 +1220,14 @@ class Th08GameEclHost(EclHost):
         正常→冻结(无判定慢速)→过渡(无判定)→正常; alpha 插值/换皮不接。"""
         if self.bullets is None or ctx is None:
             return
-        mask = ctx.args.th08_ints[0]
+        mask = _args_of(ctx).th08_ints[0]
         mult = self.world.framerate_multiplier
         for b in self.bullets.alive():
             if not (b.more_flags & mask):
                 continue
             if b.state2 == 0:  # type 1 → type 0(冻结)
                 b.state2 = _BSTATE_FREEZEN
-                b.vel = Vec2.from_angle(b.angle, mult * ctx.args.th08_floats[1])
+                b.vel = Vec2.from_angle(b.angle, mult * _args_of(ctx).th08_floats[1])
             elif b.state2 == _BSTATE_FREEZEN:  # type 0 → type 2(过渡)
                 b.state2 = _BSTATE_FREEZEN_MID
             else:  # type 2 → type 1(恢复)

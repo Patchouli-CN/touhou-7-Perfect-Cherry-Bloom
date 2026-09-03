@@ -17,11 +17,12 @@ import struct
 import pytest
 
 import touhou  # noqa: F401  # import 即完成 th08 注册
-from touhou.engine.ecl import EclEnemyState, EclHost, EclWorld, Vec3
+from touhou.engine.ecl import EclHost, Vec3
 from touhou.games.th08.clock import MAX_UNITS, Th08Clock
 from touhou.games.th08.crypt import try_decrypt_from_table
 from touhou.games.th08.ecl_file import EclFileTh08
-from touhou.games.th08.ecl_host import Th08GameEclHost
+from touhou.games.th08.ecl_state import Th08EclWorld, Th08EnemyState
+from touhou.games.th08.ecl_host import Th08GameEclHost, Th08NullHost
 from touhou.games.th08.ecl_timeline import Th08TimelineRunner
 from touhou.games.th08.ecl_vm import EclMachineTh08, Th08EclOpcode as Op, Th08EclVarId as V
 from touhou.paths import DEFAULT_DATA_PATHS
@@ -89,9 +90,9 @@ def _build_ecl(subs: list[list[bytes]], timelines: list[list[bytes]] = ()) -> by
 def _machine(
     subs: list[list[bytes]],
     *,
-    world: EclWorld | None = None,
+    world: Th08EclWorld | None = None,
     host: EclHost | None = None,
-    enemy: EclEnemyState | None = None,
+    enemy: Th08EnemyState | None = None,
     timelines: list[list[bytes]] = (),
 ) -> EclMachineTh08:
     ecl = EclFileTh08.parse(_build_ecl(subs, timelines))
@@ -106,8 +107,11 @@ def _step(m: EclMachineTh08, frames: int = 1) -> None:
             break
 
 
-class _RecHost(EclHost):
-    """记录宿主调用的 stub(效果类断言"调了对的方法 + 参数对")。"""
+class _RecHost(Th08NullHost):
+    """记录宿主调用的 stub(效果类断言"调了对的方法 + 参数对")。
+
+    继承 Th08NullHost: 15 个 th08 接缝的 no-op 兜底(原 EclHost 基类提供,
+    下沉后由 games/th08 层承担)。"""
 
     def __init__(self) -> None:
         self.calls: list[tuple] = []
@@ -416,13 +420,13 @@ def test_wait_secondary_time() -> None:
 def test_difficulty_mask_th08_semantics() -> None:
     """th08 难度掩码: 指令掩码需完整包含(全局难度位|敌人覆盖位)
     (EclRun.cpp:67-74) —— 与 th07 的"有交集即执行"在带覆盖位时分叉。"""
-    w = EclWorld(difficulty=1)  # N, 难度位 0x02
+    w = Th08EclWorld(difficulty=1)  # N, 难度位 0x02
     sub = [[_instr(0, Op.SET_INT, (V.LOCAL_INT0, 1), mask=0b01, skip=0x02)]]
     m = _machine(sub, world=w)
     _step(m)
     assert m._get_int(V.LOCAL_INT0) == 1  # 单难度位: 与 th07 等价, 执行
 
-    w2 = EclWorld(difficulty=1)
+    w2 = Th08EclWorld(difficulty=1)
     m2 = _machine(sub, world=w2)
     m2.enemy.difficulty_mask_override = 0x01  # eff = 0x03
     _step(m2)
@@ -570,7 +574,7 @@ def test_run_ex_ins_immediate() -> None:
 
 def test_ex_framerate_divisor() -> None:
     """ex18 SetFrameRateDivisor: value @0x10 = args[4](EclManager.hpp:158-173)。"""
-    w = EclWorld()
+    w = Th08EclWorld()
     host = Th08GameEclHost(w)
     m = _machine([[_instr(0, Op.RUN_EX_INS, (18, 0, 0, 0, 2))]], world=w, host=host)
     _step(m)
@@ -583,7 +587,7 @@ def test_ex_framerate_divisor() -> None:
 def test_set_ex_ins_per_frame() -> None:
     """op137: 注册每帧 EX 回调(life>0 时在帧收尾跑, EclRun.cpp:124-126)。"""
     host = Th08GameEclHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     m = _machine([[_instr(0, Op.SET_EX_INS, (30, 0, 0, 0, 42))]], host=host, enemy=enemy)
     _step(m)
     assert host.screen_effect_counter == 42  # 当帧收尾就跑了一次
@@ -599,9 +603,9 @@ def test_shot_pattern_parse_and_host_call() -> None:
     """96-104 九合一: ShotArgs 布局/aim_mode/标志位解析
     (EclDependencies.cpp:687-780)。"""
     host = _RecHost()
-    w = EclWorld()
+    w = Th08EclWorld()
     w.spellcard_active = True  # 跳过 rank 缩放, 钉死原值
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     enemy.pos.set(100.0, 50.0, 0.0)
     enemy.shoot_offset.set(1.0, 2.0, 0.0)
     word0 = 5 | (3 << 16)  # bulletType=5, color=3
@@ -631,7 +635,7 @@ def test_shot_pattern_parse_and_host_call() -> None:
 def test_shot_operand_mask_and_life_gate() -> None:
     """操作数标志位: count1 走变量(bit2); life<=0 不发弹。"""
     host = _RecHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     word0 = 5 | (3 << 16)
     m = _machine(
         [
@@ -655,7 +659,7 @@ def test_shot_operand_mask_and_life_gate() -> None:
     m2 = _machine(
         [[_instr(0, Op.SPAWN_BULLET_PATTERN_SPREAD_ABS, (word0,) + (0,) * 7)]],
         host=host2,
-        enemy=EclEnemyState(life=0),
+        enemy=Th08EnemyState(life=0),
     )
     _step(m2)
     assert host2.calls == []  # life<=0 门控(EclRunHigh.inl:172-173)
@@ -665,7 +669,7 @@ def test_defer_bullet_pattern_and_auto_shoot() -> None:
     """op107 defer: 弹幕指令存 pending(EclRunHigh.inl:174-181);
     自动射击到点重新派发(EclDependencies.cpp:791-802)。"""
     host = _RecHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     word0 = 5 | (3 << 16)
     m = _machine(
         [
@@ -694,7 +698,7 @@ def test_defer_bullet_pattern_and_auto_shoot() -> None:
 def test_laser_pattern_parse() -> None:
     """op114/115: LaserSpawnArgs 布局(EclRunHigh.inl:53-76) + 句柄入槽。"""
     host = _RecHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     enemy.pos.set(10.0, 20.0, 0.0)
     word0 = 7 | (2 << 16)  # bulletType=7, color=2
     args = (
@@ -717,7 +721,7 @@ def test_laser_pattern_parse() -> None:
     m2 = _machine(
         [[_instr(0, Op.SPAWN_LASER_PATTERN_AIMED, args)]],
         host=_RecHost(),
-        enemy=EclEnemyState(life=100),
+        enemy=Th08EnemyState(life=100),
     )
     _step(m2)
     assert m2.enemy.laser_props.type == 0  # 115 = FAN_AIMED(出生瞄玩家)
@@ -726,7 +730,7 @@ def test_laser_pattern_parse() -> None:
 def test_test_laser_in_use_writes_extra_var() -> None:
     """op120: 激光占用写 extraIntVariables[2](EclRunHigh.inl:385-393)。"""
     host = _RecHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     m = _machine([[_instr(0, Op.TEST_LASER_IN_USE, (0,))]], host=host, enemy=enemy)
     _step(m)
     assert m._get_int(V.EXTRA_INT0 + 2) == 0  # 无激光
@@ -743,7 +747,7 @@ def test_test_laser_in_use_writes_extra_var() -> None:
 def test_spawn_familiar_routing() -> None:
     """op90/91: 音效 0x24 无条件, 生成经 host.spawn_familiar; 91 加父偏移。"""
     host = _RecHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     enemy.pos.set(50.0, 60.0, 0.0)
     m = _machine(
         [
@@ -768,7 +772,7 @@ def test_spawn_familiar_routing() -> None:
 
 def test_spawn_enemy_abs_rel() -> None:
     host = _RecHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     enemy.pos.set(50.0, 60.0, 0.0)
     m = _machine(
         [
@@ -790,7 +794,7 @@ def test_spawn_enemy_abs_rel() -> None:
 def test_begin_spellcard_parse() -> None:
     """op122: 符卡名 XOR 0xAA 解码(Spellcard.cpp:743) + 宿主交接。"""
     host = _RecHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     name = "永夜返し".encode("shift_jis")
     encoded = bytes(b ^ 0xAA for b in name).ljust(0x30, b"\xAA")  # NUL 也按 0xAA
     args = [7 | (123 << 16), 5000]  # enemyFace=7, spellCardNumber=123, bonus
@@ -807,7 +811,7 @@ def test_begin_spellcard_parse() -> None:
 
 def test_boss_and_misc_host_routing() -> None:
     host = _RecHost()
-    enemy = EclEnemyState(life=100)
+    enemy = Th08EnemyState(life=100)
     m = _machine(
         [
             [
@@ -830,10 +834,10 @@ def test_boss_and_misc_host_routing() -> None:
 
 
 def _timeline_machine(
-    tl: list[bytes], *, world: EclWorld | None = None, host: EclHost | None = None
+    tl: list[bytes], *, world: Th08EclWorld | None = None, host: EclHost | None = None
 ) -> Th08TimelineRunner:
     ecl = EclFileTh08.parse(_build_ecl([[_instr(0, Op.NOP)]], [tl]))
-    return Th08TimelineRunner(ecl, 0, world or EclWorld(), host or _RecHost())
+    return Th08TimelineRunner(ecl, 0, world or Th08EclWorld(), host or _RecHost())
 
 
 def test_timeline_fixed_spawn() -> None:
@@ -858,8 +862,8 @@ def test_timeline_fixed_spawn() -> None:
 
 def test_timeline_spawn_gating() -> None:
     """boss 在场 / op175 抑制 → 跳过(15 强制生敌无门控)。"""
-    w = EclWorld()
-    w.bosses[0] = EclEnemyState()
+    w = Th08EclWorld()
+    w.bosses[0] = Th08EnemyState()
     host = _RecHost()
     r = _timeline_machine(
         [
@@ -872,7 +876,7 @@ def test_timeline_spawn_gating() -> None:
     r.step()
     assert [c[1] for c in host.calls] == [4]  # op0 被门控, op15 照生
 
-    w2 = EclWorld(suppress_timeline_spawns=1)
+    w2 = Th08EclWorld(suppress_timeline_spawns=1)
     host2 = _RecHost()
     r2 = _timeline_machine(
         [_tl_instr(0, 0, (3, _f(1.0), _f(2.0), 100, 0, 0, 0))],
@@ -888,7 +892,7 @@ def test_timeline_difficulty_filter() -> None:
     host = _RecHost()
     r = _timeline_machine(
         [_tl_instr(0, 0, (3, _f(1.0), _f(2.0), 100, 0, 0, 0), diff=0x01)],
-        world=EclWorld(difficulty=1),  # N = 0x02, 不在掩码里
+        world=Th08EclWorld(difficulty=1),  # N = 0x02, 不在掩码里
         host=host,
     )
     r.step()
@@ -928,8 +932,8 @@ def test_timeline_msg_wait_and_boss_wait() -> None:
     r.step()
     assert (r.time, r.idx) == (1, 1)
 
-    w = EclWorld()
-    w.bosses[1] = EclEnemyState(active=1)
+    w = Th08EclWorld()
+    w.bosses[1] = Th08EnemyState(active=1)
     host2 = _RecHost()
     r2 = _timeline_machine([_tl_instr(0, 10, (1,) + (0,) * 6)], world=w, host=host2)
     r2.step()
@@ -941,8 +945,8 @@ def test_timeline_msg_wait_and_boss_wait() -> None:
 
 def test_timeline_boss_pending_power_retry() -> None:
     """op8 boss pendingSub / op9 SetPower / op16 Retry 菜单。"""
-    w = EclWorld()
-    boss = EclEnemyState()
+    w = Th08EclWorld()
+    boss = Th08EnemyState()
     w.bosses[0] = boss
     host = _RecHost()
     r = _timeline_machine(
@@ -962,7 +966,7 @@ def test_timeline_boss_pending_power_retry() -> None:
 
 def test_timeline_event_slots() -> None:
     """op13/14 事件槽同步(EnemyTimeline.cpp:253-282): 14 填空槽, 13 等匹配。"""
-    w = EclWorld()
+    w = Th08EclWorld()
     host = _RecHost()
     r = _timeline_machine(
         [_tl_instr(0, 14, (7,) + (0,) * 6)], world=w, host=host
@@ -991,7 +995,7 @@ def test_timeline_drop_count_spawn() -> None:
     class _SpawnHost(_RecHost):
         class _Spawned:
             def __init__(self) -> None:
-                self.state = EclEnemyState()
+                self.state = Th08EnemyState()
 
         def spawn_enemy(self, sub_id, pos, life, item_drop, score, mirror, context_args):
             super().spawn_enemy(sub_id, pos, life, item_drop, score, mirror, context_args)
@@ -1019,7 +1023,7 @@ def test_real_ecldata1_all_subs_smoke() -> None:
     ecl = EclFileTh08.parse(try_decrypt_from_table(arc.load("ecldata1.ecl")))
     stepped = 0
     for sub_id in range(ecl.sub_count):
-        enemy = EclEnemyState(life=100)
+        enemy = Th08EnemyState(life=100)
         m = EclMachineTh08(ecl, enemy=enemy)  # 默认 world/host 全 no-op
         m.start(sub_id)
         for _ in range(120):
@@ -1037,6 +1041,6 @@ def test_real_ecldata1_timelines_smoke() -> None:
     assert ecl.timeline_count > 0
     for i in range(ecl.timeline_count):
         host = _RecHost()
-        r = Th08TimelineRunner(ecl, i, EclWorld(), host)
+        r = Th08TimelineRunner(ecl, i, Th08EclWorld(), host)
         for _ in range(200):
             r.step()

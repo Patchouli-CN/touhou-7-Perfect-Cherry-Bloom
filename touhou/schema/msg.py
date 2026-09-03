@@ -48,11 +48,10 @@ Gui.cpp:2178-2194 LoadMsg / :767-778 DecryptGuiMessageText):
 - 差异一: 文本逐字节 XOR 0x77(DecryptGuiMessageText) —— parse 的
   ``text_xor`` 参数, MsgInstr.text_xor 随指令携带, dialogue/plain_text
   视图解码时应用(th07 = 0);
-- 差异二: opcode 扩到 0-22(Gui.hpp:52-74): 15/17 立绘配置、16 说话人
-  文本、18 文本框显隐、19/20 顶/底部文本(均纯视觉或落文本行)、
-  21 二选一(GUI_MSG_SHOW_SELECTION, Gui.cpp:540-573)/22 读选项分支
-  (GUI_MSG_READ_SELECTED_MESSAGE, Gui.cpp:574-578: finalStageRoute =
-  selectedOption 并 MsgRead(selectedOption+1));
+- 差异二: opcode 扩到 0-22(Gui.hpp:52-74) —— 枚举按格式常量表全量保留;
+  15-22 的 VM 语义(含 th08 扩展字段 dialogueLineIndex/selectedOption/
+  finalStageRoute)在 games/th08/msg_vm.py 的 ``MsgVmTh08``(经
+  ``MsgVm._handle_extra_op`` 扩展点接入);
 - 差异三: 立绘 4 槽(th07 为 2) —— MsgVm 的 ``num_portraits`` 参数,
   SWITCH 的 idx<num_portraits → 立绘。
 """
@@ -257,10 +256,16 @@ class MsgVm:
 
     num_portraits: 立绘槽数(th07=2, th08=4, Gui.hpp GuiMsgVm.portraits[4]);
     SWITCH 的 idx<num_portraits → 立绘, 否则文本行 idx-num_portraits。
+    pause_min_frames: PAUSE 的 Z 提前结束最短停留(th07 恒 12; th08 MsgRead
+    置 waitThreshold=6, Gui.cpp:241 —— 见 games/th08/msg_vm.py)。
     """
 
     def __init__(
-        self, msg_file: Optional[MsgFile] = None, *, num_portraits: int = 2
+        self,
+        msg_file: Optional[MsgFile] = None,
+        *,
+        num_portraits: int = 2,
+        pause_min_frames: int = PAUSE_MIN_FRAMES,
     ) -> None:
         self.msg_file = msg_file
         self.num_portraits = num_portraits
@@ -276,13 +281,7 @@ class MsgVm:
         self.intro_lines = [MsgLineState(), MsgLineState()]
         self.finished_stage = 0  # STAGERESULTS 置 1
         self.events: list[str] = []  # 透出事件: "music:idx"/"next_level" 等
-        # ---- th08 扩展(Gui.hpp GuiMsgVm 尾部字段) ----
-        self.dialogue_line_index = 0  # op16 说话人文本的落行游标
-        self.selected_option = 0  # op21 二选一的当前选项(0/1)
-        self.final_stage_route: int | None = None  # op22 写出(Gui.cpp:574-578)
-        # PAUSE 的 Z 提前结束最短停留(th08 MsgRead 置 waitThreshold=6,
-        # Gui.cpp:241; th07 恒 12)
-        self.pause_min_frames = PAUSE_MIN_FRAMES
+        self.pause_min_frames = pause_min_frames
         self._type_timer = 0
 
     # ---- C 访问器 ----
@@ -326,7 +325,6 @@ class MsgVm:
         self.intro_lines = [MsgLineState(), MsgLineState()]
         self.finished_stage = 0
         self.events = []
-        self.dialogue_line_index = 0
         self._type_timer = 0
 
     # ---- RunMsg ----
@@ -404,45 +402,12 @@ class MsgVm:
             elif op == MsgOpcode.ALLOW_SKIP:
                 self.dialogue_skippable = cur.allow_skip
             # FADE_IN_EFFECT: 演出, 逻辑侧忽略
-            # ---- th08 新增(Gui.cpp RunMsg; 15/17/18 纯视觉配置, 忽略) ----
-            elif op == MsgOpcode.SHOW_SPEAKER_TEXT:
-                # Gui.cpp:486-512: 落 dialogueLines[dialogueLineIndex] 并自增
-                line_state = self.dialogue_lines[
-                    min(self.dialogue_line_index, len(self.dialogue_lines) - 1)
-                ]
-                line_state.set_text(cur.plain_text, 0)
-                self.frames_elapsed_during_pause = 0
-                self.dialogue_line_index += 1
-            elif op == MsgOpcode.SHOW_TOP_TEXT:
-                # Gui.cpp:514-525: 落对话行 0
-                self.dialogue_lines[0].set_text(cur.plain_text, 0)
-                self.frames_elapsed_during_pause = 0
-            elif op == MsgOpcode.SHOW_BOTTOM_TEXT:
-                # Gui.cpp:527-538: 落对话行 1
-                self.dialogue_lines[1].set_text(cur.plain_text, 0)
-                self.frames_elapsed_during_pause = 0
-            elif op == MsgOpcode.SHOW_SELECTION:
-                # 二选一 (Gui.cpp:540-573): wait 式停留; Z 新按下(停满 60 帧)
-                # 提前确认, 否则停满 args.wait.frames 自然前进; 上下键改
-                # selected_option 是输入侧职责(headless 由上层直写字段)。
-                if (
-                    not advance_pressed
-                    or self.frames_elapsed_during_pause < 60
-                ):
-                    if self.frames_elapsed_during_pause < cur.pause_duration:
-                        self.frames_elapsed_during_pause += 1
-                        self._post_step()
-                        return True  # 停在该指令
-            elif op == MsgOpcode.READ_SELECTED_MESSAGE:
-                # Gui.cpp:574-578: finalStageRoute=selectedOption,
-                # MsgRead(selectedOption+1) 后 continue(新消息当帧继续跑);
-                # 越界时 MsgRead 无操作, 原地 continue 会死循环, 按普通前进兜底
-                self.final_stage_route = self.selected_option
-                prev_idx = self.current_msg_idx
-                self.read(self.selected_option + 1)
-                if self.current_msg_idx != prev_idx:
-                    cur = self.cur
-                    continue
+            else:
+                # 作品扩展 opcode(th08 = 15-22, games/th08/msg_vm.py):
+                # None = 未处理(落普通前进)/True/False = 已处理且即 step 返回值
+                r = self._handle_extra_op(cur, advance_pressed)
+                if r is not None:
+                    return r
             self.instr_idx += 1
             cur = self.cur
         self.timer += 1
@@ -451,6 +416,16 @@ class MsgVm:
         if self.timer < 60 and self.dialogue_skippable and skip_held:
             self.timer = 60
         return True
+
+    def _handle_extra_op(self, cur: MsgInstr, advance_pressed: bool) -> Optional[bool]:
+        """作品扩展 opcode 钩子(dispatch 链末尾未命中时调用)。
+
+        返回 None = 未处理(由 step 落普通前进); True/False = 已处理且
+        即 step 返回值。基类无扩展, 恒 None。
+        切消息(如 th08 op22 的 MsgRead 分支)的扩展在 read() 成功后把
+        instr_idx 置 -1, 抵消 step 链尾的普通前进, 等效 C 的 continue。
+        """
+        return None
 
     def _post_step(self) -> None:
         """SKIP_TIME_INCREMENT 之后: 打字机推进(C 里是 ExecuteScript 驱动 VMs)。"""
