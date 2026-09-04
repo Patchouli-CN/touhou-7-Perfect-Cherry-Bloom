@@ -63,11 +63,15 @@ from .boss import TIMEOUT_SPELL_SCORE_LIMIT, Th08Boss
 from .crypt import try_decrypt_from_table
 from .data import (
     CHARACTER_SHT,
+    LAST_WORD_ECL_FILES,
     MSG_FILES,
     STAGE_CLEAR_BONUSES,
     STAGE_ECL_FILES,
+    STAGE_SPELL_ECL_FILES,
     STAGE_STD_FILES,
+    STAGE_STD_FILES_SPELL,
     TH08_DATA,
+    spell_practice_music,
 )
 from .ecl_host import Th08GameEclHost
 from .ecl_file import EclFileTh08
@@ -107,6 +111,7 @@ from .progress import (
     record_ending_clear,
     record_extra_clear,
     record_stage_clear,
+    unlock_bgm,
     unlock_stage_bgm,
 )
 from .results import RunStats, clear_percent, rating
@@ -183,6 +188,11 @@ class ImperishableNight:
         self.stage_no = 1
         self.character = character
         self.difficulty = difficulty
+        # 练习模式标记先于首次 _read_stage/_load_ecl 初始化(换表分支读它;
+        # 语义见下方 result 区注释)
+        self.practice_mode = False
+        self.spell_practice_card: int | None = None
+        self.spell_practice_bgm: str | None = None
         self.stage = self._read_stage(self.stage_no)
 
         # 射击数据(双表: 非 focus / focus, Player.cpp:35-44 的双 sht;
@@ -234,6 +244,12 @@ class ImperishableNight:
         self.cleared = False
         self.stage_results: dict | None = None
         self.ending: EndingData | None = None
+        # 练习模式(C 期第 5 片; view 开局后经 configure_practice/
+        # configure_spell_practice 翻置, 字段已在上方初始化):
+        # practice_mode = 练习口径(残机 8/结算不入 HSCR 榜/通关不续关);
+        # spell_practice_card 非 None = 符卡练习(该卡卡号; sp ECL/_s.std
+        # 换表 + catk 记 practice 组 + 通关不写 CLRD);
+        # spell_practice_bgm = 符卡练习曲文件名(view 播)
         self._pending_next_level = False
         self._result_cache: dict | None = None
         self._catk_idx: int | None = None
@@ -331,9 +347,17 @@ class ImperishableNight:
 
     # ---- ECL 关卡装载 ----
     def _load_ecl(self) -> None:
-        """加载本关 ECL/msg 并接好宿主/时间轴; 缺资源则不留时间轴(空转)。"""
+        """加载本关 ECL/msg 并接好宿主/时间轴; 缺资源则不留时间轴(空转)。
+        符卡练习换 sp ECL(卡 <205 按面, Last Word 按卡,
+        EnemyManager.cpp:1329-1353)。"""
+        if self.spell_practice_card is None:
+            ecl_name = STAGE_ECL_FILES[self.stage_no - 1]
+        elif self.spell_practice_card >= 205:  # SPELLCARD_LAST_WORD_START
+            ecl_name = LAST_WORD_ECL_FILES[self.spell_practice_card - 205]
+        else:
+            ecl_name = STAGE_SPELL_ECL_FILES[self.stage_no - 1]
         try:
-            data = self.archive.load(STAGE_ECL_FILES[self.stage_no - 1])
+            data = self.archive.load(ecl_name)
         except (KeyError, IndexError):
             self.ecl_file = None
             self.ecl_timelines = []
@@ -491,8 +515,10 @@ class ImperishableNight:
         )
         self._catk_idx = idx
         # catk: BeginSpellcard attempts[shotType]/[SHOT_ALL] ++ (封顶 9999,
-        # Spellcard.cpp:845-855 非 replay 段; 13 槽轴 = shotType)
-        self.store.record_spellcard_attempt(idx, name, self.character)
+        # Spellcard.cpp:845-866; 13 槽轴 = shotType; 符卡练习记 practice 组)
+        self.store.record_spellcard_attempt(
+            idx, name, self.character, practice=self.spell_practice_card is not None
+        )
         self.sounds.play(SE_SPELL_DECLARE)  # 符卡宣告(cut-in 演出是 view 侧)
         log.debug(
             "符卡宣言: #{} {} (stage={}, bonus={}, 时限={}s) (frame={})",
@@ -654,8 +680,14 @@ class ImperishableNight:
     def _read_stage(self, stage_no: int) -> Stage:
         """读 stage*.std(条目带 "edz" 内层加密, crypt.py 解; 头布局与 th07
         同构 —— 名字 @0x10/曲名 @0x90/曲路径 @0x290, Background.hpp:17-31,
-        头长同为 0x490=1168 字节, schema/stage.py 直接复用)。"""
-        raw = try_decrypt_from_table(self.archive.load(STAGE_STD_FILES[stage_no - 1]))
+        头长同为 0x490=1168 字节, schema/stage.py 直接复用)。符卡练习换
+        _s.std (g_StageStdFilesSpell, Background.cpp:894-906)。"""
+        files = (
+            STAGE_STD_FILES_SPELL
+            if self.spell_practice_card is not None
+            else STAGE_STD_FILES
+        )
+        raw = try_decrypt_from_table(self.archive.load(files[stage_no - 1]))
         return Stage.read(raw, stage_no)
 
     def enter_stage(self, stage_no: int) -> None:
@@ -669,9 +701,52 @@ class ImperishableNight:
             self.frame,
         )
         # 换面面曲解锁(GameManager.cpp:408-410 → PlayMusic 置位;
-        # 下标表 g_GuiStageMusicContexts, Gui.cpp:39-50)
-        unlock_stage_bgm(self.store, stage_no - 1, 0)
+        # 下标表 g_GuiStageMusicContexts, Gui.cpp:39-50); 符卡练习不播面曲,
+        # 不解锁(原作曲目解锁走 g_SpellcardMusicInfo, configure_spell_practice)
+        if self.spell_practice_card is None:
+            unlock_stage_bgm(self.store, stage_no - 1, 0)
         self._load_ecl()
+
+    # ---- 练习模式(C 期第 5 片; GameManagerSetup.cpp:60-278 的练习分支) ----
+    def configure_practice(self, stage_no: int) -> None:
+        """Practice 选关开局: 残机 8 (cfg.lifeCount=8, GameManagerSetup.cpp
+        :108-109) + 火力按面(1面 0/2面 112/其余 128, :244-258) + 指定面进关。
+        构造后、首帧前由 view 调用。"""
+        self.practice_mode = True
+        self.globals.lives_remaining = 8.0
+        self.power = (0.0, 112.0, 128.0)[min(stage_no - 1, 2)]
+        self.enter_stage(stage_no)
+
+    def configure_spell_practice(self, stage_no: int, card_no: int) -> None:
+        """Spell Practice 开局: 残机 8 + 火力按卡号(<=1 → 30/<=12 → 80/其余
+        128, GameManagerSetup.cpp:262-276) + 时刻符点阈值 0(:235-238) +
+        sp ECL/_s.std 换表进关 + ex19 发布卡号(选卡分支,
+        EnemyManager.cpp:1329-1353) + 符卡练习曲解锁(GameManagerSetup.cpp
+        :386-398 → PlayMusic 置位)。难度由 view 按卡原生难度构造(LW 另按
+        LAST_WORD_STAGE_MAP 映面, TitleScreen.cpp:2466-2510)。"""
+        self.practice_mode = True
+        self.spell_practice_card = int(card_no)
+        self.globals.lives_remaining = 8.0
+        card = int(card_no)
+        self.power = 30.0 if card <= 1 else (80.0 if card <= 12 else 128.0)
+        unlock_idx, bgm = spell_practice_music(card)
+        unlock_bgm(self.store, unlock_idx)
+        self.spell_practice_bgm = bgm
+        self.enter_stage(stage_no)
+        # 时刻符点阈值 0 (GameManagerSetup.cpp:235-238; enter_stage 的
+        # _load_ecl 会按面表重设, 必须在其后覆写)
+        self.globals.last_spell_time_orb_threshold = 0
+        # ex19 PublishCurrentSpellCardNumber: sp 主 sub 选卡分支的输入;
+        # enter_stage 重建 ecl_host 后置(开局后由 begin_spellcard 覆写同值)
+        if self.ecl_host is not None:
+            self.ecl_host.current_spellcard_number = card
+        log.debug(
+            "符卡练习: card={} stage={} bgm={} (frame={})",
+            card,
+            stage_no,
+            bgm,
+            self.frame,
+        )
 
     # ---- 对话(GuiImpl::RunMsg 的每帧语义 + 世界门控) ----
     def _msg_active(self) -> bool:
@@ -1063,16 +1138,31 @@ class ImperishableNight:
         非终面(stage_no 1-6 = 1-5 面): 时刻 ≥12 → Bad Ending
         (gameCleared=0 → 结局, :342-348), 否则换关;
         7/8(6A/6B) → 结局(gameCleared=1, :370-374, flag 写在 _enter_ending);
-        9(EX) → 直接总结算(difficulty>=4 分支, :357-368)。"""
+        9(EX) → 直接总结算(difficulty>=4 分支, :357-368);
+        练习模式 → 单面结算(practice 分支 nextSupervisorState=6, :311-314;
+        符卡练习不写 CLRD —— 原作符卡练习不过 Gui 过面流程, 无面位入账)。"""
         # CLRD 过关置面位 (GameManager.cpp:299-307): 无续关才进
         # without_retries 表, with_retries 无条件; SHOT_ALL 合计行同步
-        record_stage_clear(
-            self.store,
-            self.character,
-            self.difficulty,
-            self.stage_no - 1,
-            self.globals.num_retries,
-        )
+        if self.spell_practice_card is None:
+            record_stage_clear(
+                self.store,
+                self.character,
+                self.difficulty,
+                self.stage_no - 1,
+                self.globals.num_retries,
+            )
+        if self.practice_mode:
+            # 练习单面局: 不换关/无结局, 直接总结算(不入 HSCR 榜,
+            # final_result 内门控; 结算画面跳过由 view 处理)
+            self.cleared = True
+            log.debug(
+                "练习面通过 → 练习结算 (frame={}, stage={}, score={})",
+                self.frame,
+                self.stage_no,
+                self.globals.gui_score,
+            )
+            self.result = self.final_result(cleared=True)
+            return
         if self.stage_no <= 6:
             clock = self.ecl_host.clock if self.ecl_host is not None else None
             if clock is not None and clock.units >= 12:
@@ -1505,10 +1595,14 @@ class ImperishableNight:
         self._last_spellcard_captured = bool(res["captured"])
         # catk: 捕获成功 → captures[shotType]/[SHOT_ALL] ++, maxBonus 取 max
         # (Spellcard.cpp:1086-1105; 只接 ECL 路径, _catk_idx 由 begin 登记;
-        # maxBonus 原作是 bonusProgress, 这里喂显示分 = 代码值 // 10)
+        # maxBonus 原作是 bonusProgress, 这里喂显示分 = 代码值 // 10;
+        # 符卡练习记 practice 组)
         if res["captured"] and self._catk_idx is not None:
             self.store.record_spellcard_success(
-                self._catk_idx, self.character, res["score"] // 10
+                self._catk_idx,
+                self.character,
+                res["score"] // 10,
+                practice=self.spell_practice_card is not None,
             )
         self._catk_idx = None
         if res["despawn_bullets"]:
@@ -1857,7 +1951,10 @@ class ImperishableNight:
             name=name,
             num_retries=g.num_retries,
         )
-        pos = self.store.insert_score(rec)
+        # 练习模式不入 HSCR 榜 (原作 practice 结算 PRACTICE/SPELL_PRACTICE 态
+        # 只更新 pscrData.highScores, ResultScreen.cpp:1293+; pscr 最高分由
+        # 下面 record_run_end 入账)
+        pos = -1 if self.practice_mode else self.store.insert_score(rec)
         # CLRD 不走引擎 record_clear(那是 th07 的 max-stage 口径); th08 的
         # 位掩码在过关/结局时已由 progress 模块写入(_advance_or_ending 的
         # record_stage_clear / _enter_ending 的 record_ending_clear)

@@ -84,6 +84,15 @@ class StubRenderer:
     def render_replay_menu(self, flow, frame=0):
         self.calls.append(("replay_menu", flow.cursor, frame))
 
+    def render_practice_stage_select(self, flow, title, lines, frame=0):
+        self.calls.append(("practice_stage", flow.cursor, frame))
+
+    def render_spell_stage_select(self, flow, title, lines, frame=0):
+        self.calls.append(("spell_stage", flow.cursor, flow.character, frame))
+
+    def render_spell_card_select(self, flow, title, info_lines=(), frame=0):
+        self.calls.append(("spell_card", flow.cursor, frame))
+
     def begin_game(self, game, *, character):
         self.calls.append(("begin_game", character))
 
@@ -191,14 +200,18 @@ def test_stub_renderer_full_scene_flow(tmp_path) -> None:
     assert app._screen == Screen.MAIN_MENU
 
 
-def test_stub_renderer_pause_and_unsupported_items(tmp_path) -> None:
-    """暂停面板渲染落到后端; 未实装菜单项(Practice 等)给提示不跳转。"""
+def test_stub_renderer_pause_and_practice_entry(tmp_path) -> None:
+    """暂停面板渲染落到后端; Practice 项进练习难度流(C 期第 5 片实装后
+    不再是未实装提示)。"""
     app, stub = _stub_app(tmp_path)
-    # Practice(th08 9 项名单下标 3; 未实装) → 留在主菜单 + 未实装提示计时
+    # Practice(th08 9 项名单下标 3) → 难度选择(practice 流)
     app._flow.cursor.index = 3
     app._run_title_menu((MenuAction.CONFIRM,))
+    assert app._screen == Screen.DIFFICULTY
+    assert app._practice_mode
+    app._on_menu(MenuAction.BACK)  # 难度 BACK → 主菜单
     assert app._screen == Screen.MAIN_MENU
-    assert app._unimplemented_timer > 0
+    app._practice_mode = False
     app._flow.cursor.index = 0  # 回 "开始游戏"
     app._on_menu(MenuAction.CONFIRM)  # 开始游戏
     app._on_menu(MenuAction.CONFIRM)  # 难度

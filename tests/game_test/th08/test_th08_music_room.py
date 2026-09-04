@@ -225,13 +225,6 @@ def test_played_locked_track_shows_real_comment() -> None:
 # ---- 应用壳接线(StubRenderer) ----
 
 
-def test_music_room_no_longer_unsupported() -> None:
-    """ "music_room" 摘出 _UNSUPPORTED_ACTIONS。"""
-    from touhou.games.th08.view.impl import _UNSUPPORTED_ACTIONS
-
-    assert "music_room" not in _UNSUPPORTED_ACTIONS
-
-
 def test_app_enter_and_leave_music_room(tmp_path, monkeypatch) -> None:
     """主菜单 Music Room 项进 Screen.MUSIC_ROOM; BACK 回标题光标落 6
     (wantedState2 规则, TitleScreen.cpp:3692-3693)。"""

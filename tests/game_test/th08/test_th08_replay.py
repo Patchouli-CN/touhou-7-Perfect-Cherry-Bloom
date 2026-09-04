@@ -207,10 +207,10 @@ def test_entry_tag_and_line() -> None:
 
 
 def test_replay_no_longer_unsupported() -> None:
-    """ "replay" 摘出 _UNSUPPORTED_ACTIONS。"""
-    from touhou.games.th08.view.impl import _UNSUPPORTED_ACTIONS
+    """主菜单 9 项全部实装(C 期第 5 片后 _UNSUPPORTED_ACTIONS 已拆除)。"""
+    import touhou.games.th08.view.impl as impl_mod
 
-    assert "replay" not in _UNSUPPORTED_ACTIONS
+    assert not hasattr(impl_mod, "_UNSUPPORTED_ACTIONS")
 
 
 def test_app_enter_and_leave_replay_menu(tmp_path) -> None:

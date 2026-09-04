@@ -187,9 +187,10 @@ def test_sub_screen_back_keeps_cursor(tmp_path) -> None:
     app, _stub = _stub_app(tmp_path)
     app._run_title_menu((MenuAction.DOWN,))  # 0 → 3(顺向跳过锁定的 1/2)
     assert app._flow.cursor.index == 3
-    app._run_title_menu((MenuAction.CONFIRM,))  # Practice Start 未实装 → 提示
+    app._run_title_menu((MenuAction.CONFIRM,))  # Practice Start → 难度选(C5: 选难度→选关)
+    assert app._screen == Screen.DIFFICULTY
+    app._run_menu((MenuAction.BACK,))  # BACK → 主菜单
     assert app._screen == Screen.MAIN_MENU
-    assert app._unimplemented_timer > 0
     app._flow.cursor.index = 0
     app._run_title_menu((MenuAction.CONFIRM,))  # Start → 难度
     assert app._screen == Screen.DIFFICULTY

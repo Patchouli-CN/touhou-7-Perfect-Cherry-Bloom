@@ -20,6 +20,9 @@
 - 曲目解锁: plst.bgmUnlocked[32] (ScoreDat.hpp:150), 播曲即置位
   (Supervisor.PlayMusic/PlayAudio, Supervisor.cpp:1579/:1592/:1617/:1632);
   结局另置 18/19 (Ending.cpp:549-556)。
+- Last Word 解锁: plst.lastWordUnlocked[17] (FLSP 章对应物,
+  ScoreDat.hpp:155-160; 17 条条件判定 = UnlockLastWordSpellCards,
+  TitleUnlockLastWords.inl:13-172)。
 
 调查笔记修正(th08-title-systems.md, 2026-09-03 核实): §7 原记解锁判定读
 [EXTRA..LUNATIC+EXTRA](下标 4..7) 有误, 实为 [EASY..LUNATIC] = 0..3,
@@ -34,6 +37,7 @@ from typing import TypeGuard
 import msgspec
 
 from ...engine.score_store import ScoreStore
+from .spellcards import LAST_SPELL_CARDS, SPELLCARDS_PER_DIFFICULTY
 
 # ---- 常量(出处见各注) ----
 EXTRA_UNLOCKED_FLAG = 1 << 14  # ZUN_BIT(14), GameManager.hpp:14
@@ -180,6 +184,20 @@ def stage_cleared_with_retries(
     return bool(row["with_retries"][difficulty] & (1 << int(c_stage)))
 
 
+def practice_clear_info(store: ScoreStore, character: int, difficulty: int) -> int:
+    """Practice 面选的 clearInfo 位掩码(TitleScreen.cpp:1899-1912):
+    with_retries[难度] 原值; 为 0 保底置 1(可练 1 面); 6B 已通则 4A/4B 全开。"""
+    row = _clrd_row(store, character)
+    info = 0
+    if row is not None and 0 <= difficulty < len(row["with_retries"]):
+        info = row["with_retries"][difficulty]
+    if info == 0:
+        info = 1
+    if info & (1 << STAGE_6B):
+        info |= (1 << 3) | (1 << 4)  # STAGE4A/STAGE4B 位(:1906-1909)
+    return info
+
+
 # ---- 通关写回 ----
 def record_stage_clear(
     store: ScoreStore, character: int, difficulty: int, c_stage: int, num_retries: int
@@ -240,6 +258,180 @@ def record_extra_clear(store: ScoreStore, character: int, difficulty: int) -> No
     agg = _clrd_row(store, SHOT_ALL_ROW)
     if agg is not None:
         _or_bit(agg, "with_retries", EXTRA_DIFFICULTY, 0x8000)
+
+
+# ---- catk 判定(Last Word 解锁/符卡练习显示用; ScoreDat.hpp:188-205 内联同构) ----
+def _catk_groups(store: ScoreStore, card_no: int) -> tuple[dict | None, dict | None]:
+    """(inGame 组, spellPractice 组); 卡号越界 → (None, None)。"""
+    if not 0 <= int(card_no) < len(store.catk):
+        return None, None
+    entry = store.catk[int(card_no)]
+    practice = entry.get("practice")
+    return entry, practice if isinstance(practice, dict) else None
+
+
+def _slot(group: dict | None, key: str, shot: int) -> int:
+    if group is None:
+        return 0
+    v = group.get(key)
+    if isinstance(v, list) and 0 <= int(shot) < len(v):
+        x = v[int(shot)]
+        if isinstance(x, int) and not isinstance(x, bool):
+            return x
+    return 0
+
+
+def card_attempted_any(store: ScoreStore, card_no: int, shot: int) -> bool:
+    """Catk.AttemptedAny (ScoreDat.hpp:199-204): 任一组 attempts[shot]>0。"""
+    ingame, practice = _catk_groups(store, card_no)
+    return _slot(ingame, "attempts", shot) > 0 or _slot(practice, "attempts", shot) != 0
+
+
+def card_captured_any(store: ScoreStore, card_no: int, shot: int) -> bool:
+    """Catk.CapturedAny (ScoreDat.hpp:192-197): 任一组 captures[shot]>0。"""
+    ingame, practice = _catk_groups(store, card_no)
+    return (
+        _slot(ingame, "successes", shot) > 0 or _slot(practice, "successes", shot) != 0
+    )
+
+
+def spell_practice_captured(store: ScoreStore, card_no: int, shot: int) -> bool:
+    """Catk.SpellPracticeCaptured (ScoreDat.hpp:188-191): practice 组捕获。"""
+    _, practice = _catk_groups(store, card_no)
+    return _slot(practice, "successes", shot) > 0
+
+
+# ---- Last Word 解锁(FLSP; C 期第 5 片) ----
+LAST_WORD_COUNT = 17  # SPELLCARD_COUNT_LAST_WORD_SPELLCARDS (ScoreDat.hpp:256)
+LAST_WORD_START = 205  # SPELLCARD_LAST_WORD_START (Spellcard.hpp:235)
+SHOT_REIMU = 4  # 单人灵梦 shotType (ScoreDat.hpp:58)
+SHOT_MARISA = 6  # 单人魔理沙 shotType (ScoreDat.hpp:60)
+# score.json 落点: plst["lastWordUnlocked"] = 17 槽(值 = 卡号或 0)。
+# 引擎 from_dict 只回读已知 plst 键, load_score_store 从原始 JSON 补注;
+# to_dict 整体倒出 plst, 保存自然回写(对照 FLSP 章, ScoreDat.hpp:155-160)
+_FLSP_KEY = "lastWordUnlocked"
+
+
+def _flsp(store: ScoreStore) -> list[int]:
+    v = store.plst.get(_FLSP_KEY)
+    if not _is_int_list(v, LAST_WORD_COUNT):
+        v = [0] * LAST_WORD_COUNT
+        store.plst[_FLSP_KEY] = v
+    return v
+
+
+def last_word_unlocked(store: ScoreStore, card_no: int) -> bool:
+    """flsp.unlockedLastWordSpellCards[i] == 卡号 (TitleUnlockLastWords.inl:7-10)。"""
+    if not LAST_WORD_START <= int(card_no) < LAST_WORD_START + LAST_WORD_COUNT:
+        return False
+    v = store.plst.get(_FLSP_KEY)
+    return _is_int_list(v, LAST_WORD_COUNT) and v[
+        int(card_no) - LAST_WORD_START
+    ] == int(card_no)
+
+
+def is_last_word_spellcard_attempted(store: ScoreStore, card_no: int) -> bool:
+    """IsLastWordSpellCardAttempted (TitleScreen.cpp:2996-3002): 卡 <205 看
+    两组 attempts[SHOT_ALL], 否则看 flsp 解锁字节。"""
+    if int(card_no) < LAST_WORD_START:
+        return card_attempted_any(store, card_no, SHOT_ALL_ROW)
+    return last_word_unlocked(store, card_no)
+
+
+def _extra_clear_count(store: ScoreStore) -> int:
+    """extraClearCount: 机体 0..11 中 without_retries[E..L] 任一带
+    EXTRA_UNLOCKED_FLAG 的机体数(TitleUnlockLastWords.inl:38-45)。"""
+    n = 0
+    for ch in range(NUM_CHARACTERS):
+        row = _clrd_row(store, ch)
+        if row is not None and any(
+            m & EXTRA_UNLOCKED_FLAG for m in row["without_retries"][:MAIN_DIFFICULTIES]
+        ):
+            n += 1
+    return n
+
+
+def _total_practice_captures(store: ScoreStore, cards=None) -> int:
+    """spellPractice 组 captures[SHOT_ALL]>0 的卡数(:31-36/:65-70);
+    cards=None 全 222 张, 否则指定卡号集。"""
+    n = 0
+    for c in cards if cards is not None else range(len(store.catk)):
+        if spell_practice_captured(store, c, SHOT_ALL_ROW):
+            n += 1
+    return n
+
+
+def unlock_last_words(store: ScoreStore) -> list[int]:
+    """UnlockLastWordSpellCards (TitleUnlockLastWords.inl:13-172): 评估 17 条
+    解锁条件, 新达成的写 flsp(值 = 卡号); 返回本次新解锁的卡号列表(调用方
+    提示用; 条件细节见 th08-title-systems.md §8.3)。"""
+    out: list[int] = []
+
+    def grant(card: int, ok: bool) -> None:
+        if ok and not last_word_unlocked(store, card):
+            _flsp(store)[card - LAST_WORD_START] = card
+            out.append(card)
+
+    extra_clear = _extra_clear_count(store)
+    grant(205, extra_clear >= 2)
+    grant(206, extra_clear >= 3)
+    total_captures = _total_practice_captures(store)
+    grant(207, total_captures >= 50)
+    grant(208, extra_clear >= 4)
+    grant(209, card_captured_any(store, 137, SHOT_ALL_ROW))
+    ls_captures = _total_practice_captures(store, LAST_SPELL_CARDS)
+    grant(210, ls_captures >= 15)
+    grant(
+        211,
+        card_captured_any(store, 145, SHOT_ALL_ROW)
+        and card_captured_any(store, 195, SHOT_ALL_ROW)
+        and card_attempted_any(store, 204, SHOT_ALL_ROW),
+    )
+    grant(
+        212,
+        all(card_attempted_any(store, c, SHOT_ALL_ROW) for c in (208, 209, 210)),
+    )
+    grant(
+        213,
+        all(card_attempted_any(store, c, SHOT_ALL_ROW) for c in (205, 206, 207, 211)),
+    )
+    normal_cards = SPELLCARDS_PER_DIFFICULTY[1]
+    grant(
+        214,
+        all(card_captured_any(store, c, SHOT_MARISA) for c in normal_cards),
+    )
+    reimu = _clrd_row(store, SHOT_REIMU)
+    grant(
+        215,
+        reimu is not None
+        and any(reimu["without_retries"][d] & EXTRA_UNLOCKED_FLAG for d in (2, 3)),
+    )
+    grant(216, total_captures >= 120)
+    grant(217, extra_clear >= 6)
+    grant(
+        218,
+        sum(
+            1
+            for ch in range(NUM_CHARACTERS)
+            if (row := _clrd_row(store, ch)) is not None
+            and row["without_retries"][EXTRA_DIFFICULTY] & (1 << STAGE_EXTRA)
+        )
+        >= 3,
+    )
+    grant(219, ls_captures >= 30)
+    agg = _clrd_row(store, SHOT_ALL_ROW)
+    grant(
+        220,
+        agg is not None and (agg["with_retries"][3] & 0xC000) != 0,  # LUNATIC 槽
+    )
+    grant(
+        221,
+        all(
+            card_attempted_any(store, c, SHOT_ALL_ROW)
+            for c in range(LAST_WORD_START, LAST_WORD_START + LAST_WORD_COUNT - 1)
+        ),
+    )
+    return out
 
 
 # ---- 曲目解锁 ----
@@ -384,6 +576,14 @@ def load_score_store(path: str | Path) -> ScoreStore:
     )
     if migrated:
         _rebuild_shot_all_row(store)
+    # FLSP 补注: 引擎 from_dict 只回读已知 plst 键, Last Word 解锁表从原始
+    # JSON 捡回(保存时 to_dict 整体倒出 plst, 自然回写)
+    if isinstance(data, dict):
+        plst = data.get("plst")
+        if isinstance(plst, dict) and _is_int_list(
+            plst.get(_FLSP_KEY), LAST_WORD_COUNT
+        ):
+            store.plst[_FLSP_KEY] = list(plst[_FLSP_KEY])
     return store
 
 
@@ -394,10 +594,14 @@ __all__ = [
     "ENDING_BGM_INDICES",
     "EXTRA_DIFFICULTY",
     "EXTRA_UNLOCKED_FLAG",
+    "LAST_WORD_COUNT",
+    "LAST_WORD_START",
     "NUM_CHARACTERS",
     "NUM_DIFFICULTIES",
     "NUM_TEAMS",
     "SHOT_ALL_ROW",
+    "SHOT_MARISA",
+    "SHOT_REIMU",
     "SPELLCARD_COUNT",
     "SPELL_PRACTICE_UNLOCKED_FLAG",
     "STAGE_6A",
@@ -405,19 +609,26 @@ __all__ = [
     "STAGE_BGM_UNLOCK_INDICES",
     "STAGE_EXTRA",
     "TITLE_BGM_INDEX",
+    "card_attempted_any",
+    "card_captured_any",
     "is_extra_unlocked",
     "is_extra_unlocked_for_character",
     "is_extra_unlocked_with_all_teams",
+    "is_last_word_spellcard_attempted",
     "is_spell_practice_unlocked",
     "is_spell_practice_unlocked_for_character",
+    "last_word_unlocked",
     "load_score_store",
     "migrate_legacy_clrd",
+    "practice_clear_info",
     "record_bad_ending",
     "record_ending_clear",
     "record_extra_clear",
     "record_stage_clear",
+    "spell_practice_captured",
     "stage_cleared_with_retries",
     "stage_cleared_without_retries",
     "unlock_bgm",
+    "unlock_last_words",
     "unlock_stage_bgm",
 ]

@@ -448,13 +448,6 @@ def test_stats_lines(tmp_path) -> None:
 # ---- 应用壳接线(StubRenderer) ----
 
 
-def test_result_no_longer_unsupported() -> None:
-    """ "result" 摘出 _UNSUPPORTED_ACTIONS。"""
-    from touhou.games.th08.view.impl import _UNSUPPORTED_ACTIONS
-
-    assert "result" not in _UNSUPPORTED_ACTIONS
-
-
 def test_app_enter_and_leave_result_browse(tmp_path) -> None:
     """主菜单 Result 项进 Screen.PLAYER_DATA; 类别屏 BACK 两次回标题,
     光标落 5(wantedState2 规则, TitleScreen.cpp:3689-3690)。"""

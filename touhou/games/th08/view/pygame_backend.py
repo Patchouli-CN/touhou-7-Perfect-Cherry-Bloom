@@ -40,6 +40,8 @@ from .hud_view import HudView
 from .music_flow import MusicRoomFlowTh08
 from .music_view import MusicRoomView
 from .option_view import KeyConfigView, OptionView
+from .practice_flow import SPELLCARDS_PER_PAGE
+from .practice_view import PracticeMenuView
 from .result_data import (
     CHARACTER_ITEMS,
     highscore_rows,
@@ -175,6 +177,9 @@ class PygameTh08Renderer:
         # Replay 菜单贴图视图(懒加载; 无数据/损坏回退文字菜单)
         self._replay_view: ReplayMenuView | None = None
         self._replay_view_broken = False
+        # Practice/Spell Practice 贴图视图(懒加载; 无数据/损坏回退文字菜单)
+        self._practice_view: PracticeMenuView | None = None
+        self._practice_view_broken = False
         # 输入映射(set_keymap 重建)
         self._action_codes: dict[str, list[int]] = {}
         self._menu_keys: dict[int, MenuAction] = {}
@@ -634,6 +639,69 @@ class PygameTh08Renderer:
             for i in range(start, min(start + REPLAYS_PER_PAGE, n))
         ]
         self._draw_menu_list(surf, "Replay", items, flow.cursor - start)
+        self._blit_scaled(surf)
+
+    # ---- Practice/Spell Practice(practice_view 贴图渲染; 失败回退文字列表) ----
+    def _ensure_practice_view(self) -> "PracticeMenuView | None":
+        """Practice 系画面贴图视图(懒加载一次; 失败永久回退文字菜单,
+        同 _ensure_replay_view 口径)。"""
+        if self._practice_view is None and not self._practice_view_broken:
+            try:
+                self._practice_view = PracticeMenuView(self._data_path)
+            except Exception as e:
+                log.warning("Practice 画面贴图视图加载失败, 回退文字菜单: {}", e)
+                self._practice_view_broken = True
+        return self._practice_view
+
+    def render_practice_stage_select(
+        self, flow, title: str, lines: list, frame: int = 0
+    ) -> None:
+        """Practice 面选: 原作版渲染(practice_view), 失败回退文字列表。"""
+        view = self._ensure_practice_view()
+        if view is not None:
+            try:
+                self._blit_scaled(view.render_practice_stage(flow, title, lines, frame))
+                return
+            except Exception:
+                log.exception("Practice 面选渲染异常(本帧降级为文字列表)")
+        surf = pygame.Surface((TITLE_W, TITLE_H))
+        self._draw_menu_list(surf, title, lines, flow.cursor)
+        self._blit_scaled(surf)
+
+    def render_spell_stage_select(
+        self, flow, title: str, lines: list, frame: int = 0
+    ) -> None:
+        """Spell Practice 面选: 原作版渲染, 失败回退文字列表。"""
+        view = self._ensure_practice_view()
+        if view is not None:
+            try:
+                self._blit_scaled(view.render_spell_stage(flow, title, lines, frame))
+                return
+            except Exception:
+                log.exception("Spell 面选渲染异常(本帧降级为文字列表)")
+        surf = pygame.Surface((TITLE_W, TITLE_H))
+        self._draw_menu_list(surf, title, lines, flow.cursor)
+        self._blit_scaled(surf)
+
+    def render_spell_card_select(
+        self, flow, title: str, info_lines: tuple, frame: int = 0
+    ) -> None:
+        """Spell Practice 卡选: 原作版渲染, 失败回退文字列表 + 信息行。"""
+        view = self._ensure_practice_view()
+        if view is not None:
+            try:
+                self._blit_scaled(
+                    view.render_spell_card(flow, title, info_lines, frame)
+                )
+                return
+            except Exception:
+                log.exception("Spell 卡选渲染异常(本帧降级为文字列表)")
+        surf = pygame.Surface((TITLE_W, TITLE_H))
+        start = flow.page * SPELLCARDS_PER_PAGE
+        items = flow.names[start : start + SPELLCARDS_PER_PAGE]
+        self._draw_menu_list(
+            surf, title, items, flow.cursor - start, hint=" ".join(info_lines[:2])
+        )
         self._blit_scaled(surf)
 
     # ---- 对局场景 ----

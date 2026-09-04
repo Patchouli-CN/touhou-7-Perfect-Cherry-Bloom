@@ -39,7 +39,7 @@ from ....engine.bullets import SCREEN
 from ....engine.view.anm_fx import AnmScriptBank, TransformCache, Vm2d
 from ....engine.view.bg3d_view import StageScene
 from ....engine.view.sprite_bank import SpriteBank
-from ..data import STAGE_STD_FILES
+from ..data import LAST_WORD_ENEMY_ANMS, STAGE_STD_FILES, STAGE_STD_FILES_SPELL
 from .anm_vm import AnmVmTh08
 
 GAME_W, GAME_H = int(SCREEN.x), int(SCREEN.y)  # 384x448 游戏区
@@ -158,7 +158,7 @@ class GameView:
         self._item_imgs: dict[int, pygame.Surface | None] = {}  # itemType → sprite
 
     # ---- 关卡资源(换关时重载, 对照 Background.cpp:884 的按关切换) ----
-    def _ensure_stage(self, stage_no: int) -> None:
+    def _ensure_stage(self, stage_no: int, spell_card: int | None = None) -> None:
         if stage_no == self._stage:
             return
         self._stage = stage_no
@@ -166,20 +166,33 @@ class GameView:
         # 残留条目会让 id 复用的新敌人继承旧 VM/贴图 —— 必须清掉
         self._enemy_vis.clear()
         idx = min(max(stage_no - 1, 0), len(_STAGE_ENEMY_ANMS) - 1)
-        self._enemy_anm = _STAGE_ENEMY_ANMS[idx]
+        # 符卡练习: Last Word 敌人 anm 按卡表(g_SpellEnemyAnms,
+        # Background.cpp:107-111), 其余复用面 anm(EnemyManager.cpp:1293-1311)
+        enemy_anm = _STAGE_ENEMY_ANMS[idx]
+        if spell_card is not None and spell_card >= 205:
+            override = LAST_WORD_ENEMY_ANMS[spell_card - 205]
+            if override is not None:
+                enemy_anm = override
+        self._enemy_anm = enemy_anm
         if not self.bank.has(self._enemy_anm):
             self._enemy_anm = ""
         self._bg_dark = None
-        # 3D 背景(.std 场景): 加载失败留 None, _render_bg 退回 2D 平铺
+        # 3D 背景(.std 场景): 加载失败留 None, _render_bg 退回 2D 平铺;
+        # 符卡练习换 _s.std(g_StageStdFilesSpell, Background.cpp:894-906)
         self._bg3d = None
         self._bg3d_broken = False
+        std_file = (
+            STAGE_STD_FILES_SPELL[idx]
+            if spell_card is not None
+            else STAGE_STD_FILES[idx]
+        )
         try:
             self._bg3d = StageScene.load(
                 self.bank._archive(),
                 stage_no,
                 game="th08",
                 vm_cls=AnmVmTh08,
-                std_file=STAGE_STD_FILES[idx],
+                std_file=std_file,
                 bg_anms=(_STAGE_BG_ANMS[idx],),
             )
         except Exception as e:
@@ -631,7 +644,9 @@ class GameView:
         self.frame += 1
         self.character = getattr(game, "character", self.character)
         self._player_anm = _PLAYER_ANM_FILES[self.character % len(_PLAYER_ANM_FILES)]
-        self._ensure_stage(getattr(game, "stage_no", 1))
+        self._ensure_stage(
+            getattr(game, "stage_no", 1), getattr(game, "spell_practice_card", None)
+        )
         self._render_bg(surf, game)
         self._render_items(surf, game)
         self._render_enemies(surf, game)

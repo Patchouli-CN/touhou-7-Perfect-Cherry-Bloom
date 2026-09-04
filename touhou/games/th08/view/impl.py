@@ -24,9 +24,16 @@ result_view.ResultBrowseView(result.jpg 背景 + result00.anm 贴图 vm +
 replay_view.ReplayMenuView(select00.png 背景 + 列表直接绘字),
 确认即按 meta 重建同种子对局逐帧喂输入回放(JSON 路线, 原作的选面/
 减速/只 boss 战依赖逐面 stageReplayData 与 replayEventFlags, 不支持)。
-一期遗留范围: Practice/Spell Practice 画面(菜单项给"未实装"提示)、
-对话立绘、符卡宣言、结局画面(world 出 ending 时直接 finish_ending 跳
-总结算)、录像录制(D 期)、入榜名字输入(结算直接存档回标题)。
+Practice/Spell Practice 已实装(C 期第 5 片): practice_flow 纯逻辑
+(PracticeStageFlowTh08 面选位掩码/SpellStageFlowTh08 10 行面选+切机体/
+SpellCardFlowTh08 15 行翻页卡选 + Last Word 17 条件解锁) +
+practice_view.PracticeMenuView(select00.png 背景 + 直接绘字);
+符卡战开局经 world.configure_spell_practice(sp ECL/_s.std 换表 +
+ex19 发布卡号 + 残机 8/火力按卡号 + catk 记 practice 组),
+练习结算不进 ResultScreen(原作 PRACTICE/SPELL_PRACTICE 态只更新 pscr,
+§12.3), 存档落盘后回对应面选(practiceState 净效果)。
+一期遗留范围: 对话立绘、符卡宣言、结局画面(world 出 ending 时直接
+finish_ending 跳总结算)、录像录制(D 期)、入榜名字输入(结算直接存档回标题)。
 
 渲染/输入采集委托 Renderer 后端(协议见 engine/render/__init__.py);
 默认后端是本包 pygame_backend.PygameTh08Renderer(自持, 不进全局
@@ -71,6 +78,12 @@ from ..progress import (
 )
 from ..sound import SE, SE_FILES, SE_VOLUMES
 from .music_flow import MusicRoomFlowTh08, load_tracks
+from .practice_flow import (
+    PracticeStageFlowTh08,
+    SpellCardFlowTh08,
+    SpellStageFlowTh08,
+)
+from .practice_screens import PracticeScreensMixin
 from .pygame_backend import PygameTh08Renderer
 from .replay_flow import ReplayFlowTh08, scan_replays
 from .result_flow import ResultFlowTh08
@@ -99,8 +112,6 @@ _RESULT_BGM = "init.mid"
 # th08 Extra 面 stage_no (world: stage_no 1..9 = C currentStage+1, 9=EX)
 _EXTRA_STAGE_NO = 9
 
-_UNIMPLEMENTED_HINT_FRAMES = 90
-
 # 进标题的 70 帧白淡入(TitleScreen.cpp:3800-3807 注册 SCREEN_EFFECT_FULL_FADE_IN)
 _TITLE_FADE_FRAMES = 70
 
@@ -120,21 +131,16 @@ _WARMUP_ANMS = (
     "player03.anm",
 )
 
-# 主菜单未实装的子系统(选中给提示; 见模块 docstring 的一期遗留范围)
-_UNSUPPORTED_ACTIONS = (
-    "spell_practice",
-    "practice",
-)
-
 
 @register_app("th08")
-class GameApp:
+class GameApp(PracticeScreensMixin):
     """th08 窗口应用: 标题菜单 + 游戏流程(渲染/输入由后端承担)。
 
     经 ``@register_app("th08")`` 登记到 registry; ``TouhouWorld.run()``
     (headless=False) 按作品名解析本类。构造契约(register_app):
     ``GameApp(make_game, *, data_path, bgm_path, game_data)`` —— 其余关键字
-    参数均有默认值, 契约是关键字子集。
+    参数均有默认值, 契约是关键字子集。Practice/Spell Practice 的画面与
+    开局接线在 practice_screens.PracticeScreensMixin(单文件红线拆分)。
     """
 
     def __init__(
@@ -186,6 +192,17 @@ class GameApp:
         self._replay_flow: ReplayFlowTh08 | None = None
         # 回放播放状态: {"codes", "idx", "name", "extra"}; None = 非播放
         self._playback: dict | None = None
+        # Practice/Spell Practice(C 期第 5 片): _practice_mode = Practice
+        # Start 流(难度→机体→面选); 各 flow 进画面才建(按存档快照);
+        # _run_practice/_run_spell_card = 本局练习口径(结算/重开/回标题用)
+        self._practice_mode = False
+        self._practice_flow: PracticeStageFlowTh08 | None = None
+        self._spell_stage_flow: SpellStageFlowTh08 | None = None
+        self._spell_card_flow: SpellCardFlowTh08 | None = None
+        self._run_practice = False
+        self._run_spell_card: int | None = None
+        self._spell_card_row = 0  # 卡选所属面行(_start_spell_practice 取面用)
+        self._spell_last_card: int | None = None  # 卡号记忆(:2224-2231/:2520-2527)
         if replay_dir is None:
             replay_dir = replay_mod.DEFAULT_REPLAY_DIR
         self._replay_dir = replay_dir
@@ -222,7 +239,6 @@ class GameApp:
         self._reload_title_unlocks()
         self._result_saved = False
         self._menu_frame = 0
-        self._unimplemented_timer = 0
         self._game = None
         # SE/BGM(懒加载, 静音容错): th08 的 SE 表/game_id/edz 解密注入
         self._sound = SoundPlayer(
@@ -298,6 +314,12 @@ class GameApp:
                 self._run_result_browse(inp)
             elif self._screen == Screen.REPLAY:
                 self._run_replay_menu(inp)
+            elif self._screen == Screen.PRACTICE_STAGE:
+                self._run_practice_stage_select(inp)
+            elif self._screen == Screen.SPELL_STAGE:
+                self._run_spell_stage_select(inp)
+            elif self._screen == Screen.SPELL_CARD:
+                self._run_spell_card_select(inp)
             elif self._screen == Screen.RESULT:
                 self._run_result(inp.menu_actions)
             else:  # playing
@@ -323,16 +345,13 @@ class GameApp:
             self._warmup_bank = SpriteBank(self._data_path, game="th08")
         self._warmup_bank.has(self._warmup.pop(0))
 
-    # ---- 标题主菜单(th08 自持 9 项 flow; 未实装子系统给提示) ----
+    # ---- 标题主菜单(th08 自持 9 项 flow) ----
     def _run_title_menu(self, actions) -> None:
         self._menu_frame += 1
-        if self._unimplemented_timer > 0:
-            self._unimplemented_timer -= 1
         fade = self._title_fade if self._title_fade < _TITLE_FADE_FRAMES else None
         self._renderer.render_title(
             self._flow,
             self._menu_frame,
-            show_unimplemented=self._unimplemented_timer > 0,
             fade_frame=fade,
         )
         self._title_fade = min(self._title_fade + 1, _TITLE_FADE_FRAMES)
@@ -351,9 +370,14 @@ class GameApp:
                 self._diff.index, items=self._main_difficulties, frame=frame
             )
         elif self._screen == Screen.CHARACTER:
-            # 通关标记只画主 CharacterSelect(OnDraw :3594-3596), Extra 变体不画
+            # 通关标记只画主 CharacterSelect(OnDraw :3594-3596),
+            # Extra/Practice 变体不画
             mark = None
-            if not self._extra_mode and self._title_store is not None:
+            if (
+                not self._extra_mode
+                and not self._practice_mode
+                and self._title_store is not None
+            ):
                 mark = completion_mark_sprite(
                     self._title_store,
                     self._char_flow.cursor.index,
@@ -716,6 +740,27 @@ class GameApp:
                     return  # 已进回放(PLAYING)
         flow.tick_frame()
 
+    # ---- 练习局收尾(画面/开局接线在 practice_screens.py 的 mixin) ----
+    def _leave_practice_run(self) -> None:
+        """Practice 局收尾(通关/GameOver/Quit): 存档落盘 → 回 Practice 面选
+        (对局回标题 practiceState=1 的净效果, :3700-3704 链; 结算画面不进,
+        原作 ResultScreen PRACTICE 态只更新 pscr, §12.3)。"""
+        self._save_run_store()
+        self._game = None
+        self._run_practice = False
+        self._sound.play_music(_TITLE_BGM)
+        self._enter_practice_stage_select()
+
+    def _leave_spell_practice_run(self) -> None:
+        """Spell Practice 局收尾: 存档落盘 → 回 Spell 面选(practiceState=2
+        的净效果, 行光标恢复)。"""
+        self._save_run_store()
+        self._game = None
+        self._run_spell_card = None
+        row = self._spell_stage_flow.cursor if self._spell_stage_flow is not None else 0
+        self._sound.play_music(_TITLE_BGM)
+        self._enter_spell_stage_select(row=row)
+
     # ---- 回放播放(录像选择 → 重建 game → 逐帧喂录像输入) ----
     def _start_replay(self, entry: dict) -> None:
         """播放选中录像: 按 meta 重建同难度/机体/种子的 game, 逐帧喂输入。
@@ -856,6 +901,10 @@ class GameApp:
                     # Extra Start: 选完机体直接进 EX 面
                     self._start_game(extra=True)
                     self._extra_mode = False
+                elif self._practice_mode:
+                    # Practice Start: 选完机体进面选(:1784-1786 →
+                    # PracticeStageSelect)
+                    self._enter_practice_stage_select()
                 else:
                     self._start_game()
             elif action == MenuAction.BACK:
@@ -885,7 +934,19 @@ class GameApp:
             self._finished = True
         elif act == "select_difficulty":
             self._renderer.play_menu_se("ok")
+            self._practice_mode = False
             self._screen = Screen.DIFFICULTY
+        elif act == "practice":
+            # → Practice Start 流(:515-518 case TITLE_MENU_ITEM_START_PRACTICE
+            # → DifficultySelectPractice; isPracticeMode=TRUE)
+            self._renderer.play_menu_se("ok")
+            self._practice_mode = True
+            self._screen = Screen.DIFFICULTY
+        elif act == "spell_practice":
+            # → Spell Practice 面选(:546-551 case TITLE_MENU_ITEM_START_SPELL_PRACTICE
+            # → SpellStageSelect; isPracticeMode+isSpellPractice=TRUE)
+            self._renderer.play_menu_se("ok")
+            self._enter_spell_stage_select()
         elif act == "extra_start":
             self._renderer.play_menu_se("ok")
             self._extra_mode = True
@@ -908,10 +969,6 @@ class GameApp:
             # ChangeCurrentScreen(TitleCurrentScreen_Replay))
             self._renderer.play_menu_se("ok")
             self._enter_replay_menu()
-        elif act in _UNSUPPORTED_ACTIONS:
-            # 一期未实装(见模块 docstring): 提示后留在主菜单
-            self._renderer.play_menu_se("cancel")
-            self._unimplemented_timer = _UNIMPLEMENTED_HINT_FRAMES
 
     def _diff_index(self, name: str | None, default: int = 1) -> int:
         """难度名 → 下标(按当前作品难度表; 未知名/None 按 default)。"""
@@ -922,8 +979,14 @@ class GameApp:
         return self._characters.index(name) if name in self._characters else default
 
     # ---- 开局 ----
-    def _start_game(self, extra: bool = False, seed: int | None = None) -> None:
+    def _start_game(
+        self, extra: bool = False, seed: int | None = None, *, configure=None
+    ) -> None:
         t0 = time.time()
+        # 练习标记复位(练习开局在返回后由 _start_practice/_start_spell_practice
+        # 重置; 普通/Extra/回放开局一律非练习)
+        self._run_practice = False
+        self._run_spell_card = None
         ch = self._char_flow.cursor.current or (
             self._characters[0] if self._characters else ""
         )
@@ -964,6 +1027,9 @@ class GameApp:
         self._run_extra = extra
         if extra and hasattr(self._game, "enter_stage"):
             self._game.enter_stage(_EXTRA_STAGE_NO)
+        if configure is not None:
+            # 练习模式覆写(残机/火力/sp 资源换表), begin_game 建渲染资源前
+            configure(self._game)
         if self._spectate is not None:
             # 观战: 包局内 live 对局为 Game 门面(不重复构造对局)
             self._spectate_facade = Game._from_impl(
@@ -1122,6 +1188,16 @@ class GameApp:
                 log.debug("观战到结算 (frame={}) → 结束观战", game.frame)
                 self._finished = True
                 return
+            if self._run_spell_card is not None:
+                # 符卡练习打完(收取/超时/GameOver): 不进结算画面, 回面选
+                log.debug("符卡练习结束 (frame={}) → 回 Spell 面选", game.frame)
+                self._leave_spell_practice_run()
+                return
+            if self._run_practice:
+                # Practice 面打完: 不进结算画面, 回面选
+                log.debug("Practice 面结束 (frame={}) → 回 Practice 面选", game.frame)
+                self._leave_practice_run()
+                return
             self._enter_result()
             return
         self._renderer.render_game(game)
@@ -1206,6 +1282,12 @@ class GameApp:
                 if self._continue_cursor.index == 0:
                     self._renderer.play_menu_se("ok")
                     self._sound.unpause_music()
+                    if self._run_spell_card is not None:
+                        # 符卡练习 retry = 重开同卡(SpellcardPracticeRestart,
+                        # AsciiManager.cpp:1355-1376), 非原地续关
+                        card = self._run_spell_card
+                        self._start_spell_practice(card)
+                        return
                     game.continue_play()
                     log.debug(
                         "续关 (numRetries={}, frame={})",
@@ -1225,20 +1307,38 @@ class GameApp:
         )
 
     def _retry_game(self) -> None:
-        """暂停菜单 Retry: 重开本关(同难度同机体重建 game)。"""
+        """暂停菜单 Retry: 重开本关(同难度同机体重建 game)。练习局重开
+        本面/本卡(原作 practice/EX 的暂停 Retry 也走
+        SpellcardPracticeRestart, AsciiManager.cpp:1136-1160)。"""
         self._paused = False
         self._pause_confirm = None
         # 先解除暂停态, 否则同名关卡曲 play_music 早退会让 BGM 一直停在暂停态
         self._sound.unpause_music()
+        if self._run_spell_card is not None:
+            self._start_spell_practice(self._run_spell_card)
+            return
+        if self._run_practice:
+            row = (getattr(self._game, "stage_no", 1) or 1) - 1
+            self._start_practice(row)
+            return
         self._start_game(extra=self._run_extra)
 
     def _quit_to_title(self) -> None:
         """暂停菜单 Quit to Title: 弃局回标题主菜单(初始光标 1, 见
-        title_flow.CURSOR_FROM_GAME; TitleScreen.cpp:3684-3687)。"""
+        title_flow.CURSOR_FROM_GAME; TitleScreen.cpp:3684-3687)。练习局
+        改回对应面选(practiceState 净效果, :3700-3704 链; 存档落盘,
+        对照 Quit to Title 的 ResultScreen(SAVE_DATA) 写盘,
+        AsciiManager.cpp:1122-1132)。"""
         self._paused = False
         self._pause_confirm = None
         self._sound.unpause_music()
         self._in_continue = False
+        if self._run_spell_card is not None:
+            self._leave_spell_practice_run()
+            return
+        if self._run_practice:
+            self._leave_practice_run()
+            return
         self._game = None
         # 游戏/标题窗口同为 640x480×scale, 无需 resize
         self._enter_title_scene(CURSOR_FROM_GAME)

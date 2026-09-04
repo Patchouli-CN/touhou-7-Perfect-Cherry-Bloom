@@ -142,6 +142,8 @@ class Screen(IntEnum):
     MUSIC_ROOM = 11  # Music Room(MusicRoom.cpp RegisterChain)
     REPLAY = 12  # Replay 选择(MainMenu.cpp STATE_SELECT_REPLAY)
     KEY_CONFIG = 13  # 键位设置(MainMenu.cpp STATE_KEY_CONFIG)
+    SPELL_STAGE = 14  # th08 Spell Practice 面选(TitleScreen.cpp SpellStageSelect)
+    SPELL_CARD = 15  # th08 Spell Practice 卡选(TitleScreen.cpp SpellCardSelect)
 
 
 class MenuCursor(msgspec.Struct):

@@ -276,14 +276,10 @@ def test_keyconfig_idle_timeout() -> None:
 # ---- 应用壳接线(StubRenderer) ----
 
 
-def test_option_no_longer_unsupported(tmp_path) -> None:
-    """"option" 摘出 _UNSUPPORTED_ACTIONS; 主菜单 Option 项进 Screen.OPTION。"""
-    from touhou.games.th08.view.impl import _UNSUPPORTED_ACTIONS
-
-    assert "option" not in _UNSUPPORTED_ACTIONS
+def test_option_menu_item_enters_option_screen(tmp_path) -> None:
+    """主菜单 Option 项进 Screen.OPTION(C1 实装接线)。"""
     app, stub = _stub_app(tmp_path)
     _enter_option(app)
-    assert app._unimplemented_timer == 0
     app._run_option(FrameInput())
     assert ("option", 0, 0) in stub.calls  # frame==0 = 进屏(进场动画)
 
